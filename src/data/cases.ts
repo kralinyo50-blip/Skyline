@@ -1,6 +1,7 @@
 import { SKIN_MAP, BASE_SKINS, RARITY, type Skin, type RarityKey, TIER_ORDER } from "./skins";
 import { CASE_MARKUP, roundCasePrice } from "../config";
 import { TEAM_STICKER_IDS } from "./stickers";
+import { seededRng } from "../lib/rng";
 
 /** Anime kasaları için SVG kapak görseli */
 function caseArt(colors: string[], emoji: string): string {
@@ -537,12 +538,23 @@ function weightsFor(caseDef: CaseDef): Partial<Record<RarityKey, number>> {
 
 /* Bir kasadan ağırlıklı rastgele skin seç (+%10 StatTrak şansı) */
 export function rollCase(caseDef: CaseDef): Skin {
+  return rollCaseWith(caseDef, Math.random);
+}
+
+/* Provably Fair: seed + nonce ile deterministik sonuç —
+   aynı seed/nonce her zaman aynı skin'i üretir (doğrulanabilir) */
+export function rollCaseSeeded(caseDef: CaseDef, seed: string, nonce: number): Skin {
+  const rng = seededRng(seed, nonce);
+  return rollCaseWith(caseDef, rng);
+}
+
+function rollCaseWith(caseDef: CaseDef, rng: () => number): Skin {
   const weights = weightsFor(caseDef);
   const tiers = (Object.keys(caseDef.contents) as RarityKey[]).filter(
     (t) => (caseDef.contents[t]?.length ?? 0) > 0 && (weights[t] ?? 0) > 0
   );
   const totalW = tiers.reduce((acc, t) => acc + (weights[t] ?? 0), 0);
-  let roll = Math.random() * totalW;
+  let roll = rng() * totalW;
   let pickedTier: RarityKey = tiers[0];
   for (const t of tiers) {
     roll -= weights[t] ?? 0;
@@ -552,7 +564,7 @@ export function rollCase(caseDef: CaseDef): Skin {
     }
   }
   const pool = caseDef.contents[pickedTier]!;
-  const id = pool[Math.floor(Math.random() * pool.length)];
+  const id = pool[Math.floor(rng() * pool.length)];
   let skin = SKIN_MAP[id];
 
   if (caseDef.souvenir) {
@@ -564,13 +576,32 @@ export function rollCase(caseDef: CaseDef): Skin {
     skin.rarity !== "rare" &&
     skin.rarity !== "consumer" &&
     skin.rarity !== "industrial" &&
-    Math.random() < 0.1
+    rng() < 0.1
   ) {
     /* %10 StatTrak sürprizi */
     const st = SKIN_MAP[skin.id + "-st"];
     if (st) skin = st;
   }
   return skin;
+}
+
+/* Pity: kasadan covert/rare çekme garantisi — garanti dolduysa
+   doğrudan yüksek kademe havuzundan döndür (deterministik değil, oyun içi kural) */
+export function rollCasePity(caseDef: CaseDef): Skin {
+  const weights = weightsFor(caseDef);
+  const tiers = (Object.keys(caseDef.contents) as RarityKey[]).filter(
+    (t) => (caseDef.contents[t]?.length ?? 0) > 0 && (weights[t] ?? 0) > 0
+  );
+  const high = tiers.filter((t) => t === "covert" || t === "rare");
+  if (!high.length) return rollCase(caseDef);
+  const pool = high.flatMap((t) => caseDef.contents[t]!);
+  const id = pool[Math.floor(Math.random() * pool.length)];
+  let skin = SKIN_MAP[id];
+  if (skin && skin.rarity !== "rare" && Math.random() < 0.1) {
+    const st = SKIN_MAP[skin.id + "-st"];
+    if (st) skin = st;
+  }
+  return skin ?? rollCase(caseDef);
 }
 
 /* Kasa içeriğini gösterim için sırala + gerçek olasılıkları hesapla */

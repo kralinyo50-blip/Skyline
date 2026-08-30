@@ -22,7 +22,7 @@ import { STICKERED_DROP_CHANCE } from "../data/items";
 const STICKER_IDS = STICKERS.map((s) => s.id);
 import { RARITY, fmtMoney, type Skin } from "../data/skins";
 import { goldWin, loseSound, reelStart, tick, winSound } from "../lib/audio";
-import { clamp, easeOutQuint, randHex } from "../lib/rng";
+import { clamp, easeOutQuint } from "../lib/rng";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
 import { SkinCard, SkinImg } from "./SkinCard";
@@ -121,13 +121,14 @@ function ReelCard({ skin, highlight }: { skin: Skin; highlight: boolean }) {
 }
 
 export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void }) {
-  const { balance, trySpend, credit, addItem, pushToast, nonce, serverSeed, bumpNonce, trackOpen, trackDrop } = useGame();
+  const { balance, credit, addItem, pushToast, openCase } = useGame();
   const [phase, setPhase] = useState<Phase>("info");
   const [winner, setWinner] = useState<Skin | null>(null);
   const [reel, setReel] = useState<Skin[]>([]);
   const [tickFlash, setTickFlash] = useState(0);
   const [handled, setHandled] = useState(false);
   const [shake, setShake] = useState(0);
+  const [lastRoll, setLastRoll] = useState<{ seed: string; nonce: number } | null>(null);
   const wear = useMemo(randomWear, [winner]);
 
   /* kasadan çıkan silaha stickerlar yapışabilir */
@@ -201,7 +202,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
 
   const startOpen = () => {
     if (phase === "spinning") return;
-    if (!trySpend(def.price)) {
+    if (balance < def.price) {
       setShake((s) => s + 1);
       pushToast({
         kind: "lose",
@@ -210,16 +211,15 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
       });
       return;
     }
-    bumpNonce();
-    trackOpen(def.price);
-    const w = rollCase(def);
+    const { skin: w, seed, nonce, forced } = openCase(def);
+    setLastRoll({ seed, nonce });
     const items: Skin[] = Array.from({ length: REEL_COUNT }, () => rollCase(def));
     items[WIN_AT] = w;
     setWinner(w);
-    trackDrop(w.price);
     setReel(items);
     setHandled(false);
     setPhase("spinning");
+    if (forced) setShake((s) => s + 1);
     reelStart();
 
     requestAnimationFrame(() => {
@@ -309,7 +309,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
           <div className="ml-auto flex items-center gap-2">
             <span className="hidden items-center gap-1.5 rounded-lg border border-line bg-ink-800 px-2.5 py-1.5 text-[10px] font-semibold text-white/45 sm:flex">
               <ShieldCheck className="h-3.5 w-3.5 text-emerald-400" />
-              #{nonce.toLocaleString("tr-TR")}
+              #{lastRoll?.nonce.toLocaleString("tr-TR") ?? "—"}
             </span>
             {phase !== "spinning" && (
               <button
@@ -552,7 +552,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                     </div>
 
                     <div className="mt-4 w-full truncate rounded-lg border border-line bg-ink-900 px-3 py-2 text-left text-[10px] text-white/35">
-                      <span className="text-white/55">Seed:</span> {serverSeed.slice(0, 40)}… <span className="text-white/55">Nonce:</span> {nonce} — {randHex(8)}
+                      <span className="text-white/55">Seed:</span> {lastRoll?.seed.slice(0, 40) ?? "—"}… <span className="text-white/55">Nonce:</span> {lastRoll?.nonce ?? "—"} — <span className="text-white/55">Bu sonucu Profilim → Doğrula ile kontrol edebilirsin</span>
                     </div>
                   </div>
                 </motion.div>

@@ -24,6 +24,9 @@ export interface CloudDoc {
   v: 1;
   users: Record<string, CloudUser>;
   deposits: DepositReq[];
+  announcement?: DB["announcement"];
+  raffle?: DB["raffle"];
+  firstLogin?: DB["firstLogin"];
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -42,6 +45,9 @@ export function toCloudDoc(db: DB): CloudDoc {
     v: 1,
     users,
     deposits: [...db.deposits].sort((a, b) => a.ts - b.ts),
+    announcement: db.announcement ?? undefined,
+    raffle: db.raffle ?? undefined,
+    firstLogin: db.firstLogin ?? undefined,
   };
 }
 
@@ -107,6 +113,32 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     }
   });
   out.deposits = [...map.values()].sort((a, b) => a.ts - b.ts);
+
+  /* etkinlik alanları — en yeni (ts) olan kazanır */
+  if (cloud.announcement && (!out.announcement || cloud.announcement.ts > out.announcement.ts))
+    out.announcement = cloud.announcement;
+  if (!cloud.announcement && local.announcement) out.announcement = local.announcement;
+
+  if (cloud.raffle?.cancelled) {
+    /* iptal her yerde geçerli — kimin yerel kopyası olursa olsun */
+    out.raffle = { ...cloud.raffle };
+  } else if (cloud.raffle && (!out.raffle || cloud.raffle.endsAt > (out.raffle?.endsAt ?? 0))) {
+    out.raffle = cloud.raffle;
+  } else if (out.raffle) {
+    /* katılımcıları ve kazananı birleştir */
+    const mine = out.raffle;
+    const theirs = cloud.raffle;
+    if (theirs) {
+      mine.participants = { ...(theirs.participants ?? {}), ...(mine.participants ?? {}) };
+      if (!mine.winner && theirs.winner) mine.winner = theirs.winner;
+      if (theirs.drawn) mine.drawn = true;
+    }
+  }
+
+  if (cloud.firstLogin && (!out.firstLogin || cloud.firstLogin.ts > out.firstLogin.ts))
+    out.firstLogin = cloud.firstLogin;
+  else if (!cloud.firstLogin && local.firstLogin) out.firstLogin = local.firstLogin;
+
   return out;
 }
 
@@ -120,6 +152,7 @@ let timer: number | null = null;
 let forceFlag = false;
 let inFlight = false;
 let lastPushedJson = "";
+let lastSeenJson = "";
 
 export function stopSync() {
   if (timer !== null) {
@@ -153,9 +186,15 @@ export function startSync(url: string, h: SyncHandlers) {
       const localChanged = JSON.stringify(merged) !== JSON.stringify(local);
       if (localChanged) h.apply(merged);
 
+      /* Başka bir cihaz belgeyi üzerimize yazdıysa (stale doc) kendi yeni
+         durumumuzu zorla geri yaz — yoksa onaylı işlemler "kaybolabiliyor". */
+      const cloudJson = JSON.stringify(cloud);
+      const foreignWrite = cloudJson !== lastSeenJson && cloudJson !== lastPushedJson;
+      lastSeenJson = cloudJson;
+
       const doc = toCloudDoc(merged);
       const docJson = JSON.stringify(doc);
-      if (docJson !== lastPushedJson) {
+      if (docJson !== lastPushedJson || foreignWrite) {
         const put = await fetch(url, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },

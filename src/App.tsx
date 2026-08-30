@@ -12,6 +12,9 @@ import { GamesView } from "./components/GamesView";
 import { MarketView } from "./components/MarketView";
 import { TradeView } from "./components/TradeView";
 import { InventoryView } from "./components/InventoryView";
+import { StatsView } from "./components/StatsView";
+import { CommunityView } from "./components/CommunityView";
+import { EventBanners } from "./components/EventBanners";
 import { AdminPanel } from "./components/AdminPanel";
 import { Toasts } from "./components/Toasts";
 import { Footer } from "./components/Footer";
@@ -36,6 +39,7 @@ function Shell() {
     <div className="noise bg-site min-h-screen">
       <Header />
       <LiveTicker />
+      <EventBanners />
       <FeedRail />
       <ChatRail />
 
@@ -55,6 +59,8 @@ function Shell() {
             {tab === "market" && <MarketView />}
             {tab === "trade" && <TradeView />}
             {tab === "inventory" && <InventoryView />}
+            {tab === "stats" && <StatsView />}
+            {tab === "community" && <CommunityView />}
             {tab === "admin" && (isAdmin ? <AdminPanel /> : <CasesView />)}
           </motion.div>
         </AnimatePresence>

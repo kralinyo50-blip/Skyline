@@ -8,7 +8,10 @@ import {
   CloudUpload,
   Clock,
   Coins,
+  Gift,
+  Megaphone,
   Minus,
+  PartyPopper,
   Plus,
   RefreshCcw,
   Search,
@@ -19,12 +22,13 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import { ADMIN_NAME, mcHead, money } from "../config";
+import { ADMIN_NAME, FIRST_LOGIN_REWARD, RAFFLE_FREQ_MS, RAFFLE_PRIZE, mcHead, money } from "../config";
 import { click, coinDing } from "../lib/audio";
 import { useGame, levelFromSpent } from "../store/Game";
+import { SKIN_MAP, RARITY } from "../data/skins";
 import { cn } from "../utils/cn";
 
-type Sec = "users" | "deposits" | "players" | "sync";
+type Sec = "users" | "deposits" | "players" | "sync" | "events";
 
 function ago(ts: number): string {
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -65,6 +69,16 @@ export function AdminPanel() {
     syncCode,
     setSyncCode,
     syncNow,
+    adminGiveSkin,
+    raffle,
+    startRaffle,
+    cancelRaffle,
+    firstLoginEvent,
+    startFirstLoginEvent,
+    stopFirstLoginEvent,
+    announcement,
+    setAnnouncement,
+    clearAnnouncement,
   } = useGame();
 
   const [urlInput, setUrlInput] = useState(syncUrl ?? "");
@@ -74,6 +88,31 @@ export function AdminPanel() {
   const [sec, setSec] = useState<Sec>("deposits");
   const [q, setQ] = useState("");
   const [adjustInputs, setAdjustInputs] = useState<Record<string, string>>({});
+
+  /* etkinlik ayarları */
+  const [raffleMin, setRaffleMin] = useState(String(Math.round(RAFFLE_FREQ_MS / 60000)));
+  const [rafflePrize, setRafflePrize] = useState(String(RAFFLE_PRIZE));
+  const [loginReward, setLoginReward] = useState(String(FIRST_LOGIN_REWARD));
+  const [annText, setAnnText] = useState("");
+  const [skinFor, setSkinFor] = useState<{ key: string; name: string } | null>(null);
+  const [skinQuery, setSkinQuery] = useState("");
+  const [skinRarity, setSkinRarity] = useState<string>("all");
+
+  const skinResults = useMemo(() => {
+    const qq = skinQuery.trim().toLowerCase();
+    return Object.values(SKIN_MAP)
+      .filter((s) => !s.sticker)
+      .filter((s) => skinRarity === "all" || s.rarity === skinRarity)
+      .filter(
+        (s) =>
+          !qq ||
+          s.name.toLowerCase().includes(qq) ||
+          s.weapon.toLowerCase().includes(qq) ||
+          s.id.includes(qq)
+      )
+      .sort((a, b) => RARITY[b.rarity].order - RARITY[a.rarity].order || a.name.localeCompare(b.name))
+      .slice(0, 60);
+  }, [skinQuery, skinRarity]);
 
   function applyAdjustment(key: string, name: string, direction: 1 | -1) {
     const raw = adjustInputs[key] ?? "";
@@ -107,6 +146,7 @@ export function AdminPanel() {
     { key: "deposits", label: "Para Talepleri", Icon: Banknote, badge: pendingDepositList.length },
     { key: "users", label: "Üyelik Onayı", Icon: UserRoundCheck, badge: pendingUserList.length },
     { key: "players", label: "Oyuncular", Icon: Users, badge: 0 },
+    { key: "events", label: "Etkinlikler", Icon: PartyPopper, badge: raffle && !raffle.drawn && !raffle.cancelled ? 1 : 0 },
     { key: "sync", label: "Senkron", Icon: CloudUpload, badge: 0 },
   ];
 
@@ -385,6 +425,228 @@ export function AdminPanel() {
       )}
 
       {/* ---------------- OYUNCULAR ---------------- */}
+      {/* ---------------- ETKİNLİKLER ---------------- */}
+      {sec === "events" && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {/* ============ OTOMATİK ÇEKİLİŞ ============ */}
+          <div className="rounded-2xl border border-brand-500/30 bg-gradient-to-b from-brand-500/8 to-ink-900/70 p-5">
+            <div className="flex items-center gap-2">
+              <Gift className="h-4 w-4 text-brand-400" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Otomatik Çekiliş
+              </span>
+              {raffle && !raffle.drawn && !raffle.cancelled && (
+                <span className="ml-auto rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-400">
+                  Aktif
+                </span>
+              )}
+              {raffle?.cancelled && (
+                <span className="ml-auto rounded-full bg-lose/15 px-2.5 py-1 text-[10px] font-black uppercase text-lose">
+                  İptal
+                </span>
+              )}
+            </div>
+
+            {raffle && (
+              <div className="mt-3 rounded-xl border border-line bg-ink-900/70 px-4 py-3 text-[11px] text-white/55">
+                {raffle.drawn ? (
+                  <>
+                    <span className="font-bold text-white/80">Sonuçlandı:</span>{" "}
+                    {raffle.winner?.name ?? "Katılımcı yok"} — {money(raffle.prize)}
+                  </>
+                ) : (
+                  <>
+                    <span className="font-bold text-white/80">
+                      {money(raffle.prize)} ödül ·{" "}
+                      {Math.round((raffle.endsAt - Date.now()) / 60000)} dk kaldı
+                    </span>{" "}
+                    · {Object.keys(raffle.participants ?? {}).length} katılımcı
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Süre (dakika)
+                </span>
+                <input
+                  value={raffleMin}
+                  onChange={(e) => setRaffleMin(e.target.value.replace(/\D/g, ""))}
+                  inputMode="numeric"
+                  className="h-11 w-full rounded-xl border border-line bg-ink-900 px-3 font-display text-base font-bold text-white focus:border-brand-500/60 focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Ödül ($)
+                </span>
+                <input
+                  value={rafflePrize}
+                  onChange={(e) => setRafflePrize(e.target.value.replace(/\D/g, ""))}
+                  inputMode="numeric"
+                  className="h-11 w-full rounded-xl border border-line bg-ink-900 px-3 font-display text-base font-bold text-white focus:border-brand-500/60 focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  const m = Math.max(1, Number(raffleMin) || 60);
+                  const p = Math.max(1000, Number(rafflePrize) || RAFFLE_PRIZE);
+                  startRaffle(m, p);
+                  coinDing();
+                }}
+                disabled={!!(raffle && !raffle.drawn)}
+                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110 disabled:opacity-40"
+              >
+                <PartyPopper className="h-4 w-4" /> Başlat
+              </button>
+              <button
+                onClick={() => {
+                  cancelRaffle();
+                  pushToast({ kind: "info", title: "Çekiliş iptal edildi", sub: "Katılımcılar boşa çıktı" });
+                }}
+                disabled={!raffle}
+                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-lose/40 bg-lose/10 font-display text-sm font-bold text-lose transition hover:bg-lose/20 disabled:opacity-40"
+              >
+                <X className="h-4 w-4" /> İptal Et
+              </button>
+            </div>
+            <p className="mt-3 text-[10px] leading-relaxed text-white/35">
+              Süre bitince sistem her cihazda aynı seed ile kazananı belirler; ödül kazananın hesabına otomatik
+              eklenir. Varsayılan: {Math.round(RAFFLE_FREQ_MS / 60000)} dk / {money(RAFFLE_PRIZE)}.
+            </p>
+          </div>
+
+          {/* ============ GÜNÜN İLK GİRİŞİ ============ */}
+          <div className="rounded-2xl border border-brand-500/30 bg-gradient-to-b from-brand-500/8 to-ink-900/70 p-5">
+            <div className="flex items-center gap-2">
+              <PartyPopper className="h-4 w-4 text-brand-400" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Günün İlk Giriş Ödülü
+              </span>
+              {firstLoginEvent?.active && (
+                <span className="ml-auto rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-400">
+                  Aktif
+                </span>
+              )}
+            </div>
+
+            {firstLoginEvent && (
+              <div className="mt-3 rounded-xl border border-line bg-ink-900/70 px-4 py-3 text-[11px] text-white/55">
+                {firstLoginEvent.winner ? (
+                  <>
+                    <span className="font-bold text-white/80">Kazanan:</span> {firstLoginEvent.winner.name} —{" "}
+                    {money(firstLoginEvent.reward)}
+                  </>
+                ) : (
+                  <>
+                    <span className="font-bold text-white/80">{money(firstLoginEvent.reward)}</span> — ilk giriş
+                    yapan henüz belli değil
+                  </>
+                )}
+              </div>
+            )}
+
+            <label className="mt-4 block">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                Ödül ($)
+              </span>
+              <input
+                value={loginReward}
+                onChange={(e) => setLoginReward(e.target.value.replace(/\D/g, ""))}
+                inputMode="numeric"
+                className="h-11 w-full rounded-xl border border-line bg-ink-900 px-3 font-display text-base font-bold text-white focus:border-brand-500/60 focus:outline-none"
+              />
+            </label>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  startFirstLoginEvent(Math.max(1000, Number(loginReward) || FIRST_LOGIN_REWARD));
+                  coinDing();
+                }}
+                disabled={!!firstLoginEvent?.active}
+                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110 disabled:opacity-40"
+              >
+                <PartyPopper className="h-4 w-4" /> Başlat
+              </button>
+              <button
+                onClick={() => {
+                  stopFirstLoginEvent();
+                  pushToast({ kind: "info", title: "İlk giriş etkinliği kapatıldı" });
+                }}
+                disabled={!firstLoginEvent?.active}
+                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-lose/40 bg-lose/10 font-display text-sm font-bold text-lose transition hover:bg-lose/20 disabled:opacity-40"
+              >
+                <X className="h-4 w-4" /> Kapat
+              </button>
+            </div>
+            <p className="mt-3 text-[10px] leading-relaxed text-white/35">
+              Aktifken günü ilk kez giriş yapan onaylı oyuncuya ödül otomatik verilir. Varsayılan:{" "}
+              {money(FIRST_LOGIN_REWARD)}.
+            </p>
+          </div>
+
+          {/* ============ DUYURU ============ */}
+          <div className="rounded-2xl border border-line bg-ink-900/70 p-5 lg:col-span-2">
+            <div className="flex items-center gap-2">
+              <Megaphone className="h-4 w-4 text-brand-400" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Site Duyurusu
+              </span>
+              {announcement && (
+                <span className="ml-auto rounded-full bg-brand-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-brand-300">
+                  Yayında
+                </span>
+              )}
+            </div>
+
+            <textarea
+              value={annText}
+              onChange={(e) => setAnnText(e.target.value)}
+              rows={2}
+              maxLength={220}
+              placeholder={announcement?.text ?? "Örn: Bu akşam 21:00'de 500.000$ çekiliş var!"}
+              className="mt-4 w-full resize-none rounded-xl border border-line bg-ink-900 px-3 py-2.5 text-sm text-white placeholder:text-white/25 focus:border-brand-500/60 focus:outline-none"
+            />
+
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  const t = annText.trim();
+                  if (!t) {
+                    pushToast({ kind: "lose", title: "Duyuru metnini yaz", sub: "Boş duyuru yayınlanamaz" });
+                    return;
+                  }
+                  setAnnouncement(t);
+                  setAnnText("");
+                  pushToast({ kind: "money", title: "Duyuru yayınlandı", sub: t.slice(0, 60) });
+                  coinDing();
+                }}
+                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110"
+              >
+                <Megaphone className="h-4 w-4" /> Yayınla
+              </button>
+              {announcement && (
+                <button
+                  onClick={() => {
+                    clearAnnouncement();
+                    pushToast({ kind: "info", title: "Duyuru kaldırıldı" });
+                  }}
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-lose/40 bg-lose/10 font-display text-sm font-bold text-lose transition hover:bg-lose/20"
+                >
+                  <X className="h-4 w-4" /> Kaldır
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ---------------- SENKRON AYARI ---------------- */}
       {sec === "sync" && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -642,14 +904,19 @@ export function AdminPanel() {
                   </div>
 
                   <div className="text-right">
-                    <div className="flex items-center justify-end gap-1.5 font-display text-base font-black text-emerald-400">
-                      {u.pub && Date.now() - u.pub.ts < 60000 && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="Çevrimiçi" />
-                      )}
-                      {money(u.pub?.balance ?? u.balance)}
-                    </div>
-                    {u.pub && (
-                      <div className="text-[9px] text-white/25">uzaktan bildirim</div>
+                    {(() => {
+                      const fresh = u.pub && Date.now() - u.pub.ts < 60000;
+                      return (
+                        <div className="flex items-center justify-end gap-1.5 font-display text-base font-black text-emerald-400">
+                          {fresh && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="Çevrimiçi" />}
+                          {money(fresh ? u.pub!.balance : u.balance)}
+                        </div>
+                      );
+                    })()}
+                    {u.pub && Date.now() - u.pub.ts < 60000 ? (
+                      <div className="text-[9px] text-white/25">canlı bakiye</div>
+                    ) : (
+                      <div className="text-[9px] text-white/25">yerel kayıt</div>
                     )}
                   </div>
 
@@ -684,6 +951,17 @@ export function AdminPanel() {
                     >
                       <Minus className="h-3 w-3" strokeWidth={3} /> Sil
                     </button>
+                    <button
+                      onClick={() => {
+                        setSkinFor({ key: u.key, name: u.name });
+                        setSkinQuery("");
+                        setSkinRarity("all");
+                        click();
+                      }}
+                      className="flex h-8 items-center gap-0.5 rounded-lg border border-brand-500/40 bg-brand-500/10 px-2 text-[11px] font-bold text-brand-300 transition hover:bg-brand-500/20"
+                    >
+                      <Gift className="h-3 w-3" strokeWidth={2.6} /> Skin
+                    </button>
                     {u.status !== "approved" && (
                       <button
                         onClick={() => approveUser(u.key)}
@@ -707,6 +985,100 @@ export function AdminPanel() {
           )}
         </div>
       )}
+
+      {/* ---------------- SKİN HEDİYE MODALI ---------------- */}
+      <AnimatePresence>
+        {skinFor && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+            onClick={() => setSkinFor(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 16, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-line bg-ink-800 shadow-2xl"
+            >
+              <div className="flex items-center gap-2.5 border-b border-line p-4">
+                <Gift className="h-5 w-5 text-brand-400" />
+                <div className="flex-1">
+                  <div className="font-display text-lg font-bold">Skin Hediye Et</div>
+                  <div className="text-[11px] text-white/40">Oyuncu: {skinFor.name}</div>
+                </div>
+                <button onClick={() => setSkinFor(null)} className="rounded-lg p-2 text-white/40 hover:text-white">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
+                <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-line bg-ink-900 px-3">
+                  <Search className="h-3.5 w-3.5 shrink-0 text-white/30" />
+                  <input
+                    value={skinQuery}
+                    onChange={(e) => setSkinQuery(e.target.value)}
+                    placeholder="Silah veya skin ara…"
+                    className="h-full min-w-0 flex-1 bg-transparent text-xs text-white placeholder:text-white/25 focus:outline-none"
+                  />
+                </div>
+                <select
+                  value={skinRarity}
+                  onChange={(e) => setSkinRarity(e.target.value)}
+                  className="h-9 rounded-lg border border-line bg-ink-900 px-2 text-[11px] font-bold text-white/70 focus:outline-none"
+                >
+                  <option value="all">Tüm nadirlikler</option>
+                  {Object.entries(RARITY)
+                    .sort((a, b) => b[1].order - a[1].order)
+                    .map(([k, r]) => (
+                      <option key={k} value={k}>
+                        {r.tr}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="tiny-scroll grid flex-1 grid-cols-3 gap-2 overflow-y-auto p-3 sm:grid-cols-4">
+                {skinResults.map((s) => (
+                  <button
+                    key={s.id}
+                    onClick={() => {
+                      adminGiveSkin(skinFor.key, s.id);
+                      pushToast({
+                        kind: "money",
+                        title: `Skin gönderildi: ${s.weapon} | ${s.name}`,
+                        sub: `${skinFor.name} envanterine eklenecek`,
+                      });
+                      coinDing();
+                      setSkinFor(null);
+                    }}
+                    className="group overflow-hidden rounded-xl border border-line bg-ink-900/70 text-left transition hover:border-brand-500/60"
+                  >
+                    <div className="aspect-[4/3] w-full bg-ink-950">
+                      <img
+                        src={s.img}
+                        alt={`${s.weapon} | ${s.name}`}
+                        loading="lazy"
+                        className="h-full w-full object-contain transition group-hover:scale-105"
+                      />
+                    </div>
+                    <div className="p-2">
+                      <div className="truncate text-[10px] font-bold text-white/80">
+                        {s.weapon} | {s.name}
+                      </div>
+                      <div className="mt-0.5 text-[9px] font-bold" style={{ color: RARITY[s.rarity].color }}>
+                        {RARITY[s.rarity].tr}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

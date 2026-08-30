@@ -15,6 +15,7 @@ import {
   makeStickerItem,
   maybeAttachStickers,
 } from "../data/items";
+import { rollFloat } from "../data/wear";
 import { MAX_STICKERS, STICKERS, CUSTOM_STICKER_COST } from "../data/stickers";
 import {
   buildCustomSticker,
@@ -24,7 +25,7 @@ import {
 
 const STICKER_POOL = STICKERS.map((s) => s.id);
 import { setAudioMuted, coinDing, click } from "../lib/audio";
-import { randHex, uid } from "../lib/rng";
+import { randHex, seededRng, uid } from "../lib/rng";
 import {
   SCALE,
   START_BALANCE,
@@ -34,6 +35,10 @@ import {
   MARKET_FEE,
   REFERRAL_LEVEL,
   REFERRAL_BONUS,
+  PITY_GUARANTEE,
+  FIRST_LOGIN_REWARD,
+  RAFFLE_FREQ_MS,
+  RAFFLE_PRIZE,
   isValidMcName,
 } from "../config";
 import {
@@ -65,9 +70,21 @@ import {
   type MissionProgress,
   type MyListing,
   type Stats,
+  type RollLog,
+  type Announcement,
+  type RaffleState,
+  type FirstLoginEvent,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
-import { startSync, stopSync, forceSync, toCloudDoc, type SyncStatus } from "./sync";
+import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
+import { rollCaseSeeded, rollCasePity, type CaseDef } from "../data/cases";
+import {
+  startSync,
+  stopSync,
+  forceSync,
+  toCloudDoc,
+  type SyncStatus,
+} from "./sync";
 import { startMqtt, stopMqtt, normalizeCode, notifyDbChanged } from "./syncMqtt";
 import {
   startTradeNet,
@@ -88,7 +105,9 @@ export type TabKey =
   | "market"
   | "trade"
   | "inventory"
-  | "admin";
+  | "admin"
+  | "stats"
+  | "community";
 
 export interface Toast {
   id: string;
@@ -255,6 +274,37 @@ interface GameState {
   refBonus: number;
   referralFriends: Account[];
   refInvited: boolean;
+
+  /* kasa geçmişi + provably fair */
+  rollLogs: RollLog[];
+  openCase: (def: CaseDef) => { skin: import("../data/skins").Skin; seed: string; nonce: number; forced: boolean };
+  verifyRoll: (seed: string, nonce: number, def: CaseDef) => import("../data/skins").Skin;
+
+  /* başarımlar */
+  achievements: AchievementDef[];
+  unlockedAch: string[];
+  claimAch: (id: string) => void;
+
+  /* admin: skin hediyesi */
+  adminGiveSkin: (key: string, skinId: string) => void;
+
+  /* duyuru */
+  announcement: Announcement | null;
+  setAnnouncement: (text: string) => void;
+  clearAnnouncement: () => void;
+
+  /* otomatik çekiliş */
+  raffle: RaffleState | null;
+  raffleEntered: boolean;
+  toastRaffle: string | null;
+  startRaffle: (minutes: number, prize: number) => void;
+  cancelRaffle: () => void;
+  enterRaffle: () => void;
+
+  /* günün ilk giriş ödülü */
+  firstLoginEvent: FirstLoginEvent | null;
+  startFirstLoginEvent: (reward: number) => void;
+  stopFirstLoginEvent: () => void;
 
   /* pazar */
   botListings: Listing[];
@@ -432,6 +482,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [mutate]
   );
 
+  /* günün ilk giriş kazananı — login sonrası toast için */
+  const firstLoginWin = useRef<{ name: string; reward: number } | null>(null);
+
   const login = useCallback(
     (name: string, refCode?: string): { ok: boolean; error?: string } => {
       const key = normKey(name);
@@ -462,6 +515,26 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           invited = true;
         }
         draft.session = key;
+
+        /* GÜNÜN İLK GİRİŞ ÖDÜLÜ — etkinlik aktifse ve bugün kazanan yoksa */
+        const ev = draft.firstLogin;
+        const day = todayKey();
+        if (ev && ev.active && ev.day === day && !ev.winner && acc.status === "approved" && !acc.isAdmin) {
+          ev.winner = { key: acc.key, name: acc.name, ts: Date.now() };
+          ev.ts = Date.now();
+          draft.deposits.unshift({
+            id: `firstlogin:${day}`,
+            userKey: acc.key,
+            userName: acc.name,
+            amount: ev.reward,
+            method: "Günün İlk Giriş Ödülü",
+            status: "approved",
+            ts: Date.now(),
+            decidedTs: Date.now(),
+            decidedBy: "Sistem",
+          });
+          firstLoginWin.current = { name: acc.name, reward: ev.reward };
+        }
       });
       if (invited) {
         pushToastSafe.current({
@@ -470,10 +543,58 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           sub: `${ref} Seviye ${REFERRAL_LEVEL}'e ulaşınca ${money(REFERRAL_BONUS)} kazanacak`,
         });
       }
+      const fl = firstLoginWin.current;
+      if (fl) {
+        firstLoginWin.current = null;
+        pushToastSafe.current({
+          kind: "win",
+          title: `Günün ilk girişi: +${money(fl.reward)} 🎉`,
+          sub: `${fl.name} bugünün ilk giriş ödülünü kazandı`,
+        });
+      }
       return { ok: !error, error };
     },
     [mutate]
   );
+
+  /* oturum açıkken de "günün ilk girişi" say — site her açılışta bir kez kontrol edilir */
+  useEffect(() => {
+    if (!user || user.status !== "approved" || user.isAdmin) return;
+    const day = todayKey();
+    const ev = db.firstLogin;
+    if (!ev || !ev.active || ev.day !== day || ev.winner) return;
+    if (db.claimed[`firstlogin:${day}`]) return;
+    mutate((draft) => {
+      const me = currentUser(draft);
+      const e = draft.firstLogin;
+      if (!me || !e || !e.active || e.day !== day || e.winner) return;
+      if (draft.claimed[`firstlogin:${day}`]) return;
+      e.winner = { key: me.key, name: me.name, ts: Date.now() };
+      e.ts = Date.now();
+      draft.deposits.unshift({
+        id: `firstlogin:${day}`,
+        userKey: me.key,
+        userName: me.name,
+        amount: e.reward,
+        method: "Günün İlk Giriş Ödülü",
+        status: "approved",
+        ts: Date.now(),
+        decidedTs: Date.now(),
+        decidedBy: "Sistem",
+      });
+      firstLoginWin.current = { name: me.name, reward: e.reward };
+    });
+    const fl = firstLoginWin.current;
+    if (fl) {
+      firstLoginWin.current = null;
+      pushToastSafe.current({
+        kind: "win",
+        title: `Günün ilk girişi: +${money(fl.reward)} 🎉`,
+        sub: `${fl.name} bugünün ilk giriş ödülünü kazandı`,
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const logout = useCallback(() => {
     mutate((draft) => {
@@ -1175,6 +1296,277 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [upsertRoom, user]
   );
 
+  /* ---------------- BAŞARIMLAR ---------------- */
+  const checkAchievements = useCallback(() => {
+    const fresh = loadDB();
+    const me = currentUser(fresh);
+    if (!me) return;
+    const unlocked = new Set(me.ach ?? []);
+    let changed = false;
+    ACHIEVEMENTS.forEach((a) => {
+      if (unlocked.has(a.id)) return;
+      if (!a.check(me)) return;
+      unlocked.add(a.id);
+      changed = true;
+      me.balance = Math.round(me.balance + a.reward);
+      pushToastSafe.current({
+        kind: "win",
+        title: `Başarım: ${a.icon} ${a.label}`,
+        sub: `+${money(a.reward)} ödül kazandın`,
+      });
+    });
+    if (changed) {
+      me.ach = [...unlocked];
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+    }
+  }, []);
+
+  /* ---------------- KASA AÇILIŞI (Pity + Provably Fair) ---------------- */
+  const openCase = useCallback(
+    (def: CaseDef): { skin: import("../data/skins").Skin; seed: string; nonce: number; forced: boolean } => {
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me || me.balance < def.price) {
+        pushToastSafe.current({
+          kind: "lose",
+          title: "Yetersiz bakiye",
+          sub: "Para Yatır butonundan yetkili onaylı talep oluşturabilirsin",
+        });
+        return { skin: rollCaseSeeded(def, "0", 0), seed: "0", nonce: 0, forced: false };
+      }
+      me.balance = Math.round(me.balance - def.price);
+      me.nonce++;
+      const nonce = me.nonce;
+      const seed = randHex(64);
+      /* pity: kasa başına sayaç */
+      const pity = me.pity ?? {};
+      const since = pity[def.id] ?? 0;
+      const forced = since >= PITY_GUARANTEE - 1;
+      const skin = forced ? rollCasePity(def) : rollCaseSeeded(def, seed, nonce);
+      pity[def.id] = forced || skin.rarity === "covert" || skin.rarity === "rare" ? 0 : since + 1;
+      me.pity = pity;
+      me.stats.opened++;
+      me.stats.spent = Math.round(me.stats.spent + def.price);
+      bumpMission(me, "cases");
+      bumpMission(me, "wagered", def.price);
+      checkLevelUp(me.stats.spent, me);
+      if (skin.rarity === "covert" || skin.rarity === "rare") {
+        if (skin.price > me.stats.bestDrop) me.stats.bestDrop = skin.price;
+      }
+      /* geçmiş kaydı */
+      const log: RollLog = {
+        ts: Date.now(),
+        caseId: def.id,
+        caseName: def.name,
+        skinId: skin.id,
+        skinName: `${skin.weapon} | ${skin.name}`,
+        rarity: skin.rarity,
+        price: skin.price,
+        value: skin.price,
+        seed,
+        nonce,
+        forced,
+      };
+      me.rollLogs = [log, ...(me.rollLogs ?? [])].slice(0, 400);
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      if (forced)
+        pushToastSafe.current({
+          kind: "info",
+          title: "Garanti aktive!",
+          sub: `${PITY_GUARANTEE} açılıştır nadir çıkmıyordu — bu sefer yüksek kademe garantili`,
+        });
+      checkAchievements();
+      return { skin, seed, nonce, forced };
+    },
+    [checkAchievements]
+  );
+
+  /* Provably Fair doğrulama — seed + nonce ile yeniden hesapla */
+  const verifyRoll = useCallback(
+    (seed: string, nonce: number, def: CaseDef): import("../data/skins").Skin =>
+      rollCaseSeeded(def, seed, nonce),
+    []
+  );
+
+  /* ---------------- ADMIN: SKİN HEDİYESİ ---------------- */
+  const adminGiveSkin = useCallback(
+    (key: string, skinId: string) => {
+      const skin = SKIN_MAP[skinId];
+      if (!skin) return;
+      let ok = false;
+      mutate((draft) => {
+        const u = draft.users[key];
+        if (!u) return;
+        draft.deposits.unshift({
+          id: uid(),
+          userKey: u.key,
+          userName: u.name,
+          amount: 0,
+          method: "Yetkili Skin Hediyesi",
+          status: "approved",
+          ts: Date.now(),
+          decidedTs: Date.now(),
+          decidedBy: ADMIN_NAME,
+          skinId: skin.id,
+          skinName: `${skin.weapon} | ${skin.name}`,
+        });
+        ok = true;
+      });
+      if (ok) {
+        coinDing();
+        pushToast({ kind: "win", title: "Skin hediyesi gönderildi", sub: `${skin.weapon} | ${skin.name}` });
+      }
+    },
+    [mutate, pushToast]
+  );
+
+  /* ---------------- DUYURU ---------------- */
+  const setAnnouncement = useCallback(
+    (text: string) => {
+      const t = text.trim();
+      mutate((draft) => {
+        draft.announcement = t
+          ? { text: t, ts: Date.now(), author: ADMIN_NAME }
+          : null;
+      });
+      if (t) coinDing();
+    },
+    [mutate]
+  );
+
+  const clearAnnouncement = useCallback(() => setAnnouncement(""), [setAnnouncement]);
+
+  /* ---------------- OTOMATİK ÇEKİLİŞ ---------------- */
+  const raffleRef = useRef<RaffleState | null>(null);
+  raffleRef.current = db.raffle ?? null;
+
+  const drawRaffleNow = useCallback(() => {
+    const r = raffleRef.current;
+    if (!r || r.drawn || Date.now() < r.endsAt) return;
+    const ids = Object.keys(r.participants ?? {}).sort();
+    if (!ids.length) {
+      mutate((draft) => {
+        if (draft.raffle) {
+          draft.raffle.drawn = true;
+          draft.raffle.winner = { key: "", name: "Katılımcı yok", ts: Date.now() };
+        }
+      });
+      return;
+    }
+    const seed = r.id;
+    const rng = seededRng(seed, "draw");
+    const winnerKey = ids[Math.floor(rng() * ids.length)];
+    const winnerName = r.participants![winnerKey].name;
+    mutate((draft) => {
+      if (!draft.raffle || draft.raffle.endsAt !== r.endsAt) return;
+      draft.raffle.drawn = true;
+      draft.raffle.winner = { key: winnerKey, name: winnerName, ts: Date.now() };
+      draft.deposits.unshift({
+        id: `raffle:${r.id}`,
+        userKey: winnerKey,
+        userName: winnerName,
+        amount: r.prize,
+        method: "Çekiliş Ödülü",
+        status: "approved",
+        ts: Date.now(),
+        decidedTs: Date.now(),
+        decidedBy: "Sistem",
+      });
+    });
+    pushToastSafe.current({
+      kind: "win",
+      title: "Çekiliş tamamlandı! 🎉",
+      sub: `${winnerName} ${money(r.prize)} kazandı`,
+    });
+  }, [mutate]);
+
+  /* çekiliş sayacı — her 15 sn kontrol et */
+  useEffect(() => {
+    const iv = window.setInterval(drawRaffleNow, 15000);
+    return () => clearInterval(iv);
+  }, [drawRaffleNow]);
+
+  const startRaffle = useCallback(
+    (minutes: number = RAFFLE_FREQ_MS / 60000, prize: number = RAFFLE_PRIZE) => {
+      const p = Math.max(1000, Math.round(prize / 100) * 100);
+      mutate((draft) => {
+        draft.raffle = {
+          id: uid(),
+          prize: p,
+          endsAt: Date.now() + Math.max(1, minutes) * 60000,
+          startedBy: ADMIN_NAME,
+          participants: {},
+        };
+      });
+      pushToast({
+        kind: "money",
+        title: "Çekiliş başlatıldı",
+        sub: `${minutes} dk — ${money(p)} ödül`,
+      });
+    },
+    [mutate, pushToast]
+  );
+
+  const cancelRaffle = useCallback(() => {
+    mutate((draft) => {
+      if (!draft.raffle) return;
+      /* iptal bayrağı tüm cihazlara senkronlanır (null değil) */
+      draft.raffle = {
+        ...draft.raffle,
+        cancelled: true,
+        drawn: true,
+      };
+    });
+    pushToast({ kind: "info", title: "Çekiliş iptal edildi" });
+  }, [mutate, pushToast]);
+
+  const enterRaffle = useCallback(() => {
+    const r = raffleRef.current;
+    const me = currentUser(dbRef.current);
+    if (!r || !me || r.drawn || Date.now() >= r.endsAt || !me || me.status !== "approved") return;
+    if (r.participants?.[me.key]) return;
+    mutate((draft) => {
+      if (!draft.raffle || draft.raffle.drawn) return;
+      draft.raffle.participants = {
+        ...(draft.raffle.participants ?? {}),
+        [me.key]: { name: me.name, ts: Date.now() },
+      };
+    });
+    pushToast({ kind: "money", title: "Çekilişe katıldın!", sub: `Ödül: ${money(r.prize)} — iyi şanslar` });
+    coinDing();
+  }, [mutate, pushToast]);
+
+  /* ---------------- GÜNÜN İLK GİRİŞ ÖDÜLÜ ---------------- */
+  const startFirstLoginEvent = useCallback(
+    (reward: number = FIRST_LOGIN_REWARD) => {
+      const r = Math.max(1000, Math.round(reward / 100) * 100);
+      mutate((draft) => {
+        draft.firstLogin = {
+          active: true,
+          reward: r,
+          day: todayKey(),
+          ts: Date.now(),
+          startedBy: ADMIN_NAME,
+        };
+      });
+      pushToast({ kind: "money", title: "Günün ilk giriş ödülü başlatıldı", sub: `${money(r)} — ilk giriş yapan kazanır` });
+    },
+    [mutate, pushToast]
+  );
+
+  const stopFirstLoginEvent = useCallback(() => {
+    mutate((draft) => {
+      if (!draft.firstLogin) return;
+      /* ts güncellenir ki kapatma diğer cihazlara da yayılsın */
+      draft.firstLogin = { ...draft.firstLogin, active: false, ts: Date.now() };
+    });
+    pushToast({ kind: "info", title: "İlk giriş etkinliği kapatıldı" });
+  }, [mutate, pushToast]);
+
   /* ---------------- GÖREVLER ---------------- */
   const trackMission = useCallback(
     (key: MissionKey, amount = 1) => {
@@ -1449,12 +1841,23 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
               me.balance = Math.max(0, Math.round(me.balance - d.amount));
             }
           } else if (d.status === "approved") {
-            /* Eski sürümden kalan başlangıç bonusları artık uygulanmaz. */
-            const delta = d.method === "Başlangıç Bonusu" ? 0 : d.amount;
-            me.balance = Math.max(0, Math.round(me.balance + delta));
+            /* Yetkili skin hediyesi — envantere ekle */
+            if (d.skinId && SKIN_MAP[d.skinId]) {
+              me.inventory.unshift({
+                uid: uid(),
+                skinId: d.skinId,
+                ts: Date.now(),
+                float: isStickerItem(d.skinId) ? undefined : rollFloat(),
+              });
+            } else {
+              /* Eski sürümden kalan başlangıç bonusları artık uygulanmaz. */
+              const delta = d.method === "Başlangıç Bonusu" ? 0 : d.amount;
+              me.balance = Math.max(0, Math.round(me.balance + delta));
+            }
           }
         });
 
+        checkAchievements();
         if (withdraw) {
           if (d.status === "approved") {
             coinDing();
@@ -1476,10 +1879,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             title:
               d.method === "Başlangıç Bonusu"
                 ? "Hesabın onaylandı"
-                : d.amount >= 0
-                  ? `${money(d.amount)} hesabına eklendi`
-                  : `${money(Math.abs(d.amount))} hesabından silindi`,
-            sub: d.method === "Başlangıç Bonusu" ? "Hesabın 0 bakiye ile açıldı" : `İşlem ${d.decidedBy ?? ADMIN_NAME} tarafından onaylandı`,
+                : d.skinId
+                  ? `Skin hediyesi: ${d.skinName ?? d.skinId}`
+                  : d.amount >= 0
+                    ? `${money(d.amount)} hesabına eklendi`
+                    : `${money(Math.abs(d.amount))} hesabından silindi`,
+            sub:
+              d.method === "Başlangıç Bonusu"
+                ? "Hesabın 0 bakiye ile açıldı"
+                : d.skinId
+                  ? "Envanterine eklendi — keyifle kullan"
+                  : `İşlem ${d.decidedBy ?? ADMIN_NAME} tarafından onaylandı`,
           });
           coinDing();
         } else {
@@ -1561,13 +1971,19 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       mutate((draft) => {
         const u = draft.users[key];
         if (!u || !Number.isFinite(delta) || delta === 0) return;
-        /* Artı ve eksi hareketler oyuncunun cihazında aynı claim sistemiyle işlenir. */
+        const amount = Math.round(delta);
+        const id = uid();
+        /* Aynı cihazda/oturumda gösterim anında güncellensin diye bakiyeyi
+           doğrudan değiştir; depozit "claimed" işaretlenir ki oyuncunun cihazı
+           gelince TALEP üzerinden kesin olarak bir kez daha işlensin. */
+        u.balance = Math.max(0, Math.round(u.balance + amount));
+        draft.claimed[id] = Date.now();
         draft.deposits.unshift({
-          id: uid(),
+          id,
           userKey: u.key,
           userName: u.name,
-          amount: Math.round(delta),
-          method: delta > 0 ? "Yetkili Para Ekleme" : "Yetkili Para Silme",
+          amount,
+          method: amount > 0 ? "Yetkili Para Ekleme" : "Yetkili Para Silme",
           status: "approved",
           ts: Date.now(),
           decidedTs: Date.now(),
@@ -1687,6 +2103,35 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       .filter((u) => u.key !== user?.key && u.referredBy === user?.key)
       .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)),
     refInvited: !!user?.referredBy,
+
+    rollLogs: user?.rollLogs ?? [],
+    openCase,
+    verifyRoll,
+
+    achievements: ACHIEVEMENTS,
+    unlockedAch: user?.ach ?? [],
+    claimAch: (id) => {
+      const a = ACH_MAP[id];
+      if (!a || !a.check(user ?? ({} as Account))) return;
+      pushToast({ kind: "info", title: "Başarım zaten açık", sub: a.label });
+    },
+
+    adminGiveSkin,
+
+    announcement: db.announcement ?? null,
+    setAnnouncement,
+    clearAnnouncement,
+
+    raffle: db.raffle ?? null,
+    raffleEntered: !!db.raffle?.participants?.[user?.key ?? ""],
+    toastRaffle: null,
+    startRaffle,
+    cancelRaffle,
+    enterRaffle,
+
+    firstLoginEvent: db.firstLogin ?? null,
+    startFirstLoginEvent,
+    stopFirstLoginEvent,
 
     botListings,
     myListings: user?.listings ?? [],

@@ -32,6 +32,22 @@ export const REFERRAL_LEVEL = 5;
 /** Referans bonusu (SC) */
 export const REFERRAL_BONUS = 250 * SCALE;
 
+/* ---------------- ÇEKİLİŞ / ETKİNLİK ---------------- */
+
+/** Günün ilk girişine verilecek ödül (SC) */
+export const FIRST_LOGIN_REWARD = 100000;
+
+/** Otomatik çekiliş: varsayılan frekans (ms) — 1 saat */
+export const RAFFLE_FREQ_MS = 60 * 60 * 1000;
+
+/** Otomatik çekiliş: varsayılan ödül (SC) */
+export const RAFFLE_PRIZE = 100000;
+
+/* ---------------- PITY (GARANTİ) SİSTEMİ ---------------- */
+
+/** Bu kadar açılışta covert/rare çıkmazsa bir sonraki garanti */
+export const PITY_GUARANTEE = 5;
+
 /** En ucuz skin fiyatı */
 export const MIN_PRICE = 1200;
 

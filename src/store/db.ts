@@ -21,7 +21,27 @@ export interface PubProfile {
   invCount: number;
   /** seviye — referans ödülleri için görünür */
   level?: number;
+  /** liderlik: toplam harcama */
+  spent?: number;
+  /** liderlik: en iyi düşüş */
+  bestDrop?: number;
   ts: number;
+}
+
+/** Kasa açılış kaydı — geçmiş + Provably Fair doğrulama için */
+export interface RollLog {
+  ts: number;
+  caseId: string;
+  caseName: string;
+  skinId: string;
+  skinName: string;
+  rarity: string;
+  price: number;
+  value: number;
+  float?: number;
+  seed: string;
+  nonce: number;
+  forced?: boolean;
 }
 
 export interface MyListing {
@@ -76,6 +96,12 @@ export interface Account {
   /** referans: seviye 5 ödülü davet edene ödendi mi */
   refRewarded?: boolean;
   refRewardedAt?: number;
+  /** kasa açılış geçmişi (son 400) */
+  rollLogs?: RollLog[];
+  /** pity sayacı — caseId → açılış sayısı */
+  pity?: Record<string, number>;
+  /** kazanılan başarım id'leri */
+  ach?: string[];
 }
 
 export type ReqStatus = "pending" | "approved" | "rejected";
@@ -99,6 +125,37 @@ export interface DepositReq {
   held?: boolean;
   /** ödemenin yapılacağı hesap/nick bilgisi */
   payTo?: string;
+  /** yetkili skin hediyesi — claim edilince envantere eklenir */
+  skinId?: string;
+  skinName?: string;
+}
+
+/* ---------------- ETKİNLİK / ÇEKİLİŞ / DUYURU ---------------- */
+
+export interface Announcement {
+  text: string;
+  ts: number;
+  author: string;
+}
+
+export interface RaffleState {
+  id: string;
+  prize: number;
+  endsAt: number;
+  startedBy: string;
+  drawn?: boolean;
+  cancelled?: boolean;
+  winner?: { key: string; name: string; ts: number };
+  participants?: Record<string, { name: string; ts: number }>;
+}
+
+export interface FirstLoginEvent {
+  active: boolean;
+  reward: number;
+  day: string;
+  ts: number;
+  startedBy: string;
+  winner?: { key: string; name: string; ts: number };
 }
 
 export interface DB {
@@ -107,13 +164,19 @@ export interface DB {
   session: string | null;
   /** hangi onaylanmış talepler bu cihazda bakiyeye işlendi */
   claimed: Record<string, number>;
+  /** admin duyurusu — tüm cihazlara yayınlanır */
+  announcement?: Announcement | null;
+  /** otomatik çekiliş durumu */
+  raffle?: RaffleState | null;
+  /** günün ilk giriş ödülü etkinliği */
+  firstLogin?: FirstLoginEvent | null;
 }
 
 const LS_KEY = "skyline:v1";
 const SYNC_URL_KEY = "skyline:sync:url";
 
 export function emptyDB(): DB {
-  return { users: {}, deposits: [], session: null, claimed: {} };
+  return { users: {}, deposits: [], session: null, claimed: {}, announcement: null, raffle: null, firstLogin: null };
 }
 
 export function normKey(name: string): string {
@@ -134,6 +197,9 @@ export function loadDB(): DB {
       deposits: parsed.deposits ?? [],
       session: parsed.session ?? null,
       claimed: parsed.claimed ?? parsed.seen ?? {},
+      announcement: parsed.announcement ?? null,
+      raffle: parsed.raffle ?? null,
+      firstLogin: parsed.firstLogin ?? null,
     };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.
@@ -148,6 +214,9 @@ export function loadDB(): DB {
     Object.values(db.users).forEach((u) => {
       if (!Array.isArray(u.inventory)) u.inventory = [];
       if (!Array.isArray(u.listings)) u.listings = [];
+      if (!Array.isArray(u.rollLogs)) u.rollLogs = [];
+      if (!Array.isArray(u.ach)) u.ach = [];
+      if (!u.pity) u.pity = {};
       if (!u.stats) u.stats = { opened: 0, spent: 0, bestDrop: 0 };
       if (typeof u.balance !== "number" || Number.isNaN(u.balance)) u.balance = 0;
 
@@ -165,6 +234,9 @@ export function loadDB(): DB {
 
       /* önbellekten kalan "gen-*" ön ekli eski prosedürel skinleri temizle */
       u.inventory = u.inventory.filter((it) => !it.skinId.startsWith("gen-"));
+
+      /* rollLogs çok eski kayıtları temizle (dizi en yeni → en eski sıralı) */
+      if (u.rollLogs.length > 400) u.rollLogs = u.rollLogs.slice(0, 400);
     });
 
     return db;

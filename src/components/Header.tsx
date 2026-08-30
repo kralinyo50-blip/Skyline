@@ -4,6 +4,7 @@ import {
   Backpack,
   Banknote,
   Boxes,
+  ChartNoAxesCombined,
   ChevronsUp,
   Check,
   Clock,
@@ -18,6 +19,7 @@ import {
   Swords,
   Unplug,
   UserPlus,
+  Users,
   Volume2,
   VolumeX,
   Wallet,
@@ -38,6 +40,8 @@ const TABS: { key: TabKey; label: string; Icon: typeof Boxes }[] = [
   { key: "market", label: "Pazar", Icon: Store },
   { key: "trade", label: "Takas", Icon: Handshake },
   { key: "inventory", label: "Envanter", Icon: Backpack },
+  { key: "stats", label: "Profilim", Icon: ChartNoAxesCombined },
+  { key: "community", label: "Topluluk", Icon: Users },
 ];
 
 function AnimatedMoney({ value }: { value: number }) {
@@ -143,7 +147,7 @@ export function Header() {
           </button>
 
           {/* desktop nav */}
-          <nav className="mx-auto hidden items-center gap-1 lg:flex">
+          <nav className="mx-auto hidden min-w-0 flex-1 items-center justify-center gap-0.5 overflow-x-auto lg:flex" style={{ scrollbarWidth: "none" }}>
             {allTabs.map(({ key, label, Icon }) => (
               <button
                 key={key}
@@ -152,7 +156,7 @@ export function Header() {
                   click();
                 }}
                 className={cn(
-                  "relative flex items-center gap-1.5 rounded-lg px-3.5 py-2 font-display text-sm font-semibold uppercase tracking-wider transition-colors",
+                  "relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-2 font-display text-[13px] font-semibold uppercase tracking-wider transition-colors",
                   tab === key ? "text-white" : "text-white/45 hover:text-white/80"
                 )}
               >
