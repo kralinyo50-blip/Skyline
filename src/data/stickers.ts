@@ -1,6 +1,7 @@
 import { MIN_PRICE } from "../config";
 import { badgeArt, type BadgeShape } from "./skinArt";
 import { EXTRA_STICKERS } from "./extraStickers";
+import { ELITE_STICKERS } from "./eliteStickers";
 
 export type StickerRarity = "high" | "remarkable" | "exotic" | "extraordinary";
 
@@ -375,6 +376,9 @@ STICKERS.push(...CHAMPION_STICKERS);
 /* ---------- GERÇEK STEAM STICKER KOLEKSİYONU (150-800 SC) ---------- */
 STICKERS.push(...EXTRA_STICKERS);
 
+/* ---------- ELİT KOLEKSİYON (5.000-50.000 SC) ---------- */
+STICKERS.push(...ELITE_STICKERS);
+
 export const CHAMPION_HOLO_IDS = CHAMPION_STICKERS.filter((s) => s.id.endsWith("-holo")).map((s) => s.id);
 export const CHAMPION_FOIL_IDS = CHAMPION_STICKERS.filter((s) => s.id.endsWith("-foil")).map((s) => s.id);
 export const CHAMPION_GOLD_IDS = CHAMPION_STICKERS.filter((s) => s.id.endsWith("-gold")).map((s) => s.id);
@@ -386,6 +390,9 @@ export const STICKER_MAP: Record<string, Sticker> = Object.fromEntries(
 
 /** Gerçek Steam koleksiyonu (150-800 SC) */
 export const EXTRA_STICKER_IDS = EXTRA_STICKERS.map((s) => s.id);
+
+/** Elit koleksiyon (5.000-50.000 SC) */
+export const ELITE_STICKER_IDS = ELITE_STICKERS.map((s) => s.id);
 
 /** Özel (kullanıcı yapımı) sticker'ı çalışma zamanında kaydet */
 export function registerStickerDef(s: Sticker) {
