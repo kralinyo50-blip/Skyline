@@ -71,6 +71,35 @@ export const CASE_MARKUP = 1.3;
 /** En ucuz kasa fiyatı */
 export const MIN_CASE_PRICE = 2500;
 
+/* ---------------- VIP & CASHBACK ---------------- */
+
+/** VIP paketleri — bakiyeyle satın alınır */
+export const VIP_PLANS: {
+  id: string;
+  label: string;
+  days: number;
+  price: number;
+  /** kaybedilen bahislerden geri ödeme oranı */
+  cashback: number;
+  /** günlük ödül çarpanı */
+  dailyMult: number;
+  /** pazar komisyonu (0 = VIP satıcı komisyonsuz satış) */
+  fee: number;
+}[] = [
+  { id: "vip-7", label: "VIP 7 Gün", days: 7, price: 250_000, cashback: 0.05, dailyMult: 1.25, fee: 0 },
+  { id: "vip-30", label: "VIP 30 Gün", days: 30, price: 800_000, cashback: 0.08, dailyMult: 1.5, fee: 0 },
+  { id: "vip-90", label: "VIP 90 Gün", days: 90, price: 2_000_000, cashback: 0.12, dailyMult: 2, fee: 0 },
+];
+
+/* ---------------- JACKPOT ---------------- */
+
+/** Bir jackpot turu süresi */
+export const JACKPOT_ROUND_MS = 60_000;
+/** Potta en fazla bu kadar katılımcı olabilir */
+export const JACKPOT_MAX_ENTRIES = 12;
+/** Kazanan belirlendikten sonra yeni tur başlamadan önce bekleme */
+export const JACKPOT_NEXT_MS = 6_000;
+
 /** Taban değeri sunucu ekonomisine oturtan fiyat eğrisi */
 export function priceOf(base: number): number {
   const raw = MIN_PRICE * Math.pow(1 + base, 0.62);

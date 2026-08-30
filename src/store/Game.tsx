@@ -7,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { SKIN_MAP, SKINS, TIER_ORDER, type Skin } from "../data/skins";
+import { SKIN_MAP, SKINS, WEAPON_SKINS, TIER_ORDER, type Skin } from "../data/skins";
 import {
   isStickerItem,
   itemValue,
@@ -25,7 +25,7 @@ import {
 
 const STICKER_POOL = STICKERS.map((s) => s.id);
 import { setAudioMuted, coinDing, click } from "../lib/audio";
-import { randHex, seededRng, uid } from "../lib/rng";
+import { pick, randHex, randInt, seededRng, uid } from "../lib/rng";
 import {
   SCALE,
   START_BALANCE,
@@ -41,8 +41,13 @@ import {
   RAFFLE_PRIZE,
   ADMIN_ADJUST_MAX,
   ADMIN_ADJUST_DAILY,
+  VIP_PLANS,
+  JACKPOT_ROUND_MS,
+  JACKPOT_MAX_ENTRIES,
+  JACKPOT_NEXT_MS,
   isValidMcName,
 } from "../config";
+import { COMMUNITY_USERS } from "../data/fakers";
 import {
   generateBotListings,
   makeBotListing,
@@ -82,6 +87,9 @@ import {
   type AutoSettings,
   type AdminLogEntry,
   type Celebration,
+  type JackpotState,
+  type JackpotEntry,
+  type JackpotItem,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
@@ -110,6 +118,7 @@ export type TabKey =
   | "upgrader"
   | "battle"
   | "games"
+  | "jackpot"
   | "market"
   | "trade"
   | "inventory"
@@ -332,6 +341,23 @@ interface GameState {
   autoSettings: AutoSettings;
   setAutoApproval: (p: Partial<Pick<AutoSettings, "autoApproveUsers" | "autoApproveDeposits">>) => void;
 
+  /* VIP & cashback */
+  vipUntil: number | null;
+  vipPlan: string | null;
+  vipActive: boolean;
+  buyVip: (planId: string) => { ok: boolean; error?: string };
+  /** kayıp bahis üzerinden cashback döndürür (VIP değilse 0) */
+  vipCashback: (lostAmount: number) => number;
+
+  /* profil vitrini */
+  showcase: InvItem[];
+  toggleShowcase: (uidKey: string) => void;
+
+  /* jackpot (canlı pot) */
+  jackpot: JackpotState | null;
+  jackpotJoin: (uids: string[]) => { ok: boolean; error?: string };
+  jackpotLeave: () => boolean;
+
   /* pazar */
   botListings: Listing[];
   myListings: MyListing[];
@@ -374,6 +400,7 @@ const TAB_KEYS: Record<TabKey, true> = {
   upgrader: true,
   battle: true,
   games: true,
+  jackpot: true,
   market: true,
   trade: true,
   inventory: true,
@@ -1103,7 +1130,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         l.copies = l.copies ? l.copies.slice(buyQty) : [];
       }
       l.ts = Date.now();
-      const net = Math.round(total * (1 - MARKET_FEE));
+      /* VIP satıcılar komisyonsuz satar */
+      const sellerAcc = fresh.users[l.sellerKey];
+      const sellerVip = !!sellerAcc?.vipUntil && sellerAcc.vipUntil > Date.now();
+      const net = Math.round(total * (1 - (sellerVip ? 0 : MARKET_FEE)));
       const pay: MarketPayment = {
         id: uid(),
         listingId: l.id,
@@ -2007,6 +2037,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
       const sold: { skin: Skin | null; net: number; qty: number }[] = [];
       const claimed = fresh.claimedMarket ?? {};
+      const myVip = !!me.vipUntil && me.vipUntil > Date.now();
       me.listings = me.listings.filter((l) => {
         /* gerçek oyuncu zaten aldıysa bot satışı yapma (senkron gecikmesi) */
         if (
@@ -2019,7 +2050,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const qt = Math.max(1, l.qty ?? 1);
         /* botlar paketi bazen komple, bazen parça parça alır */
         const buyQty = qt > 1 && Math.random() < 0.4 ? qt : 1;
-        const net = Math.round(bulkTotal(l.price, buyQty) * (1 - MARKET_FEE));
+        const net = Math.round(bulkTotal(l.price, buyQty) * (1 - (myVip ? 0 : MARKET_FEE)));
         me.balance = Math.round(me.balance + net);
         sold.push({ skin: SKIN_MAP[l.skinId] ?? null, net, qty: buyQty });
         /* aynı ilanın dükkandaki kopyası da güncellensin */
@@ -2108,7 +2139,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const nowTs = Date.now();
     if (user?.lastDaily && nowTs - user.lastDaily < DAILY_COOLDOWN) return null;
     const r = Math.random();
-    const amount = Math.round((4 + r * r * 14) * SCALE);
+    let amount = Math.round((4 + r * r * 14) * SCALE);
+    /* VIP çarpanı */
+    const plan = VIP_PLANS.find((p) => p.id === user?.vipPlan);
+    if (user?.vipUntil && user.vipUntil > nowTs && plan) {
+      amount = Math.round(amount * plan.dailyMult);
+    }
     updateMe((me) => {
       me.lastDaily = nowTs;
       me.balance = Math.round(me.balance + amount);
@@ -2116,11 +2152,285 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     pushToast({
       kind: "money",
       title: `Günlük ödül: ${money(amount)}`,
-      sub: "Yarın yeni ödül seni bekliyor",
+      sub: plan
+        ? `VIP çarpanı ×${plan.dailyMult} uygulandı`
+        : "Yarın yeni ödül seni bekliyor",
     });
     coinDing();
     return amount;
-  }, [user?.lastDaily, updateMe, pushToast]);
+  }, [user?.lastDaily, user?.vipUntil, user?.vipPlan, updateMe, pushToast]);
+
+  /* ---------------- VIP & CASHBACK ---------------- */
+
+  const buyVip = useCallback(
+    (planId: string): { ok: boolean; error?: string } => {
+      const plan = VIP_PLANS.find((p) => p.id === planId);
+      if (!plan) return { ok: false, error: "Geçersiz VIP paketi" };
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me) return { ok: false, error: "Oturum bulunamadı" };
+      if (me.balance < plan.price) {
+        return { ok: false, error: `Yetersiz bakiye — ${money(plan.price)} gerekli` };
+      }
+      me.balance = Math.round(me.balance - plan.price);
+      const base = Math.max(Date.now(), me.vipUntil ?? 0);
+      me.vipUntil = base + plan.days * 24 * 3600 * 1000;
+      me.vipPlan = plan.id;
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      coinDing();
+      pushToast({
+        kind: "win",
+        title: `${plan.label} satın alındı! 👑`,
+        sub: `Bitiş: ${new Date(me.vipUntil!).toLocaleDateString("tr-TR")} — cashback %${Math.round(plan.cashback * 100)}`,
+      });
+      return { ok: true };
+    },
+    [pushToast]
+  );
+
+  /** Kaybedilen bahis üzerinden VIP cashback döndürür */
+  const vipCashback = useCallback(
+    (lostAmount: number): number => {
+      if (lostAmount <= 0) return 0;
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me?.vipUntil || me.vipUntil < Date.now()) return 0;
+      const plan = VIP_PLANS.find((p) => p.id === me.vipPlan) ?? VIP_PLANS[0];
+      const back = Math.round(lostAmount * plan.cashback);
+      if (back <= 0) return 0;
+      me.balance = Math.round(me.balance + back);
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      pushToast({
+        kind: "money",
+        title: `Cashback: +${money(back)} 💸`,
+        sub: `Kaybedilen ${money(lostAmount)} bahsinin %${Math.round(plan.cashback * 100)}'i iade edildi`,
+      });
+      return back;
+    },
+    [pushToast]
+  );
+
+  /* ---------------- PROFİL VİTRİNİ ---------------- */
+
+  const toggleShowcase = useCallback(
+    (uidKey: string): void => {
+      let msg: string | null = null;
+      updateMe((me) => {
+        const cur = me.showcase ?? [];
+        if (cur.includes(uidKey)) {
+          me.showcase = cur.filter((x) => x !== uidKey);
+        } else if (cur.length >= 3) {
+          msg = "Vitrine en fazla 3 eşya ekleyebilirsin";
+          return;
+        } else {
+          me.showcase = [...cur, uidKey];
+        }
+      });
+      if (msg) pushToast({ kind: "lose", title: "Vitrin dolu", sub: msg });
+    },
+    [updateMe, pushToast]
+  );
+
+  /* ---------------- JACKPOT (CANLI POT) ---------------- */
+
+  /** Bot için rastgele pot eşyası üret (skin + aşınma + bazen sticker) */
+  const makeJackpotBotItem = (): JackpotItem => {
+    const s = pick(WEAPON_SKINS);
+    const float = rollFloat();
+    let stickers: string[] | undefined;
+    if (Math.random() < 0.16) {
+      stickers = Array.from({ length: randInt(1, 4) }, () => pick(STICKER_POOL));
+    }
+    const item: InvItem = { uid: "bot", skinId: s.id, ts: 0, float, stickers };
+    return { skinId: s.id, float, stickers, value: itemValue(item) };
+  };
+
+  const makeBotEntry = (): JackpotEntry => ({
+    id: uid(),
+    name: pick(COMMUNITY_USERS),
+    items: Array.from({ length: randInt(1, 4) }, makeJackpotBotItem),
+    total: 0,
+  });
+
+  const finalizeBotEntry = (e: JackpotEntry): JackpotEntry => ({
+    ...e,
+    total: e.items.reduce((a, i) => a + i.value, 0),
+  });
+
+  const freshJackpot = (): JackpotState => {
+    const bots = Array.from({ length: randInt(3, 5) }, makeBotEntry).map(finalizeBotEntry);
+    return {
+      round: Math.floor(Date.now() / 1000) % 100000,
+      endsAt: Date.now() + JACKPOT_ROUND_MS,
+      entries: bots,
+      history: [],
+    };
+  };
+
+  /** Oyuncu pota eşya katar (envanterden düşer) */
+  const jackpotJoin = useCallback(
+    (uids: string[]): { ok: boolean; error?: string } => {
+      if (!uids.length) return { ok: false, error: "En az bir eşya seç" };
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me) return { ok: false, error: "Oturum bulunamadı" };
+      if (!fresh.jackpot) fresh.jackpot = freshJackpot();
+      const jp = fresh.jackpot;
+      if (jp.winner || Date.now() >= jp.endsAt) return { ok: false, error: "Bu tur kapanmış, yenisi başlıyor" };
+      if (Date.now() > jp.endsAt - 5000) return { ok: false, error: "Tura katılım son 5 saniye kapatıldı" };
+      const meEntry = jp.entries.find((e) => e.me);
+      if (meEntry) return { ok: false, error: "Zaten pottasın — çıkıp tekrar girebilirsin" };
+      const take = me.inventory.filter((i) => uids.includes(i.uid));
+      if (take.length !== uids.length) return { ok: false, error: "Seçili eşyalardan biri artık yok" };
+      const items: JackpotItem[] = take.map((i) => ({
+        skinId: i.skinId,
+        float: i.float,
+        stickers: i.stickers,
+        value: itemValue(i),
+      }));
+      me.inventory = me.inventory.filter((i) => !uids.includes(i.uid));
+      jp.entries.push({ id: uid(), name: me.name, me: true, items, total: items.reduce((a, i) => a + i.value, 0) });
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      coinDing();
+      return { ok: true };
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  /** Potadan çık — eşyaların iade edilir */
+  const jackpotLeave = useCallback((): boolean => {
+    const fresh = loadDB();
+    const me = currentUser(fresh);
+    const jp = fresh.jackpot;
+    if (!me || !jp || jp.winner || Date.now() >= jp.endsAt) return false;
+    const idx = jp.entries.findIndex((e) => e.me);
+    if (idx < 0) return false;
+    const entry = jp.entries[idx];
+    entry.items.forEach((it) => {
+      me.inventory.unshift({
+        uid: uid(),
+        skinId: it.skinId,
+        ts: Date.now(),
+        float: it.float,
+        stickers: it.stickers,
+      });
+    });
+    jp.entries.splice(idx, 1);
+    saveDB(fresh);
+    setDb(fresh);
+    notifyDbChanged();
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /* jackpot motoru — her saniye bot katılımı + çekiliş */
+  useEffect(() => {
+    if (!user || user.status !== "approved") return;
+    const iv = window.setInterval(() => {
+      const fresh = loadDB();
+      let jp = fresh.jackpot;
+      if (!jp) {
+        jp = freshJackpot();
+        fresh.jackpot = jp;
+        saveDB(fresh);
+        setDb(fresh);
+        notifyDbChanged();
+        return;
+      }
+      const now = Date.now();
+      /* yeni tur başlat */
+      if (jp.winner && jp.nextStartAt && now >= jp.nextStartAt) {
+        jp = freshJackpot();
+        jp.history = (fresh.jackpot?.history ?? []).slice(0, 30);
+        fresh.jackpot = jp;
+        saveDB(fresh);
+        setDb(fresh);
+        notifyDbChanged();
+        return;
+      }
+      /* çekiliş */
+      if (!jp.winner && now >= jp.endsAt) {
+        const pool = jp.entries;
+        const total = pool.reduce((a, e) => a + e.total, 0);
+        if (!pool.length || total <= 0) {
+          jp.endsAt = now + 2000;
+          saveDB(fresh);
+          setDb(fresh);
+          notifyDbChanged();
+          return;
+        }
+        let r = Math.random() * total;
+        let winner = pool[pool.length - 1];
+        for (const e of pool) {
+          r -= e.total;
+          if (r <= 0) {
+            winner = e;
+            break;
+          }
+        }
+        const winValue = total;
+        jp.winner = { name: winner.name, me: winner.me, value: winValue };
+        jp.nextStartAt = now + JACKPOT_NEXT_MS;
+        jp.history = [
+          { name: winner.name, me: winner.me, value: winValue, ts: now },
+          ...(jp.history ?? []),
+        ].slice(0, 30);
+        /* kullanıcı kazandıysa tüm pot envantere girer */
+        if (winner.me) {
+          const me = currentUser(fresh);
+          if (me) {
+            jp.entries.forEach((e) =>
+              e.items.forEach((it) => {
+                me.inventory.unshift({
+                  uid: uid(),
+                  skinId: it.skinId,
+                  ts: now,
+                  float: it.float,
+                  stickers: it.stickers,
+                });
+              })
+            );
+            /* en değerli üçlüyü vitrine otomatik koy */
+            const top3 = [...me.inventory]
+              .sort((a, b) => itemValue(b) - itemValue(a))
+              .slice(0, 3)
+              .map((i) => i.uid);
+            me.showcase = top3;
+            saveDB(fresh);
+            setDb(fresh);
+            notifyDbChanged();
+            pushToastSafe.current({
+              kind: "win",
+              title: `JACKPOT KAZANDIN! 🎉 ${money(winValue)}`,
+              sub: `Tüm pot (${jp.entries.length} katılımcı) envanterine eklendi`,
+            });
+            setLocalCelebration({ id: uid(), text: "JACKPOT!", sub: `${money(winValue)} değerinde pot kazandın` });
+            coinDing();
+          }
+        }
+        saveDB(fresh);
+        setDb(fresh);
+        notifyDbChanged();
+        return;
+      }
+      /* botlar zamanla katılır */
+      if (!jp.winner && jp.entries.length < JACKPOT_MAX_ENTRIES && now < jp.endsAt - 8000 && Math.random() < 0.12) {
+        jp.entries.push(finalizeBotEntry(makeBotEntry()));
+        saveDB(fresh);
+        setDb(fresh);
+        notifyDbChanged();
+      }
+    }, 1000);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.key, user?.status]);
 
   /* --------- para yatırma talebi --------- */
   const requestDeposit = useCallback(
@@ -2298,6 +2608,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           opened: me.stats.opened,
           invCount: me.inventory.length,
           level: levelFromSpent(me.stats.spent),
+          vip: !!me.vipUntil && me.vipUntil > Date.now(),
+          showcase: (me.showcase ?? [])
+            .map((u) => me.inventory.find((i) => i.uid === u))
+            .filter((i): i is InvItem => !!i)
+            .slice(0, 3)
+            .map((i) => i.skinId),
           ts: Date.now(),
         };
       });
@@ -2568,6 +2884,25 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     autoSettings: db.settings ?? { autoApproveUsers: false, autoApproveDeposits: false, ts: 0 },
     setAutoApproval,
+
+    /* VIP & cashback */
+    vipUntil: user?.vipUntil ?? null,
+    vipPlan: user?.vipPlan ?? null,
+    vipActive: !!user?.vipUntil && user.vipUntil > Date.now(),
+    buyVip,
+    vipCashback,
+
+    /* profil vitrini */
+    showcase: (user?.showcase ?? [])
+      .map((u) => inventory.find((i) => i.uid === u))
+      .filter((i): i is InvItem => !!i)
+      .slice(0, 3),
+    toggleShowcase,
+
+    /* jackpot */
+    jackpot: db.jackpot ?? null,
+    jackpotJoin,
+    jackpotLeave,
 
     botListings,
     myListings: user?.listings ?? [],

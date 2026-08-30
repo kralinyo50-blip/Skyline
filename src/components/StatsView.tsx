@@ -10,9 +10,11 @@ import {
 } from "lucide-react";
 import { money } from "../config";
 import { CASE_MAP } from "../data/cases";
-import { RARITY } from "../data/skins";
+import { itemValue } from "../data/items";
+import { RARITY, SKIN_MAP } from "../data/skins";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
+import { SkinImg } from "./SkinCard";
 
 /* ---------------- KÂR / ZARAR GRAFİĞİ (kümülatif SVG) ---------------- */
 function PnLChart({ spent, value }: { spent: number[]; value: number[] }) {
@@ -128,7 +130,7 @@ function VerifyModal({
 
 /* ---------------- PROFİL / İSTATİSTİK ---------------- */
 export function StatsView() {
-  const { rollLogs, achievements, unlockedAch } = useGame();
+  const { rollLogs, achievements, unlockedAch, showcase, toggleShowcase, vipActive } = useGame();
   const [verify, setVerify] = useState<{ seed: string; nonce: number; caseId: string; result: string } | null>(null);
   const [showAll, setShowAll] = useState(false);
 
@@ -168,6 +170,72 @@ export function StatsView() {
             {money(chart.net)}
           </div>
         </div>
+      </div>
+
+      {/* PROFİL VİTRİNİ */}
+      <div className="mb-4 rounded-2xl border border-line bg-ink-900/70 p-4">
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <h2 className="flex items-center gap-2 font-display text-sm font-black uppercase tracking-wider text-white/80">
+            <Trophy className="h-4 w-4 text-rar-rare" /> Profil Vitrini
+          </h2>
+          <span className="text-[10px] font-bold text-white/35">En fazla 3 eşya — envanterden yıldızla seç</span>
+          <span className="ml-auto flex items-center gap-1 text-[10px] font-bold text-white/35">
+            {showcase.length}/3
+            {vipActive && (
+              <span className="ml-1 rounded-full bg-rar-rare/15 px-2 py-0.5 font-black uppercase text-rar-rare">VIP</span>
+            )}
+          </span>
+        </div>
+        <div className="grid grid-cols-3 gap-2 sm:max-w-md">
+          {[0, 1, 2].map((i) => {
+            const it = showcase[i];
+            const skin = it ? SKIN_MAP[it.skinId] : null;
+            return (
+              <div
+                key={i}
+                className={
+                  "flex aspect-[4/3] flex-col overflow-hidden rounded-xl border " +
+                  (skin ? "border-line bg-ink-800" : "border-dashed border-line/60 bg-ink-900/40")
+                }
+                style={
+                  skin
+                    ? { backgroundImage: `radial-gradient(120% 80% at 50% 0%, ${RARITY[skin.rarity].color}18, transparent 55%)` }
+                    : undefined
+                }
+              >
+                {skin ? (
+                  <>
+                    <div className="relative flex-1">
+                      <SkinImg skin={skin} className="h-full w-full" />
+                      <button
+                        onClick={() => it && toggleShowcase(it.uid)}
+                        className="absolute right-1.5 top-1.5 rounded-md border border-line bg-ink-900/90 p-1 text-white/40 transition hover:text-lose"
+                        title="Vitrinden çıkar"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <div className="truncate px-1.5 py-1 text-center text-[9px] font-semibold text-white/60">
+                      {skin.weapon} | {skin.name}
+                    </div>
+                    <div className="pb-1.5 text-center font-display text-[11px] font-black text-emerald-400">
+                      {it ? money(itemValue(it)) : ""}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-1 flex-col items-center justify-center gap-1 text-white/20">
+                    <Trophy className="h-5 w-5" />
+                    <span className="text-[9px] font-bold uppercase tracking-wider">Boş</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-2.5 text-[10px] leading-relaxed text-white/35">
+          Vitrindeki eşyalar profilde herkesin görebileceği şekilde sergilenir. Jackpot kazandığında en
+          değerli üçlü otomatik olarak vitrine düşer.
+        </p>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

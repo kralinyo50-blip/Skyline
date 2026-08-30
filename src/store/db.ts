@@ -25,6 +25,10 @@ export interface PubProfile {
   spent?: number;
   /** liderlik: en iyi düşüş */
   bestDrop?: number;
+  /** VIP rozeti */
+  vip?: boolean;
+  /** profil vitrini — seçili eşyaların skin id'leri */
+  showcase?: string[];
   ts: number;
 }
 
@@ -147,6 +151,12 @@ export interface Account {
   pity?: Record<string, number>;
   /** kazanılan başarım id'leri */
   ach?: string[];
+  /** VIP üyeliği — bitiş zamanı */
+  vipUntil?: number;
+  /** VIP paket id'si (sadece görüntü) */
+  vipPlan?: string;
+  /** profil vitrini — seçilen envanter uid'leri (en fazla 3) */
+  showcase?: string[];
 }
 
 export type ReqStatus = "pending" | "approved" | "rejected";
@@ -230,6 +240,43 @@ export interface Celebration {
   by: string;
 }
 
+/* ---------------- JACKPOT ---------------- */
+
+/** Potta bulunan bir eşya (skin + aşınma + sticker değeri) */
+export interface JackpotItem {
+  skinId: string;
+  float?: number;
+  stickers?: string[];
+  value: number;
+}
+
+/** Pot katılımcısı */
+export interface JackpotEntry {
+  id: string;
+  name: string;
+  /** gerçek kullanıcı mı */
+  me?: boolean;
+  items: JackpotItem[];
+  total: number;
+}
+
+export interface JackpotHistoryEntry {
+  name: string;
+  me?: boolean;
+  value: number;
+  ts: number;
+}
+
+/** Canlı jackpot turu — yerel + cihazlar arası korunur */
+export interface JackpotState {
+  round: number;
+  endsAt: number;
+  entries: JackpotEntry[];
+  winner?: { name: string; me?: boolean; value: number } | null;
+  nextStartAt?: number;
+  history: JackpotHistoryEntry[];
+}
+
 export interface DB {
   users: Record<string, Account>;
   deposits: DepositReq[];
@@ -254,6 +301,8 @@ export interface DB {
   adminLog?: AdminLogEntry[];
   /** site geneli kutlama */
   celebration?: Celebration | null;
+  /** canlı jackpot */
+  jackpot?: JackpotState | null;
 }
 
 const LS_KEY = "skyline:v1";
@@ -274,6 +323,7 @@ export function emptyDB(): DB {
     claimedMarket: {},
     adminLog: [],
     celebration: null,
+    jackpot: null,
   };
 }
 
@@ -304,6 +354,7 @@ export function loadDB(): DB {
       claimedMarket: parsed.claimedMarket ?? {},
       adminLog: parsed.adminLog ?? [],
       celebration: parsed.celebration ?? null,
+      jackpot: parsed.jackpot ?? null,
     };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.

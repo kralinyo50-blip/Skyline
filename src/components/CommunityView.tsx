@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { ADMIN_NAME, mcHead, money } from "../config";
 import { click, coinDing } from "../lib/audio";
+import { SKIN_MAP } from "../data/skins";
 import { useGame, levelFromSpent } from "../store/Game";
 import { cn } from "../utils/cn";
 
@@ -276,9 +277,29 @@ export function CommunityView() {
                 </span>
                 <img src={mcHead(u.name, 64)} alt={u.name} className="h-9 w-9 shrink-0 rounded" />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-display text-sm font-bold text-white">{u.name}</div>
-                  <div className="text-[10px] text-white/35">
-                    Seviye {levelFromSpent(spent)} · {opened} kasa · {money(balance)} bakiye
+                  <div className="flex items-center gap-1.5">
+                    <span className="truncate font-display text-sm font-bold text-white">{u.name}</span>
+                    {u.pub?.vip && (
+                      <Crown className="h-3.5 w-3.5 shrink-0 text-rar-rare" fill="currentColor" strokeWidth={0} />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-white/35">
+                    <span>
+                      Seviye {levelFromSpent(spent)} · {opened} kasa · {money(balance)} bakiye
+                    </span>
+                    {(u.pub?.showcase ?? []).slice(0, 3).map((sid, si) => {
+                      const s = SKIN_MAP[sid];
+                      return s ? (
+                        <img
+                          key={si}
+                          src={s.img}
+                          alt={s.name}
+                          title={`${s.weapon} | ${s.name}`}
+                          className="h-4 w-5 rounded object-cover"
+                          loading="lazy"
+                        />
+                      ) : null;
+                    })}
                   </div>
                 </div>
                 <div className="text-right">

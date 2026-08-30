@@ -8,6 +8,7 @@ import {
   ChevronsUp,
   Check,
   Clock,
+  Crown,
   Dices,
   Gift,
   Handshake,
@@ -17,6 +18,7 @@ import {
   Sparkles,
   Store,
   Swords,
+  Trophy,
   Unplug,
   UserPlus,
   Users,
@@ -27,7 +29,7 @@ import {
   X,
 } from "lucide-react";
 import { useGame, DAILY_COOLDOWN, type TabKey } from "../store/Game";
-import { ADMIN_NAME, BRAND, CURRENCY, SCALE, mcHead, money } from "../config";
+import { ADMIN_NAME, BRAND, CURRENCY, SCALE, VIP_PLANS, mcHead, money } from "../config";
 import { click, coinDing } from "../lib/audio";
 import { cn } from "../utils/cn";
 import { ReferralModal } from "./ReferralModal";
@@ -37,6 +39,7 @@ const TABS: { key: TabKey; label: string; Icon: typeof Boxes }[] = [
   { key: "upgrader", label: "Upgrader", Icon: ChevronsUp },
   { key: "battle", label: "Savaş", Icon: Swords },
   { key: "games", label: "Oyunlar", Icon: Dices },
+  { key: "jackpot", label: "Jackpot", Icon: Trophy },
   { key: "market", label: "Pazar", Icon: Store },
   { key: "trade", label: "Takas", Icon: Handshake },
   { key: "inventory", label: "Envanter", Icon: Backpack },
@@ -71,6 +74,7 @@ export function Header() {
     lastDaily, claimDaily, isAdmin, userName, logout,
     requestDeposit, requestWithdraw, heldBalance, myDeposits, pendingDepositList, pendingUserList,
     syncCode, setSyncCode, syncStatus,
+    vipUntil, vipPlan, vipActive, buyVip,
   } = useGame();
 
   const [mode, setMode] = useState<"deposit" | "withdraw">("deposit");
@@ -86,6 +90,11 @@ export function Header() {
   const [dailyOpen, setDailyOpen] = useState(false);
   const [claimed, setClaimed] = useState<number | null>(null);
   const [referralOpen, setReferralOpen] = useState(false);
+  const [vipOpen, setVipOpen] = useState(false);
+
+  const vipLeftMs = vipUntil ? Math.max(0, vipUntil - Date.now()) : 0;
+  const vipLeftD = Math.floor(vipLeftMs / 86400000);
+  const vipLeftH = Math.floor((vipLeftMs % 86400000) / 3600000);
 
   const dailyReady = !lastDaily || Date.now() - lastDaily >= DAILY_COOLDOWN;
   const dailyLeftMs = lastDaily ? Math.max(0, lastDaily + DAILY_COOLDOWN - Date.now()) : 0;
@@ -209,6 +218,27 @@ export function Header() {
                   <span className="absolute h-full w-full animate-ping rounded-full bg-brand-400 opacity-75" />
                   <span className="h-full w-full rounded-full bg-brand-400" />
                 </span>
+              )}
+            </button>
+
+            {/* VIP */}
+            <button
+              onClick={() => {
+                setVipOpen(true);
+                click();
+              }}
+              className={cn(
+                "relative flex h-9 items-center justify-center gap-1 rounded-lg border px-2.5 font-display text-xs font-black uppercase tracking-wider transition",
+                vipActive
+                  ? "border-rar-rare/60 bg-gradient-to-b from-rar-rare/25 to-brand-600/20 text-rar-rare shadow-[0_0_16px_-4px_rgba(228,174,57,0.5)]"
+                  : "border-line bg-ink-800 text-white/40 hover:text-rar-rare"
+              )}
+              title={vipActive ? `VIP aktif — ${vipLeftD} gün kaldı` : "VIP ol — cashback kazan"}
+            >
+              <Crown className="h-4 w-4" />
+              <span className="hidden sm:inline">{vipActive ? "VIP" : "VIP Ol"}</span>
+              {vipActive && (
+                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-ping rounded-full bg-rar-rare" />
               )}
             </button>
 
@@ -801,6 +831,122 @@ export function Header() {
       {/* davet & ödül modal */}
       <AnimatePresence>
         {referralOpen && <ReferralModal onClose={() => setReferralOpen(false)} />}
+      </AnimatePresence>
+
+      {/* VIP modal */}
+      <AnimatePresence>
+        {vipOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            onClick={() => setVipOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 10, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 26 }}
+              onClick={(e) => e.stopPropagation()}
+              className="tiny-scroll max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-rar-rare/40 bg-ink-800 shadow-2xl"
+            >
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-ink-800 px-5 py-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-rar-rare to-brand-600 text-ink-950">
+                    <Crown className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="font-display text-lg font-black tracking-wide text-white">VIP Odası</div>
+                    <div className="text-[11px] text-white/40">
+                      {vipActive
+                        ? `Aktif — kalan ${vipLeftD} gün ${vipLeftH} saat`
+                        : "Cashback, günlük çarpan ve komisyonsuz pazar"}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setVipOpen(false)}
+                  className="rounded-lg p-2 text-white/40 hover:bg-white/5 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-5">
+                {/* aktif durum */}
+                {vipActive && (
+                  <div className="mb-4 flex items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/15">
+                      <Crown className="h-5 w-5 text-emerald-400" />
+                    </div>
+                    <div>
+                      <div className="font-display text-sm font-black text-emerald-300">VIP üyelik aktif</div>
+                      <div className="text-[11px] text-white/45">
+                        {vipLeftD} gün {vipLeftH} saat kaldı — yenilemek süreyi uzatır
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* paketler */}
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {VIP_PLANS.map((p) => (
+                    <div
+                      key={p.id}
+                      className={cn(
+                        "relative flex flex-col rounded-xl border p-4 transition",
+                        vipPlan === p.id
+                          ? "border-rar-rare/70 bg-rar-rare/10"
+                          : "border-line bg-ink-900 hover:border-rar-rare/40"
+                      )}
+                    >
+                      {vipPlan === p.id && (
+                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 rounded-full bg-rar-rare px-2 py-px text-[9px] font-black uppercase text-ink-950">
+                          Paketin
+                        </span>
+                      )}
+                      <div className="flex items-center gap-1.5 font-display text-sm font-black uppercase tracking-wider text-white">
+                        <Crown className="h-4 w-4 text-rar-rare" /> {p.label}
+                      </div>
+                      <div className="mt-2 font-display text-2xl font-black text-brand-300">{money(p.price)}</div>
+                      <ul className="mt-3 flex flex-col gap-1.5 text-[11px] text-white/55">
+                        <li>💸 Kayıp bahislerde %{Math.round(p.cashback * 100)} cashback</li>
+                        <li>🎁 Günlük ödül ×{p.dailyMult}</li>
+                        <li>🏪 Pazar satışlarında %{Math.round(p.fee * 100)} komisyon</li>
+                        <li>👑 Profilinde VIP rozeti</li>
+                      </ul>
+                      <button
+                        onClick={() => {
+                          const r = buyVip(p.id);
+                          if (!r.ok) {
+                            pushToast({ kind: "lose", title: "VIP alınamadı", sub: r.error ?? "" });
+                            return;
+                          }
+                          coinDing();
+                        }}
+                        className={cn(
+                          "mt-4 h-10 rounded-xl font-display text-sm font-bold transition",
+                          vipPlan === p.id
+                            ? "bg-rar-rare text-ink-950 hover:brightness-110"
+                            : "bg-gradient-to-b from-brand-400 to-brand-600 text-ink-950 hover:brightness-110"
+                        )}
+                      >
+                        {vipPlan === p.id ? "Yenile" : "Satın Al"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <p className="mt-4 rounded-lg border border-line bg-ink-900 px-3 py-2.5 text-[10px] leading-relaxed text-white/35">
+                  Cashback: kaybettiğin her oyun bahsinde anında geri ödenir. Örn. 100.000$ kayıpta{" "}
+                  <span className="text-emerald-400">+{money(100000 * 0.12)}</span> (90 Gün pakette). Süre
+                  dolunca avantajlar otomatik kapanır.
+                </p>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
 
       {/* admin uyarı şeridi */}

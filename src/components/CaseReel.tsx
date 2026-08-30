@@ -122,6 +122,15 @@ function ReelCard({ skin, highlight }: { skin: Skin; highlight: boolean }) {
   );
 }
 
+interface BatchHit {
+  skin: Skin;
+  seed: string;
+  nonce: number;
+  forced: boolean;
+  float: number;
+  stickers: string[];
+}
+
 export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void }) {
   const { balance, credit, addItem, pushToast, openCase } = useGame();
   const [phase, setPhase] = useState<Phase>("info");
@@ -131,6 +140,9 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
   const [handled, setHandled] = useState(false);
   const [shake, setShake] = useState(0);
   const [lastRoll, setLastRoll] = useState<{ seed: string; nonce: number } | null>(null);
+  const [batch, setBatch] = useState<BatchHit[] | null>(null);
+  const [batchHandled, setBatchHandled] = useState(false);
+  const [bigFlash, setBigFlash] = useState(0);
   const wear = useMemo(randomWear, [winner]);
 
   /* kasadan çıkan silaha stickerlar yapışabilir */
@@ -254,6 +266,15 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
       addItem(winner.id, dropOpts());
       pushToast({ kind: "info", title: "Envantere eklendi", sub: `${winner.weapon} | ${winner.name}` });
     }
+    if (batch && !batchHandled) {
+      batch.forEach((h) => {
+        addItem(h.skin.id, {
+          float: h.skin.sticker ? undefined : h.float,
+          stickers: h.stickers.length ? h.stickers : undefined,
+        });
+      });
+      pushToast({ kind: "info", title: "Toplu açılış envantere eklendi", sub: `${batch.length} eşya` });
+    }
     cancelAnimationFrame(animRef.current);
     onClose();
   };
@@ -284,6 +305,74 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
 
   const winnerRarity = winner ? RARITY[winner.rarity] : null;
   const bigWin = winner?.rarity === "covert" || winner?.rarity === "rare";
+
+  /* ---------- ×10 TOPLU AÇILIŞ ---------- */
+  const batchRoll = (count: number): BatchHit[] => {
+    const hits: BatchHit[] = [];
+    for (let i = 0; i < count; i++) {
+      const { skin: w, seed, nonce, forced } = openCase(def);
+      if (!w) break;
+      const f = w.sticker ? 0 : rollFloat();
+      const chance = def.stickered ? 0.85 : STICKERED_DROP_CHANCE;
+      let stickers: string[] = [];
+      if (!w.sticker && Math.random() <= chance) {
+        const n = Math.random() < 0.5 ? 1 : Math.random() < 0.82 ? 2 : Math.random() < 0.95 ? 3 : 4;
+        stickers = Array.from({ length: n }, () => STICKER_IDS[Math.floor(Math.random() * STICKER_IDS.length)]);
+      }
+      hits.push({ skin: w, seed, nonce, forced, float: f, stickers });
+    }
+    return hits;
+  };
+
+  const batchValue = (h: BatchHit) => {
+    if (h.skin.sticker) return h.skin.price;
+    const w = WEARS[wearFromFloat(h.float)];
+    return Math.round(h.skin.price * w.mult + stickerBonus(h.stickers));
+  };
+
+  const startBatch = () => {
+    if (phase === "spinning") return;
+    const cost = def.price * 10;
+    if (balance < cost) {
+      setShake((s) => s + 1);
+      pushToast({ kind: "lose", title: "Yetersiz bakiye", sub: `×10 için ${fmtMoney(cost)} gerekli` });
+      return;
+    }
+    const hits = batchRoll(10);
+    setBatch(hits);
+    setBatchHandled(false);
+    setPhase("reveal");
+    const big = hits.filter((h) => h.skin.rarity === "covert" || h.skin.rarity === "rare");
+    if (big.length) {
+      setBigFlash((f) => f + 1);
+      goldWin();
+    } else {
+      winSound(false);
+    }
+  };
+
+  const keepBatch = () => {
+    if (!batch || batchHandled) return;
+    batch.forEach((h) => {
+      addItem(h.skin.id, {
+        float: h.skin.sticker ? undefined : h.float,
+        stickers: h.stickers.length ? h.stickers : undefined,
+      });
+    });
+    setBatchHandled(true);
+    pushToast({ kind: "win", title: "Toplu açılış envantere eklendi", sub: `${batch.length} eşya` });
+  };
+
+  const sellBatch = () => {
+    if (!batch || batchHandled) return;
+    const total = batch.reduce((a, h) => a + batchValue(h), 0);
+    credit(Math.round(total * QUICK_SELL_RATE));
+    setBatchHandled(true);
+    pushToast({ kind: "money", title: `Toplu satıldı: +${fmtMoney(Math.round(total * QUICK_SELL_RATE))}`, sub: `${batch.length} eşya — pazarda ${fmtMoney(total)} ederdi` });
+  };
+
+  const batchTotal = batch ? batch.reduce((a, h) => a + batchValue(h), 0) : 0;
+  const batchBig = batch?.some((h) => h.skin.rarity === "covert" || h.skin.rarity === "rare") ?? false;
 
   return (
     <motion.div
@@ -351,32 +440,48 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                 })}
               </div>
 
-              <motion.button
-                key={shake}
-                onClick={startOpen}
-                className={cn(
-                  "group flex h-13 items-center gap-3 rounded-xl px-8 font-display text-lg font-bold tracking-wide transition",
-                  afford
-                    ? "bg-gradient-to-b from-brand-400 to-brand-600 text-ink-950 hover:brightness-110 hover:shadow-[0_10px_36px_-8px_rgba(249,142,29,0.7)]"
-                    : "cursor-not-allowed border border-lose/40 bg-lose/10 text-lose",
-                  shake > 0 && !afford && "animate-shake"
-                )}
-                style={{ height: 52 }}
-              >
-                {afford ? (
-                  <>
-                    Kasayı Aç
-                    <span className="flex items-center gap-1 rounded-lg bg-black/25 px-2.5 py-1 text-base">
-                      <Coins className="h-4 w-4" />
-                      {fmtMoney(def.price)}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <AlertTriangle className="h-5 w-5" /> Yetersiz Bakiye — {fmtMoney(def.price)}
-                  </>
-                )}
-              </motion.button>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <motion.button
+                  key={shake}
+                  onClick={startOpen}
+                  className={cn(
+                    "group flex h-13 items-center gap-3 rounded-xl px-8 font-display text-lg font-bold tracking-wide transition",
+                    afford
+                      ? "bg-gradient-to-b from-brand-400 to-brand-600 text-ink-950 hover:brightness-110 hover:shadow-[0_10px_36px_-8px_rgba(249,142,29,0.7)]"
+                      : "cursor-not-allowed border border-lose/40 bg-lose/10 text-lose",
+                    shake > 0 && !afford && "animate-shake"
+                  )}
+                  style={{ height: 52 }}
+                >
+                  {afford ? (
+                    <>
+                      Kasayı Aç
+                      <span className="flex items-center gap-1 rounded-lg bg-black/25 px-2.5 py-1 text-base">
+                        <Coins className="h-4 w-4" />
+                        {fmtMoney(def.price)}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertTriangle className="h-5 w-5" /> Yetersiz Bakiye — {fmtMoney(def.price)}
+                    </>
+                  )}
+                </motion.button>
+
+                {/* ×10 toplu açılış */}
+                <button
+                  onClick={startBatch}
+                  disabled={balance < def.price * 10}
+                  className="flex h-[52px] items-center gap-2 rounded-xl border border-rar-classified/50 bg-rar-classified/10 px-5 font-display text-base font-bold tracking-wide text-rar-classified transition hover:bg-rar-classified/20 disabled:cursor-not-allowed disabled:opacity-35"
+                  title="Aynı anda 10 kasa aç — sonuçları tek ekranda gör"
+                >
+                  <span className="flex items-center gap-1 rounded-md bg-black/25 px-2 py-1 text-sm">
+                    <Coins className="h-4 w-4" /> ×10
+                  </span>
+                  Toplu Aç
+                  <span className="text-xs font-semibold text-white/45">{fmtMoney(def.price * 10)}</span>
+                </button>
+              </div>
               {!afford && (
                 <button
                   onClick={() => pushToast({ kind: "info", title: "Nasıl para yatırılır?", sub: "Sağ üstteki Para Yatır → tutarı gir → yetkili onaylasın" })}
@@ -453,9 +558,126 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
               )}
             </div>
 
+            {/* ---------- ×10 TOPLU SONUÇ ---------- */}
+            <AnimatePresence>
+              {phase === "reveal" && batch && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="absolute inset-0 z-20 flex overflow-y-auto bg-ink-950/92 px-4 py-4 backdrop-blur-[6px]"
+                >
+                  {batchBig && <Confetti colors={["#d32ce6", "#ffffff", "#f98e1d"]} />}
+                  {batchBig && bigFlash > 0 && (
+                    <div className="pointer-events-none fixed inset-0 z-30 animate-[flash_0.7s_ease-out] bg-white" style={{ animationIterationCount: 1 }} />
+                  )}
+
+                  <div className="animate-result relative m-auto w-full max-w-4xl rounded-2xl border border-line bg-ink-800/90 p-4 shadow-2xl sm:p-5">
+                    {/* başlık */}
+                    <div className="mb-4 flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-rar-classified to-brand-600 font-display text-sm font-black text-white">
+                          ×10
+                        </div>
+                        <div>
+                          <div className="font-display text-base font-bold text-white">Toplu Açılış</div>
+                          <div className="text-[10px] text-white/40">{def.name} · 10 kasa</div>
+                        </div>
+                      </div>
+                      <div className="ml-auto text-right">
+                        <div className="text-[9px] font-bold uppercase tracking-widest text-white/35">Toplam Değer</div>
+                        <div className="font-display text-xl font-black text-emerald-400">{fmtMoney(batchTotal)}</div>
+                      </div>
+                    </div>
+
+                    {/* sonuç ızgarası */}
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-5">
+                      {batch.map((h, i) => {
+                        const r = RARITY[h.skin.rarity];
+                        const v = batchValue(h);
+                        const big = h.skin.rarity === "covert" || h.skin.rarity === "rare";
+                        return (
+                          <motion.div
+                            key={h.seed + i}
+                            initial={{ opacity: 0, y: 14, scale: 0.92 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{ delay: i * 0.07 + 0.15, type: "spring", stiffness: 260, damping: 20 }}
+                            className={cn(
+                              "relative flex flex-col overflow-hidden rounded-xl border bg-ink-900 p-2",
+                              big && "animate-goldring border-rar-rare/60"
+                            )}
+                            style={{
+                              backgroundImage: `radial-gradient(120% 90% at 50% 0%, ${r.color}18, transparent 55%)`,
+                            }}
+                          >
+                            {h.forced && (
+                              <span className="absolute right-1.5 top-1.5 z-10 rounded bg-brand-500 px-1 py-px text-[8px] font-black text-ink-950">
+                                GARANTİ
+                              </span>
+                            )}
+                            <SkinImg skin={h.skin} className="h-16 w-full sm:h-20" />
+                            <div className="mt-1 h-5 truncate text-center text-[9px] font-medium text-white/60">
+                              {h.skin.st && <span className="text-[#cf6a32]">ST™ </span>}
+                              {h.skin.weapon} | {h.skin.name}
+                            </div>
+                            <div className="text-center text-[10px] font-bold" style={{ color: r.color }}>
+                              {r.tr}
+                            </div>
+                            <div className="mt-0.5 text-center font-display text-sm font-black text-emerald-400">
+                              {fmtMoney(v)}
+                            </div>
+                            {h.stickers.length > 0 && (
+                              <div className="mt-1 flex items-center justify-center gap-0.5">
+                                {h.stickers.slice(0, 4).map((sid, si) => {
+                                  const s = STICKER_MAP[sid];
+                                  return s ? (
+                                    <img key={si} src={s.img} alt={s.name} className="h-4 w-4 object-contain" />
+                                  ) : null;
+                                })}
+                              </div>
+                            )}
+                          </motion.div>
+                        );
+                      })}
+                    </div>
+
+                    {/* aksiyonlar */}
+                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <button
+                        onClick={keepBatch}
+                        disabled={batchHandled}
+                        className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-line bg-ink-700 font-display text-sm font-bold text-white transition hover:border-brand-500/60 hover:bg-ink-600 disabled:opacity-40"
+                      >
+                        {batchHandled ? <Check className="h-5 w-5 text-emerald-400" /> : "Hepsini Envantere Al"}
+                      </button>
+                      <button
+                        onClick={sellBatch}
+                        disabled={batchHandled}
+                        className="flex h-11 flex-col items-center justify-center rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 font-display text-sm font-bold leading-none text-ink-950 transition hover:brightness-110 disabled:opacity-40"
+                      >
+                        <span>Hepsini Hızlı Sat</span>
+                        <span className="text-[11px] font-black">{fmtMoney(Math.round(batchTotal * QUICK_SELL_RATE))}</span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (!batchHandled) keepBatch();
+                          setBatch(null);
+                          setPhase("info");
+                          setBatchHandled(false);
+                        }}
+                        className="flex h-11 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 font-display text-sm font-bold text-ink-950 transition hover:brightness-110"
+                      >
+                        <RotateCcw className="h-4 w-4" /> Tekrar Aç
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* ---------- SONUÇ ---------- */}
             <AnimatePresence>
-              {phase === "reveal" && winner && (
+              {phase === "reveal" && !batch && winner && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -465,8 +687,18 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                   {bigWin && (
                     <Confetti colors={[winnerRarity!.color, "#ffffff", "#f98e1d"]} />
                   )}
+                  {bigWin && (
+                    <div className="pointer-events-none fixed inset-0 z-30 animate-[flash_0.8s_ease-out] bg-white" style={{ animationIterationCount: 1 }} />
+                  )}
 
-                  <div className="animate-result relative m-auto flex w-full max-w-md flex-col items-center rounded-2xl border border-line bg-ink-800/90 p-4 text-center shadow-2xl sm:p-6">
+                  <div className={cn("relative m-auto flex w-full max-w-md flex-col items-center rounded-2xl border border-line bg-ink-800/90 p-4 text-center shadow-2xl sm:p-6", bigWin ? "animate-win-zoom" : "animate-result")}>
+                    {bigWin && (
+                      <div className="pointer-events-none absolute inset-x-0 inset-y-0 m-auto h-64 w-64 rounded-full text-white">
+                        <span className="drop-shockwave" style={{ color: winnerRarity!.color }} />
+                        <span className="drop-shockwave" style={{ color: winnerRarity!.color, animationDelay: "0.14s" }} />
+                        <span className="drop-shockwave" style={{ color: winnerRarity!.color, animationDelay: "0.28s" }} />
+                      </div>
+                    )}
                     <div
                       className="absolute inset-x-0 top-0 h-40 rounded-t-2xl opacity-60"
                       style={{ background: `radial-gradient(60% 100% at 50% 0%, ${winnerRarity!.color}33, transparent)` }}

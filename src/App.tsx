@@ -9,12 +9,14 @@ import { CasesView } from "./components/CasesView";
 import { UpgraderView } from "./components/UpgraderView";
 import { BattleView } from "./components/BattleView";
 import { GamesView } from "./components/GamesView";
+import { JackpotView } from "./components/JackpotView";
 import { MarketView } from "./components/MarketView";
 import { TradeView } from "./components/TradeView";
 import { InventoryView } from "./components/InventoryView";
 import { StatsView } from "./components/StatsView";
 import { CommunityView } from "./components/CommunityView";
 import { EventBanners } from "./components/EventBanners";
+import { CasinoAmbience } from "./components/CasinoAmbience";
 import { CelebrationOverlay } from "./components/CelebrationOverlay";
 import { AdminPanel } from "./components/AdminPanel";
 import { Toasts } from "./components/Toasts";
@@ -38,6 +40,7 @@ function Shell() {
 
   return (
     <div className="noise bg-site min-h-screen">
+      <CasinoAmbience />
       <Header />
       <LiveTicker />
       <EventBanners />
@@ -57,6 +60,7 @@ function Shell() {
             {tab === "upgrader" && <UpgraderView />}
             {tab === "battle" && <BattleView />}
             {tab === "games" && <GamesView />}
+            {tab === "jackpot" && <JackpotView />}
             {tab === "market" && <MarketView />}
             {tab === "trade" && <TradeView />}
             {tab === "inventory" && <InventoryView />}

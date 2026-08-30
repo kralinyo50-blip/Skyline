@@ -46,6 +46,8 @@ function ItemCard({
   onUpgrade,
   onSticker,
   onDetail,
+  onShowcase,
+  inShowcase,
 }: {
   item: InvItem;
   onQuickSell: () => void;
@@ -53,6 +55,8 @@ function ItemCard({
   onUpgrade: () => void;
   onSticker: () => void;
   onDetail: () => void;
+  onShowcase: () => void;
+  inShowcase: boolean;
 }) {
   const skin = SKIN_MAP[item.skinId];
   const color = itemColor(item);
@@ -70,6 +74,24 @@ function ItemCard({
       style={{ backgroundImage: `radial-gradient(120% 80% at 50% 0%, ${color}16, transparent 55%)` }}
     >
       <div className="relative cursor-pointer p-2.5" onClick={onDetail}>
+        {/* vitrin yıldızı */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onShowcase();
+          }}
+          title={inShowcase ? "Vitrinden çıkar" : "Vitrine ekle"}
+          className={cn(
+            "absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-md border transition",
+            inShowcase
+              ? "border-rar-rare/70 bg-rar-rare/20 text-rar-rare shadow-[0_0_10px_-2px_rgba(228,174,57,0.6)]"
+              : "border-line bg-ink-900/80 text-white/30 hover:text-rar-rare"
+          )}
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill={inShowcase ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+            <path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z" />
+          </svg>
+        </button>
         {skin.st && (
           <span className="absolute left-2 top-2 z-10 rounded bg-[#cf6a32] px-1 py-px text-[8px] font-black text-white">
             ST™
@@ -311,8 +333,17 @@ function StickerModal({
 
 /* ---------- ana görünüm ---------- */
 export function InventoryView() {
-  const { inventory, inventoryValue, quickSell, setUpgraderPick, setTab, pushToast, resetAll } =
-    useGame();
+  const {
+    inventory,
+    inventoryValue,
+    quickSell,
+    setUpgraderPick,
+    setTab,
+    pushToast,
+    resetAll,
+    showcase,
+    toggleShowcase,
+  } = useGame();
   const [sort, setSort] = useState<SortKey>("value_desc");
   const [filter, setFilter] = useState<Filter>("all");
   const [wearFilter, setWearFilter] = useState<WearFilter>("all");
@@ -504,6 +535,8 @@ export function InventoryView() {
             <ItemCard
               key={item.uid}
               item={item}
+              inShowcase={showcase.some((s) => s.uid === item.uid)}
+              onShowcase={() => toggleShowcase(item.uid)}
               onDetail={() => setDetailItem(item)}
               onUpgrade={() => {
                 setUpgraderPick(item.uid);

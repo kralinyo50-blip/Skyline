@@ -521,10 +521,12 @@ function Crash({ bet, onStart, onEnd }: GameProps) {
 /* ================= ANA GÖRÜNÜM ================= */
 
 export function GamesView() {
-  const { balance, trySpend, credit, trackWager, trackMission, pushToast } = useGame();
+  const { balance, trySpend, credit, trackWager, trackMission, pushToast, vipCashback } = useGame();
   const [game, setGame] = useState<Game>("coinflip");
   const [bet, setBet] = useState(BETS[1]);
   const [betStr, setBetStr] = useState(String(BETS[1]));
+  /** tur başlarken yatan tutar — cashback hesabı için */
+  const wagerRef = useRef(0);
 
   /** tur başlarken bahsi düş */
   function onStart(): boolean {
@@ -534,14 +536,20 @@ export function GamesView() {
       return false;
     }
     if (safeBet !== bet) setBet(safeBet);
+    wagerRef.current = safeBet;
     trackWager(safeBet);
     trackMission("games");
     return true;
   }
 
-  /** tur bitti — brüt kazanç yatır (0 ise kayıp) */
+  /** tur bitti — brüt kazanç yatır (0 ise kayıp + VIP cashback) */
   function onEnd(payout: number) {
-    if (payout > 0) credit(payout);
+    if (payout > 0) {
+      credit(payout);
+    } else if (wagerRef.current > 0) {
+      vipCashback(wagerRef.current);
+    }
+    wagerRef.current = 0;
   }
 
   const games: { key: Game; label: string; Icon: typeof Dices; desc: string }[] = [

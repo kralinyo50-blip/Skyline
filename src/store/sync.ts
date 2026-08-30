@@ -94,6 +94,8 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     marketListings: mergeMarket(local.marketListings ?? [], cloud.market ?? []),
     marketPayments: mergeById(local.marketPayments ?? [], cloud.marketPayments ?? []),
     claimedMarket: local.claimedMarket ?? {},
+    /* jackpot yerel tur durumu — bulut yalnızca meta paylaşır (durum korunur) */
+    jackpot: local.jackpot,
   };
 
   /* kullanıcılar */
