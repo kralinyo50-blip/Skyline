@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { MARKET_FEE, QUICK_SELL_RATE, mcHead, money } from "../config";
 import { RARITY, SKIN_MAP, type Skin } from "../data/skins";
-import { priceRatio, sellChance, bulkTotal, bulkUnitPrice, bulkMult } from "../data/market";
+import { priceRatio, sellChance, bulkTotal, bulkUnitPrice, bulkMult, type Listing } from "../data/market";
 import { STICKER_MAP } from "../data/stickers";
 import { WEARS, wearFromFloat } from "../data/wear";
 import { itemValue, type InvItem } from "../data/items";
@@ -36,6 +36,12 @@ import { ItemDetailModal } from "./ItemDetailModal";
 type Tab = "buy" | "shop" | "sell";
 type Sort = "new" | "cheap" | "rich";
 type WearFilter = "all" | "fn" | "mw" | "ft" | "ww" | "bs";
+type ShopSource = "all" | "bot" | "player";
+
+/** Dükkan sekmesi: bot + gerçek oyuncu ilanları bir arada */
+type ShopItem =
+  | { kind: "bot"; l: Listing }
+  | { kind: "player"; l: MarketListing };
 
 const PER_PAGE = 16;
 
@@ -349,19 +355,23 @@ function SellModal({
   );
 }
 
-/* ---------------- dükkan alım modalı (gerçek oyuncu) ---------------- */
+/* ---------------- dükkan alım modalı (bot + gerçek oyuncu) ---------------- */
 function ShopBuyModal({
-  listing,
+  item,
   onClose,
 }: {
-  listing: MarketListing;
+  item: ShopItem;
   onClose: () => void;
 }) {
-  const { buyShopListing, pushToast, balance } = useGame();
-  const maxQty = Math.max(1, listing.qty ?? 1);
+  const { buyShopListing, buyListing, pushToast, balance } = useGame();
+  const listing = item.l;
+  const isBot = item.kind === "bot";
+  const unitPrice = item.kind === "bot" ? (item.l.unitPrice ?? item.l.price) : item.l.unitPrice;
+  const maxQty = isBot ? Math.max(1, item.l.qty ?? 1) : Math.max(1, item.l.qty ?? 1);
+  const sellerName = isBot ? item.l.seller : item.l.sellerName;
   const [qty, setQty] = useState(1);
   const skin = SKIN_MAP[listing.skinId];
-  const total = bulkTotal(listing.unitPrice, qty);
+  const total = bulkTotal(unitPrice, qty);
   const mult = bulkMult(qty);
   const discountPct = Math.round((1 - mult) * 100);
   const canAfford = balance >= total;
@@ -409,12 +419,17 @@ function ShopBuyModal({
               <div className="truncate font-display text-sm font-bold text-white">{skin.name}</div>
               <div className="mt-0.5 flex items-center gap-1 text-[10px] text-white/40">
                 <img
-                  src={mcHead(listing.sellerName, 24)}
+                  src={mcHead(sellerName, 24)}
                   alt=""
                   className="h-3.5 w-3.5 rounded"
                   style={{ imageRendering: "pixelated" }}
                 />
-                {listing.sellerName}
+                {sellerName}
+                {isBot && (
+                  <span className="rounded bg-white/10 px-1 py-px text-[8px] font-black uppercase text-white/50">
+                    Bot
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -468,7 +483,7 @@ function ShopBuyModal({
           <div className="mt-3 space-y-1.5 rounded-xl border border-line bg-ink-900 p-3 text-xs">
             <div className="flex justify-between">
               <span className="text-white/45">Birim fiyat ({qty} adet)</span>
-              <span className="font-semibold text-white">{money(bulkUnitPrice(listing.unitPrice, qty))}</span>
+              <span className="font-semibold text-white">{money(bulkUnitPrice(unitPrice, qty))}</span>
             </div>
             {qty > 1 && (
               <div className="flex justify-between">
@@ -481,13 +496,16 @@ function ShopBuyModal({
               <span className="font-display text-xl font-black text-emerald-400">{money(total)}</span>
             </div>
             <p className="text-[10px] text-white/30">
-              Komisyon %{MARKET_FEE * 100} — satıcıya {money(Math.round(total * (1 - MARKET_FEE)))} yatar.
+              {isBot
+                ? "Bot dükkanı — komisyon yok, anında envantere düşer."
+                : `Komisyon %${MARKET_FEE * 100} — satıcıya ${money(Math.round(total * (1 - MARKET_FEE)))} yatar.`}
             </p>
           </div>
 
           <button
             onClick={() => {
-              if (buyShopListing(listing.id, qty)) {
+              const got = isBot ? buyListing(listing.id, qty) : buyShopListing(listing.id, qty);
+              if (got) {
                 pushToast({
                   kind: "money",
                   title: qty > 1 ? `Paket alındı (${qty} adet)` : "Satın alındı",
@@ -529,10 +547,34 @@ export function MarketView() {
   const [wearFilter, setWearFilter] = useState<WearFilter>("all");
   const [q, setQ] = useState("");
   const [sellTarget, setSellTarget] = useState<{ uid: string; skin: Skin } | null>(null);
-  const [shopBuy, setShopBuy] = useState<MarketListing | null>(null);
+  const [shopBuy, setShopBuy] = useState<ShopItem | null>(null);
+  const [shopSource, setShopSource] = useState<ShopSource>("all");
   const [detail, setDetail] = useState<{ item: InvItem; listingId?: string } | null>(null);
   const [page, setPage] = useState(1);
   const [invPage, setInvPage] = useState(1);
+
+  /* Dükkan: bot + gerçek oyuncu ilanları birleşik liste */
+  const shopItems = useMemo(() => {
+    const bots: ShopItem[] = botListings.map((l) => ({ kind: "bot" as const, l }));
+    const players: ShopItem[] = shopListings.map((l) => ({ kind: "player" as const, l }));
+    let out = [...bots, ...players];
+    if (shopSource === "bot") out = out.filter((i) => i.kind === "bot");
+    if (shopSource === "player") out = out.filter((i) => i.kind === "player");
+    out = out.filter((i) => {
+      const s = SKIN_MAP[i.l.skinId];
+      if (!s) return false;
+      const t = `${s.weapon} ${s.name}`.toLowerCase();
+      return t.includes(q.trim().toLowerCase());
+    });
+    out.sort((a, b) => {
+      const pa = a.kind === "bot" ? a.l.unitPrice ?? a.l.price : a.l.unitPrice;
+      const pb = b.kind === "bot" ? b.l.unitPrice ?? b.l.price : b.l.unitPrice;
+      if (sort === "cheap") return pa - pb;
+      if (sort === "rich") return pb - pa;
+      return b.l.ts - a.l.ts;
+    });
+    return out;
+  }, [botListings, shopListings, q, sort, shopSource]);
 
   const listings = useMemo(() => {
     let out = botListings.filter((l) => {
@@ -640,7 +682,7 @@ export function MarketView() {
         >
           <Store className="h-4 w-4" /> Dükkan
           <span className="rounded-full bg-emerald-500/25 px-1.5 text-[10px] text-emerald-300">
-            {shopListings.length}
+            {shopItems.length}
           </span>
         </button>
         <button
@@ -830,13 +872,35 @@ export function MarketView() {
         </>
       )}
 
-      {/* ---------------- DÜKKAN (GERÇEK OYUNCULAR) ---------------- */}
+      {/* ---------------- DÜKKAN (BOT + GERÇEK OYUNCULAR) ---------------- */}
       {tab === "shop" && (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-ink-900/50 p-2">
-            <span className="px-1 text-[10px] font-bold uppercase tracking-widest text-white/35">
-              Gerçek oyuncu dükkanları
-            </span>
+            <div className="flex items-center gap-1.5">
+              {(
+                [
+                  { key: "all" as const, label: "Hepsi" },
+                  { key: "bot" as const, label: "🤖 Botlar" },
+                  { key: "player" as const, label: "👤 Oyuncular" },
+                ]
+              ).map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => {
+                    setShopSource(f.key);
+                    click();
+                  }}
+                  className={cn(
+                    "flex h-9 items-center gap-1 rounded-lg border px-3 text-[11px] font-bold transition",
+                    shopSource === f.key
+                      ? "border-brand-500/60 bg-brand-500/10 text-brand-300"
+                      : "border-line bg-ink-800 text-white/45 hover:text-white"
+                  )}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
             <div className="ml-auto flex items-center gap-2 rounded-lg border border-line bg-ink-800 px-2.5">
               <Search className="h-3.5 w-3.5 text-white/30" />
               <input
@@ -855,7 +919,7 @@ export function MarketView() {
             </button>
           </div>
 
-          {shopListings.length === 0 ? (
+          {shopItems.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line bg-ink-900/40 py-16 text-center">
               <Store className="mx-auto h-10 w-10 text-white/20" />
               <p className="mt-3 text-sm font-semibold text-white/60">Şu an açık dükkan yok</p>
@@ -868,110 +932,109 @@ export function MarketView() {
           ) : (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
               <AnimatePresence initial={false}>
-                {shopListings
-                  .filter((l) => {
-                    const s = SKIN_MAP[l.skinId];
-                    if (!s) return false;
-                    const t = `${s.weapon} ${s.name}`.toLowerCase();
-                    return t.includes(q.trim().toLowerCase());
-                  })
-                  .sort((a, b) =>
-                    sort === "cheap"
-                      ? a.unitPrice - b.unitPrice
-                      : sort === "rich"
-                        ? b.unitPrice - a.unitPrice
-                        : b.ts - a.ts
-                  )
-                  .map((l) => {
-                    const s = SKIN_MAP[l.skinId];
-                    if (!s) return null;
-                    const r = RARITY[s.rarity];
-                    const ratio = priceRatio({ price: l.unitPrice, baseValue: l.baseValue, skinId: l.skinId });
-                    const badge = ratioBadge(ratio);
-                    const maxQty = Math.max(1, l.qty ?? 1);
-                    const packTotal = maxQty > 1 ? bulkTotal(l.unitPrice, maxQty) : l.unitPrice;
-                    const canAfford = balance >= l.unitPrice;
-                    return (
-                      <motion.div
-                        key={l.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.94 }}
-                        className="flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800"
-                        style={{
-                          backgroundImage: `radial-gradient(120% 80% at 50% 0%, ${r.color}14, transparent 55%)`,
-                        }}
-                      >
-                        <div className="relative p-2.5">
-                          <span
-                            className="absolute right-2 top-2 rounded px-1.5 py-0.5 text-[9px] font-bold"
-                            style={{ color: badge.color, background: `${badge.color}1a` }}
-                          >
-                            {badge.text}
-                          </span>
-                          {maxQty > 1 && (
-                            <span className="absolute left-2 top-2 flex items-center gap-1 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-black text-emerald-300">
-                              <Boxes className="h-3 w-3" /> {maxQty} ADET
-                            </span>
+                {shopItems.map((item) => {
+                  const isBot = item.kind === "bot";
+                  const l = item.l;
+                  const unit = isBot ? (l as Listing).unitPrice ?? (l as Listing).price : (l as MarketListing).unitPrice;
+                  const sellerName = isBot ? (l as Listing).seller : (l as MarketListing).sellerName;
+                  const baseValue = l.baseValue ?? SKIN_MAP[l.skinId]?.price ?? 0;
+                  const s = SKIN_MAP[l.skinId];
+                  if (!s) return null;
+                  const r = RARITY[s.rarity];
+                  const ratio = priceRatio({ price: unit, baseValue, skinId: l.skinId });
+                  const badge = ratioBadge(ratio);
+                  const maxQty = Math.max(1, l.qty ?? 1);
+                  const packTotal = maxQty > 1 ? bulkTotal(unit, maxQty) : unit;
+                  const canAfford = balance >= unit;
+                  return (
+                    <motion.div
+                      key={`${item.kind}:${l.id}`}
+                      layout
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.94 }}
+                      className="flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800"
+                      style={{
+                        backgroundImage: `radial-gradient(120% 80% at 50% 0%, ${r.color}14, transparent 55%)`,
+                      }}
+                    >
+                      <div className="relative p-2.5">
+                        <span
+                          className="absolute right-2 top-2 rounded px-1.5 py-0.5 text-[9px] font-bold"
+                          style={{ color: badge.color, background: `${badge.color}1a` }}
+                        >
+                          {badge.text}
+                        </span>
+                        <span
+                          className={cn(
+                            "absolute left-2 top-2 rounded px-1.5 py-0.5 text-[9px] font-black uppercase",
+                            isBot ? "bg-white/10 text-white/50" : "bg-brand-500/20 text-brand-300"
                           )}
-                          <SkinImg skin={s} className="mx-auto h-20 w-full" />
-                          <div className="mt-1 truncate text-[10px] uppercase tracking-wider text-white/40">
-                            {s.weapon}
-                          </div>
-                          <div className="truncate font-display text-sm font-bold text-white/90">{s.name}</div>
-                          <div className="mt-1 flex items-center gap-1.5 text-[10px] text-white/35">
-                            <img
-                              src={mcHead(l.sellerName, 24)}
-                              alt=""
-                              className="h-4 w-4 rounded"
-                              style={{ imageRendering: "pixelated" }}
-                            />
-                            <span className="truncate">{l.sellerName}</span>
-                            <span className="ml-auto shrink-0">{ago(l.ts)}</span>
-                          </div>
+                        >
+                          {isBot ? "🤖 Bot" : "👤 Oyuncu"}
+                        </span>
+                        {maxQty > 1 && (
+                          <span className="absolute bottom-2 left-2 flex items-center gap-1 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-black text-emerald-300">
+                            <Boxes className="h-3 w-3" /> {maxQty} ADET
+                          </span>
+                        )}
+                        <SkinImg skin={s} className="mx-auto h-20 w-full" />
+                        <div className="mt-1 truncate text-[10px] uppercase tracking-wider text-white/40">
+                          {s.weapon}
                         </div>
+                        <div className="truncate font-display text-sm font-bold text-white/90">{s.name}</div>
+                        <div className="mt-1 flex items-center gap-1.5 text-[10px] text-white/35">
+                          <img
+                            src={mcHead(sellerName, 24)}
+                            alt=""
+                            className="h-4 w-4 rounded"
+                            style={{ imageRendering: "pixelated" }}
+                          />
+                          <span className="truncate">{sellerName}</span>
+                          <span className="ml-auto shrink-0">{ago(l.ts)}</span>
+                        </div>
+                      </div>
 
-                        <div className="mt-auto border-t border-line p-2.5">
-                          <div className="mb-1.5 flex items-baseline justify-between">
-                            <span className="font-display text-base font-black text-white">
-                              {maxQty > 1 ? money(packTotal) : money(l.unitPrice)}
-                            </span>
-                            <span className="text-[10px] text-white/30">
-                              {maxQty > 1 ? `${money(bulkUnitPrice(l.unitPrice, maxQty))}/adet` : `değer ${money(l.baseValue)}`}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => {
-                              setShopBuy(l);
-                              click();
-                            }}
-                            disabled={!canAfford}
-                            className={cn(
-                              "flex h-9 w-full items-center justify-center gap-1.5 rounded-lg font-display text-xs font-bold uppercase tracking-wider transition",
-                              canAfford
-                                ? "bg-gradient-to-b from-emerald-400 to-emerald-600 text-ink-950 hover:brightness-110"
-                                : "cursor-not-allowed bg-ink-600 text-white/30"
-                            )}
-                          >
-                            <ShoppingCart className="h-3.5 w-3.5" />
-                            {maxQty > 1 ? "Toptan Al" : "Satın Al"}
-                          </button>
+                      <div className="mt-auto border-t border-line p-2.5">
+                        <div className="mb-1.5 flex items-baseline justify-between">
+                          <span className="font-display text-base font-black text-white">
+                            {maxQty > 1 ? money(packTotal) : money(unit)}
+                          </span>
+                          <span className="text-[10px] text-white/30">
+                            {maxQty > 1 ? `${money(bulkUnitPrice(unit, maxQty))}/adet` : `değer ${money(baseValue)}`}
+                          </span>
                         </div>
-                      </motion.div>
-                    );
-                  })}
+                        <button
+                          onClick={() => {
+                            setShopBuy(item);
+                            click();
+                          }}
+                          disabled={!canAfford}
+                          className={cn(
+                            "flex h-9 w-full items-center justify-center gap-1.5 rounded-lg font-display text-xs font-bold uppercase tracking-wider transition",
+                            canAfford
+                              ? "bg-gradient-to-b from-emerald-400 to-emerald-600 text-ink-950 hover:brightness-110"
+                              : "cursor-not-allowed bg-ink-600 text-white/30"
+                          )}
+                        >
+                          <ShoppingCart className="h-3.5 w-3.5" />
+                          {maxQty > 1 ? "Toptan Al" : "Satın Al"}
+                        </button>
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
             </div>
           )}
 
           <div className="mt-4 rounded-2xl border border-line bg-ink-900/70 p-4 text-[11px] leading-relaxed text-white/45">
-            <span className="font-bold text-white/70">Nasıl çalışır?</span> "Sat" sekmesinde bir skin için
+            <span className="font-bold text-white/70">Nasıl çalışır?</span> Dükkanda{" "}
+            <span className="font-bold text-white/70">bot dükkanları</span> her zaman açıktır ve anında satış
+            yapar; <span className="font-bold text-white/70">oyuncu dükkanları</span> ise diğer gerçek
+            oyuncuların ilanlarıdır (görebilmek için senkron kodu girili olmalı). "Sat" sekmesinde bir skin için
             birden fazla kopyan varsa adet seçip <span className="font-bold text-brand-300">toptan paket</span>{" "}
-            yayınlayabilirsin: 5, 10, 25… adet aldıkça birim fiyat düşer ve tüm paketi tek tıkla satın
-            alabilirsin. Ancak <span className="font-bold text-white/70">diğer gerçek oyuncuların</span> bu
-            ilanları görebilmesi için ana menüdeki senkron kodunun girili olması gerekir; bot alıcılar ise her
-            durumda pazarı canlı tutar.
+            yayınlayabilirsin: 5, 10, 25… adet aldıkça birim fiyat düşer.
           </div>
         </>
       )}
@@ -1175,7 +1238,7 @@ export function MarketView() {
             onClose={() => setSellTarget(null)}
           />
         )}
-        {shopBuy && <ShopBuyModal listing={shopBuy} onClose={() => setShopBuy(null)} />}
+        {shopBuy && <ShopBuyModal item={shopBuy} onClose={() => setShopBuy(null)} />}
         {detail && (() => {
           const l = detail.listingId ? botListings.find((x) => x.id === detail.listingId) : null;
           const price = l?.price ?? 0;

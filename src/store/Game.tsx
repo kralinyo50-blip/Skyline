@@ -338,7 +338,7 @@ interface GameState {
   quickSell: (uidKey: string) => { skin: Skin | null; payout: number } | null;
   listOnMarket: (uidKey: string, price: number, qty?: number) => boolean;
   cancelListing: (listingId: string) => void;
-  buyListing: (listingId: string) => boolean;
+  buyListing: (listingId: string, qty?: number) => boolean;
   refreshMarket: () => void;
 
   /* gerçek oyuncu dükkanı (senkron) */
@@ -1005,18 +1005,22 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   /** Bot ilanından satın al — paket ise tüm kopyaları verir */
   const buyListing = useCallback(
-    (listingId: string): boolean => {
+    (listingId: string, qty?: number): boolean => {
       const l = botListingsRef.current.find((x) => x.id === listingId);
       if (!l) return false;
+      const maxQty = Math.max(1, l.qty ?? 1);
+      const want = Math.min(maxQty, Math.max(1, Math.round(qty ?? maxQty)));
+      /* birim fiyat: paketlerde unitPrice'ı, tekilde toplamı kullan */
+      const unit = l.unitPrice ?? Math.round(l.price / maxQty);
+      const total = qty === undefined && maxQty === 1 ? l.price : bulkTotal(unit, want);
       const fresh = loadDB();
       const me = currentUser(fresh);
-      if (!me || me.balance < l.price) {
+      if (!me || me.balance < total) {
         pushToast({ kind: "lose", title: "Yetersiz bakiye", sub: "Bu ilanı alamıyorsun" });
         return false;
       }
-      me.balance = Math.round(me.balance - l.price);
-      const qt = Math.max(1, l.qty ?? 1);
-      for (let i = 0; i < qt; i++) {
+      me.balance = Math.round(me.balance - total);
+      for (let i = 0; i < want; i++) {
         me.inventory.unshift({
           uid: uid(),
           skinId: l.skinId,
@@ -1028,14 +1032,25 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       saveDB(fresh);
       setDb(fresh);
       notifyDbChanged();
-      setBotListings((prev) => prev.filter((x) => x.id !== listingId).concat(makeBotListing()));
+      /* kalan kopya kaldıysa ilanı güncelle, bittiyse yenisini koy */
+      const remain = maxQty - want;
+      setBotListings((prev) =>
+        remain > 0
+          ? prev.map((x) =>
+              x.id === listingId
+                ? { ...x, qty: remain, unitPrice: unit, price: bulkTotal(unit, remain) }
+                : x
+            )
+          : prev.filter((x) => x.id !== listingId).concat(makeBotListing())
+      );
       coinDing();
       pushToast({
         kind: "money",
-        title: qt > 1 ? "Toptan paket alındı" : "Satın alındı",
-        sub: qt > 1
-          ? `${qt}× ${SKIN_MAP[l.skinId]?.weapon} | ${SKIN_MAP[l.skinId]?.name} — ${money(l.price)}`
-          : `${SKIN_MAP[l.skinId]?.weapon} | ${SKIN_MAP[l.skinId]?.name} — ${money(l.price)}`,
+        title: want > 1 ? "Toptan paket alındı" : "Satın alındı",
+        sub:
+          want > 1
+            ? `${want}× ${SKIN_MAP[l.skinId]?.weapon} | ${SKIN_MAP[l.skinId]?.name} — ${money(total)}`
+            : `${SKIN_MAP[l.skinId]?.weapon} | ${SKIN_MAP[l.skinId]?.name} — ${money(total)}`,
       });
       return true;
     },

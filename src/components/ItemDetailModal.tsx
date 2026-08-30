@@ -3,7 +3,7 @@ import { Package, X } from "lucide-react";
 import { money } from "../config";
 import { itemTitle, itemValue, itemWear, type InvItem } from "../data/items";
 import { SKIN_MAP, RARITY } from "../data/skins";
-import { STICKER_MAP } from "../data/stickers";
+import { STICKER_MAP, stickerBonus } from "../data/stickers";
 import { floatPremium, WEARS } from "../data/wear";
 import { SkinImg } from "./SkinCard";
 import { FloatBar, WearBadge } from "./WearUi";
@@ -32,12 +32,9 @@ export function ItemDetailModal({ item, onClose, actions, subtitle }: Props) {
   const base = skin?.price ?? 0;
   const wMult = wear && typeof item.float === "number" ? WEARS[wear].mult : 1;
   const premium = wear && typeof item.float === "number" ? floatPremium(item.float) : 1;
-  const stickerBonus = (item.stickers ?? []).reduce((a, sid) => {
-    const s = STICKER_MAP[sid];
-    return a + (s ? Math.round(s.price * 0.22) : 0);
-  }, 0);
+  const bonus = stickerBonus(item.stickers ?? []);
   const afterWear = Math.round(base * wMult * premium);
-  const totalCalc = afterWear + stickerBonus;
+  const totalCalc = afterWear + bonus;
 
   const rows: { label: string; value: string }[] = [];
   if (!isSticker) {
@@ -50,7 +47,7 @@ export function ItemDetailModal({ item, onClose, actions, subtitle }: Props) {
       if (premium !== 1)
         rows.push({ label: "Float primi (koleksiyoncu)", value: `×${premium.toFixed(2)}` });
     }
-    if (stickerBonus > 0) rows.push({ label: `Sticker bonusu (${item.stickers?.length ?? 0})`, value: `+${money(stickerBonus)}` });
+    if (bonus > 0) rows.push({ label: `Sticker bonusu (${item.stickers?.length ?? 0})`, value: `+${money(bonus)}` });
   }
 
   return (
@@ -174,7 +171,7 @@ export function ItemDetailModal({ item, onClose, actions, subtitle }: Props) {
             {!isSticker && (
               <div className="mt-1 text-right text-[9px] tabular-nums text-white/25">
                 hesaplanan: {money(base)} × {wMult.toFixed(2)}{premium !== 1 ? ` × ${premium.toFixed(2)}` : ""}
-                {stickerBonus > 0 ? ` + ${money(stickerBonus)}` : ""}
+                {bonus > 0 ? ` + ${money(bonus)}` : ""}
               </div>
             )}
           </div>

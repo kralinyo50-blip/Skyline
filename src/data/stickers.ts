@@ -389,10 +389,22 @@ export function registerStickerDef(s: Sticker) {
 export const CUSTOM_STICKER_COST = 500;
 
 /** Silaha yapıştırılan stickerların kattığı ek değer */
-export const STICKER_ABSORB = 0.22;
+export const STICKER_ABSORB = 0.45;
+
+/** Nadir stickerlar değerlerinin daha büyük kısmını silaha aktarır */
+export const STICKER_RARITY_BOOST: Record<StickerRarity, number> = {
+  high: 0.7,
+  remarkable: 1,
+  exotic: 1.35,
+  extraordinary: 1.8,
+};
 
 export function stickerBonus(ids: string[]): number {
-  return ids.reduce((a, id) => a + (STICKER_MAP[id]?.price ?? 0) * STICKER_ABSORB, 0);
+  return ids.reduce((a, id) => {
+    const s = STICKER_MAP[id];
+    if (!s) return a;
+    return a + Math.round(s.price * STICKER_ABSORB * STICKER_RARITY_BOOST[s.rarity]);
+  }, 0);
 }
 
 export const MAX_STICKERS = 4;
