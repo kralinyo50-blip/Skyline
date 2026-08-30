@@ -4,13 +4,17 @@ import {
   BadgeCheck,
   Banknote,
   Check,
+  ChevronLeft,
+  ChevronRight,
   ClipboardCopy,
   CloudUpload,
   Clock,
   Coins,
+  Dices,
   Gift,
   Megaphone,
   Minus,
+  Package,
   PartyPopper,
   Plus,
   RefreshCcw,
@@ -25,11 +29,57 @@ import {
 import { ADMIN_NAME, FIRST_LOGIN_REWARD, RAFFLE_FREQ_MS, RAFFLE_PRIZE, mcHead, money } from "../config";
 import { click, coinDing } from "../lib/audio";
 import { useGame, levelFromSpent } from "../store/Game";
-import { SKIN_MAP, RARITY } from "../data/skins";
-import { SkinCard } from "./SkinCard";
+import { SKIN_MAP, RARITY, type Skin } from "../data/skins";
+import { MAX_STICKERS, STICKERS } from "../data/stickers";
+import { WEARS, rollFloat, type WearKey } from "../data/wear";
+import { FloatBar } from "./WearUi";
 import { cn } from "../utils/cn";
 
 type Sec = "users" | "deposits" | "players" | "sync" | "events";
+
+/* ---------------- SKİN HEDİYESİ — seçim taslağı ---------------- */
+type SkinDraft = {
+  id: string;
+  version: "base" | "st" | "sv";
+  wear: WearKey | "random";
+  float: number;
+  stickers: string[];
+};
+
+const WEAR_KEYS: WearKey[] = ["fn", "mw", "ft", "ww", "bs"];
+
+function newSkinDraft(s: Skin): SkinDraft {
+  return { id: s.id, version: "base", wear: "random", float: rollFloat(), stickers: [] };
+}
+
+function wearFloat(w: WearKey): number {
+  const d = WEARS[w];
+  return Math.round((d.min + Math.random() * (d.max - d.min)) * 1000) / 1000;
+}
+
+/** Görsel — tam görünür (object-contain), hata ise isimli fallback */
+function PickImg({ s, className }: { s: Skin; className?: string }) {
+  const [err, setErr] = useState(false);
+  const color = RARITY[s.rarity].color;
+  if (err)
+    return (
+      <div className={cn("flex flex-col items-center justify-center", className)}>
+        <Package className="h-6 w-6" style={{ color }} />
+        <span className="mt-1 px-2 text-center text-[9px] font-bold text-white/60">{s.weapon}</span>
+      </div>
+    );
+  return (
+    <img
+      src={s.img}
+      alt={`${s.weapon} | ${s.name}`}
+      loading="lazy"
+      draggable={false}
+      onError={() => setErr(true)}
+      className={cn("select-none object-contain", className)}
+      style={{ filter: "drop-shadow(0 8px 14px rgba(0,0,0,0.5))" }}
+    />
+  );
+}
 
 function ago(ts: number): string {
   const s = Math.floor((Date.now() - ts) / 1000);
@@ -70,7 +120,6 @@ export function AdminPanel() {
     syncCode,
     setSyncCode,
     syncNow,
-    adminGiveSkin,
     raffle,
     startRaffle,
     cancelRaffle,
@@ -98,6 +147,8 @@ export function AdminPanel() {
   const [skinFor, setSkinFor] = useState<{ key: string; name: string } | null>(null);
   const [skinQuery, setSkinQuery] = useState("");
   const [skinRarity, setSkinRarity] = useState<string>("all");
+  const [skinPageRaw, setSkinPageRaw] = useState(0);
+  const [skinDetail, setSkinDetail] = useState<SkinDraft | null>(null);
 
   const skinResults = useMemo(() => {
     const qq = skinQuery.trim().toLowerCase();
@@ -111,9 +162,16 @@ export function AdminPanel() {
           s.weapon.toLowerCase().includes(qq) ||
           s.id.includes(qq)
       )
-      .sort((a, b) => RARITY[b.rarity].order - RARITY[a.rarity].order || a.name.localeCompare(b.name))
-      .slice(0, 60);
+      .sort((a, b) => RARITY[b.rarity].order - RARITY[a.rarity].order || a.name.localeCompare(b.name));
   }, [skinQuery, skinRarity]);
+
+  const SKIN_PAGE = 24;
+  const skinPages = Math.max(1, Math.ceil(skinResults.length / SKIN_PAGE));
+  const skinPage = Math.min(skinPageRaw, skinPages - 1);
+  const skinPageItems = useMemo(
+    () => skinResults.slice(skinPage * SKIN_PAGE, (skinPage + 1) * SKIN_PAGE),
+    [skinResults, skinPage]
+  );
 
   function applyAdjustment(key: string, name: string, direction: 1 | -1) {
     const raw = adjustInputs[key] ?? "";
@@ -957,6 +1015,8 @@ export function AdminPanel() {
                         setSkinFor({ key: u.key, name: u.name });
                         setSkinQuery("");
                         setSkinRarity("all");
+                        setSkinPageRaw(0);
+                        setSkinDetail(null);
                         click();
                       }}
                       className="flex h-8 items-center gap-0.5 rounded-lg border border-brand-500/40 bg-brand-500/10 px-2 text-[11px] font-bold text-brand-300 transition hover:bg-brand-500/20"
@@ -987,84 +1047,399 @@ export function AdminPanel() {
         </div>
       )}
 
-      {/* ---------------- SKİN HEDİYE MODALI ---------------- */}
+      {/* ---------------- SKİN HEDİYE MODALI (TAM EKRAN) ---------------- */}
       <AnimatePresence>
         {skinFor && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-            onClick={() => setSkinFor(null)}
+            className="fixed inset-0 z-[90] flex flex-col bg-ink-950/98 backdrop-blur-md"
           >
-            <motion.div
-              initial={{ scale: 0.95, y: 16, opacity: 0 }}
-              animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-2xl border border-line bg-ink-800 shadow-2xl"
-            >
-              <div className="flex items-center gap-2.5 border-b border-line p-4">
-                <Gift className="h-5 w-5 text-brand-400" />
-                <div className="flex-1">
-                  <div className="font-display text-lg font-bold">Skin Hediye Et</div>
-                  <div className="text-[11px] text-white/40">Oyuncu: {skinFor.name}</div>
-                </div>
-                <button onClick={() => setSkinFor(null)} className="rounded-lg p-2 text-white/40 hover:text-white">
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
-                <div className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-line bg-ink-900 px-3">
-                  <Search className="h-3.5 w-3.5 shrink-0 text-white/30" />
-                  <input
-                    value={skinQuery}
-                    onChange={(e) => setSkinQuery(e.target.value)}
-                    placeholder="Silah veya skin ara…"
-                    className="h-full min-w-0 flex-1 bg-transparent text-xs text-white placeholder:text-white/25 focus:outline-none"
-                  />
-                </div>
-                <select
-                  value={skinRarity}
-                  onChange={(e) => setSkinRarity(e.target.value)}
-                  className="h-9 rounded-lg border border-line bg-ink-900 px-2 text-[11px] font-bold text-white/70 focus:outline-none"
+            {/* başlık */}
+            <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
+              {skinDetail && (
+                <button
+                  onClick={() => setSkinDetail(null)}
+                  className="flex h-9 items-center gap-1 rounded-lg border border-line bg-ink-800 px-3 text-xs font-bold text-white/60 transition hover:text-white"
                 >
-                  <option value="all">Tüm nadirlikler</option>
-                  {Object.entries(RARITY)
-                    .sort((a, b) => b[1].order - a[1].order)
-                    .map(([k, r]) => (
-                      <option key={k} value={k}>
-                        {r.tr}
-                      </option>
-                    ))}
-                </select>
+                  <ChevronLeft className="h-4 w-4" /> Geri
+                </button>
+              )}
+              <Gift className="h-5 w-5 text-brand-400" />
+              <div className="min-w-0 flex-1">
+                <div className="font-display text-lg font-bold leading-tight">
+                  {skinDetail ? "Skin Detayı" : "Skin Hediye Et"}
+                </div>
+                <div className="truncate text-[11px] text-white/40">
+                  Oyuncu: <span className="font-bold text-white/70">{skinFor.name}</span>
+                  {!skinDetail && ` · ${skinResults.length.toLocaleString("tr-TR")} skin`}
+                </div>
               </div>
+              <button
+                onClick={() => {
+                  setSkinFor(null);
+                  setSkinDetail(null);
+                }}
+                className="rounded-lg p-2 text-white/40 hover:bg-white/5 hover:text-white"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-              <div className="tiny-scroll grid flex-1 grid-cols-2 gap-2.5 overflow-y-auto p-4 sm:grid-cols-3 lg:grid-cols-4">
-                {skinResults.map((s) => (
-                  <SkinCard
-                    key={s.id}
-                    skin={s}
-                    size="sm"
-                    price={false}
-                    onClick={() => {
-                      adminGiveSkin(skinFor.key, s.id);
-                      pushToast({
-                        kind: "money",
-                        title: `Skin gönderildi: ${s.weapon} | ${s.name}`,
-                        sub: `${skinFor.name} envanterine eklenecek`,
-                      });
-                      coinDing();
-                      setSkinFor(null);
+            {!skinDetail ? (
+              <>
+                {/* arama + filtre */}
+                <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
+                  <div className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-ink-900 px-3">
+                    <Search className="h-4 w-4 shrink-0 text-white/30" />
+                    <input
+                      value={skinQuery}
+                      onChange={(e) => {
+                        setSkinQuery(e.target.value);
+                        setSkinPageRaw(0);
+                      }}
+                      placeholder="Silah veya skin ara… (örn. AWP, Karambit, Redline)"
+                      className="h-full min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-white/25 focus:outline-none"
+                    />
+                  </div>
+                  <select
+                    value={skinRarity}
+                    onChange={(e) => {
+                      setSkinRarity(e.target.value);
+                      setSkinPageRaw(0);
                     }}
-                  />
-                ))}
-              </div>
-            </motion.div>
+                    className="h-10 rounded-xl border border-line bg-ink-900 px-3 text-[11px] font-bold text-white/70 focus:outline-none"
+                  >
+                    <option value="all">Tüm nadirlikler</option>
+                    {Object.entries(RARITY)
+                      .sort((a, b) => b[1].order - a[1].order)
+                      .map(([k, r]) => (
+                        <option key={k} value={k}>
+                          {r.tr}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                {/* grid */}
+                <div className="tiny-scroll min-h-0 flex-1 overflow-y-auto p-4">
+                  {skinPageItems.length === 0 ? (
+                    <p className="py-16 text-center text-sm text-white/35">Skin bulunamadı — aramayı değiştir</p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
+                      {skinPageItems.map((s) => (
+                        <button
+                          key={s.id}
+                          onClick={() => {
+                            setSkinDetail(newSkinDraft(s));
+                            click();
+                          }}
+                          className="group overflow-hidden rounded-xl border border-line bg-ink-900/80 text-left transition hover:-translate-y-0.5 hover:border-brand-500/60 hover:shadow-lg"
+                        >
+                          <div
+                            className="relative h-24 w-full"
+                            style={{
+                              background: `radial-gradient(120% 90% at 50% 0%, ${RARITY[s.rarity].color}1a 0%, transparent 60%), linear-gradient(to bottom, #10131d, #0a0d16)`,
+                            }}
+                          >
+                            <PickImg s={s} className="h-full w-full p-1.5 transition group-hover:scale-105" />
+                            <span
+                              className="absolute bottom-1.5 right-1.5 rounded bg-ink-950/80 px-1.5 py-0.5 text-[9px] font-black"
+                              style={{ color: RARITY[s.rarity].color }}
+                            >
+                              {RARITY[s.rarity].tr.slice(0, 4)}
+                            </span>
+                          </div>
+                          <div className="border-t border-line/70 px-2 py-1.5">
+                            <div className="truncate text-[10px] font-bold text-white/80">{s.weapon}</div>
+                            <div className="truncate text-[10px] text-white/40">{s.name}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* sayfalama */}
+                <div className="flex flex-wrap items-center justify-center gap-2 border-t border-line px-4 py-3">
+                  <button
+                    onClick={() => setSkinPageRaw((p) => Math.max(0, p - 1))}
+                    disabled={skinPage === 0}
+                    className="flex h-9 items-center gap-1 rounded-lg border border-line bg-ink-800 px-3 text-xs font-bold text-white/60 transition hover:text-white disabled:opacity-30"
+                  >
+                    <ChevronLeft className="h-4 w-4" /> Önceki
+                  </button>
+                  <span className="px-2 text-xs font-bold text-white/50">
+                    Sayfa {skinPage + 1} / {skinPages} · {skinResults.length} skin
+                  </span>
+                  <button
+                    onClick={() => setSkinPageRaw((p) => Math.min(skinPages - 1, p + 1))}
+                    disabled={skinPage >= skinPages - 1}
+                    className="flex h-9 items-center gap-1 rounded-lg border border-line bg-ink-800 px-3 text-xs font-bold text-white/60 transition hover:text-white disabled:opacity-30"
+                  >
+                    Sonraki <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </>
+            ) : (
+              <SkinDetailPanel
+                draft={skinDetail}
+                setDraft={setSkinDetail}
+                playerName={skinFor.name}
+                playerKey={skinFor.key}
+                onClose={() => {
+                  setSkinFor(null);
+                  setSkinDetail(null);
+                }}
+                onSent={() => {
+                  pushToast({
+                    kind: "money",
+                    title: `Skin gönderildi: ${SKIN_MAP[skinDetail.id]?.weapon ?? ""} ${SKIN_MAP[skinDetail.id]?.name ?? ""}`,
+                    sub: `${skinFor.name} envanterine eklenecek`,
+                  });
+                  coinDing();
+                  setSkinFor(null);
+                  setSkinDetail(null);
+                }}
+              />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+/* ---------------- SKİN DETAY PANELİ — durum/versiyon/sticker seç, yolla ---------------- */
+function SkinDetailPanel({
+  draft,
+  setDraft,
+  playerName,
+  playerKey,
+  onClose,
+  onSent,
+}: {
+  draft: SkinDraft;
+  setDraft: (d: SkinDraft) => void;
+  playerName: string;
+  playerKey: string;
+  onClose: () => void;
+  onSent: () => void;
+}) {
+  const { adminGiveSkin } = useGame();
+  const baseId = draft.id.replace(/-(st|sv)$/, "");
+  const skin = SKIN_MAP[baseId];
+  if (!skin) return null;
+  const r = RARITY[skin.rarity];
+  const stExists = !!SKIN_MAP[baseId + "-st"];
+  const svExists = !!SKIN_MAP[baseId + "-sv"];
+  const wear = draft.wear === "random" ? null : WEARS[draft.wear];
+
+  function send() {
+    const finalId = draft.version === "st" ? baseId + "-st" : draft.version === "sv" ? baseId + "-sv" : baseId;
+    const opts: { float?: number; stickers?: string[] } = {};
+    if (draft.wear !== "random") opts.float = draft.float;
+    if (draft.stickers.length) opts.stickers = draft.stickers;
+    adminGiveSkin(playerKey, finalId, opts);
+    onSent();
+  }
+
+  return (
+    <div className="tiny-scroll min-h-0 flex-1 overflow-y-auto p-4">
+      <div className="mx-auto grid w-full max-w-5xl gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+        {/* ---------- büyük görsel + bilgi ---------- */}
+        <div className="rounded-2xl border border-line bg-ink-900/80 p-4">
+          <div
+            className="relative flex h-52 items-center justify-center overflow-hidden rounded-xl sm:h-80"
+            style={{
+              background: `radial-gradient(130% 100% at 50% 0%, ${r.color}24 0%, transparent 60%), linear-gradient(to bottom, #10131d, #0a0d16)`,
+            }}
+          >
+            <PickImg s={skin} className="h-full w-full p-3 sm:p-6" />
+            <span
+              className="absolute left-3 top-3 rounded bg-ink-950/80 px-2 py-1 text-[10px] font-black uppercase tracking-wider"
+              style={{ color: r.color }}
+            >
+              {r.tr}
+            </span>
+            {(draft.version === "st" || draft.version === "sv") && (
+              <span className="absolute right-3 top-3 rounded bg-ink-950/80 px-2 py-1 text-[10px] font-black uppercase tracking-wider text-brand-300">
+                {draft.version === "st" ? "StatTrak™" : "Hatıra"}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[11px] font-bold uppercase tracking-widest text-white/40">{skin.weapon}</div>
+              <div className="font-display text-2xl font-black text-white">{skin.name}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] uppercase tracking-widest text-white/35">Değer</div>
+              <div className="font-display text-xl font-black text-emerald-400">{money(skin.price)}</div>
+            </div>
+          </div>
+
+          {wear && (
+            <div className="mt-4 rounded-xl border border-line bg-ink-800/70 p-3">
+              <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-white/40">
+                <span style={{ color: wear.color }}>{wear.tr}</span>
+                <span className="tabular-nums text-white/70">
+                  {draft.float.toFixed(4)} · x{wear.mult.toFixed(2)}
+                </span>
+              </div>
+              <FloatBar float={draft.float} />
+            </div>
+          )}
+        </div>
+
+        {/* ---------- ayarlar ---------- */}
+        <div className="space-y-4">
+          {/* versiyon */}
+          <div className="rounded-2xl border border-line bg-ink-900/80 p-4">
+            <div className="mb-2.5 text-[10px] font-black uppercase tracking-widest text-white/45">Versiyon</div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(
+                [
+                  { k: "base", label: "Normal", ok: true },
+                  { k: "st", label: "StatTrak™", ok: stExists },
+                  { k: "sv", label: "Hatıra", ok: svExists },
+                ] as const
+              ).map((v) => (
+                <button
+                  key={v.k}
+                  disabled={!v.ok}
+                  onClick={() => setDraft({ ...draft, version: v.k })}
+                  className={cn(
+                    "h-10 rounded-xl border text-[11px] font-bold transition",
+                    draft.version === v.k
+                      ? "border-brand-500/70 bg-brand-500/15 text-brand-300"
+                      : "border-line bg-ink-800 text-white/45 hover:text-white",
+                    !v.ok && "cursor-not-allowed opacity-30"
+                  )}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* durum */}
+          <div className="rounded-2xl border border-line bg-ink-900/80 p-4">
+            <div className="mb-2.5 text-[10px] font-black uppercase tracking-widest text-white/45">
+              Durum (Aşınma)
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setDraft({ ...draft, wear: "random" })}
+                className={cn(
+                  "h-9 rounded-lg border px-3 text-[11px] font-bold transition",
+                  draft.wear === "random"
+                    ? "border-brand-500/70 bg-brand-500/15 text-brand-300"
+                    : "border-line bg-ink-800 text-white/45 hover:text-white"
+                )}
+              >
+                🎲 Rastgele
+              </button>
+              {WEAR_KEYS.map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setDraft({ ...draft, wear: k, float: wearFloat(k) })}
+                  className={cn(
+                    "h-9 rounded-lg border px-3 text-[11px] font-bold transition",
+                    draft.wear === k
+                      ? "border-brand-500/70 bg-brand-500/15 text-brand-300"
+                      : "border-line bg-ink-800 text-white/45 hover:text-white"
+                  )}
+                >
+                  {WEARS[k].short}
+                </button>
+              ))}
+            </div>
+            {draft.wear !== "random" && (
+              <div className="mt-3">
+                <div className="mb-2 flex items-center justify-between text-[11px]">
+                  <span style={{ color: wear?.color }}>{wear?.tr}</span>
+                  <button
+                    onClick={() => setDraft({ ...draft, float: wearFloat(draft.wear as WearKey) })}
+                    className="flex items-center gap-1 rounded-lg border border-line bg-ink-800 px-2 py-1 text-[10px] font-bold text-white/55 transition hover:text-white"
+                  >
+                    <Dices className="h-3 w-3" /> Yeni değer
+                  </button>
+                </div>
+                <div className="rounded-lg border border-line bg-ink-800/70 px-3 py-2 font-mono text-sm font-bold tabular-nums text-white/85">
+                  Float: {draft.float.toFixed(4)}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* sticker */}
+          <div className="rounded-2xl border border-line bg-ink-900/80 p-4">
+            <div className="mb-1 flex items-center justify-between">
+              <div className="text-[10px] font-black uppercase tracking-widest text-white/45">
+                Sticker ({draft.stickers.length}/{MAX_STICKERS})
+              </div>
+              {draft.stickers.length > 0 && (
+                <button
+                  onClick={() => setDraft({ ...draft, stickers: [] })}
+                  className="text-[10px] font-bold text-lose hover:underline"
+                >
+                  Temizle
+                </button>
+              )}
+            </div>
+            <p className="mb-2.5 text-[10px] text-white/30">
+              İsteğe bağlı — seçtiklerin eşyaya yapışık gönderilir.
+            </p>
+            <div className="tiny-scroll flex gap-1.5 overflow-x-auto pb-1">
+              {STICKERS.map((s2) => {
+                const sel = draft.stickers.includes(s2.id);
+                const full = !sel && draft.stickers.length >= MAX_STICKERS;
+                return (
+                  <button
+                    key={s2.id}
+                    disabled={full}
+                    title={`${s2.name} — ${money(s2.price)}`}
+                    onClick={() =>
+                      setDraft({
+                        ...draft,
+                        stickers: sel
+                          ? draft.stickers.filter((x) => x !== s2.id)
+                          : [...draft.stickers, s2.id].slice(0, MAX_STICKERS),
+                      })
+                    }
+                    className={cn(
+                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border bg-ink-950 transition",
+                      sel
+                        ? "border-brand-500 bg-brand-500/15"
+                        : "border-line hover:border-white/30",
+                      full && "opacity-30"
+                    )}
+                  >
+                    <img src={s2.img} alt={s2.name} className="h-8 w-8 object-contain" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* gönder */}
+          <button
+            onClick={send}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110"
+          >
+            <Gift className="h-4 w-4" /> {playerName} kişisine gönder
+          </button>
+          <button
+            onClick={onClose}
+            className="flex h-10 w-full items-center justify-center rounded-xl border border-line bg-ink-800 text-xs font-bold text-white/50 transition hover:text-white"
+          >
+            Vazgeç
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

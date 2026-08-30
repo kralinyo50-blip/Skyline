@@ -128,6 +128,8 @@ export interface DepositReq {
   /** yetkili skin hediyesi — claim edilince envantere eklenir */
   skinId?: string;
   skinName?: string;
+  /** hediye seçenekleri: aşınma + sticker */
+  skinOpts?: { float?: number; stickers?: string[] };
 }
 
 /* ---------------- ETKİNLİK / ÇEKİLİŞ / DUYURU ---------------- */

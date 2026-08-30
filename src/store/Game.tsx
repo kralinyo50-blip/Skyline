@@ -16,7 +16,7 @@ import {
   maybeAttachStickers,
 } from "../data/items";
 import { rollFloat } from "../data/wear";
-import { MAX_STICKERS, STICKERS, CUSTOM_STICKER_COST } from "../data/stickers";
+import { MAX_STICKERS, STICKERS, STICKER_MAP, CUSTOM_STICKER_COST } from "../data/stickers";
 import {
   buildCustomSticker,
   registerCustomSticker,
@@ -286,7 +286,7 @@ interface GameState {
   claimAch: (id: string) => void;
 
   /* admin: skin hediyesi */
-  adminGiveSkin: (key: string, skinId: string) => void;
+  adminGiveSkin: (key: string, skinId: string, opts?: { float?: number; stickers?: string[] }) => void;
 
   /* duyuru */
   announcement: Announcement | null;
@@ -1394,9 +1394,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   /* ---------------- ADMIN: SKİN HEDİYESİ ---------------- */
   const adminGiveSkin = useCallback(
-    (key: string, skinId: string) => {
+    (key: string, skinId: string, opts?: { float?: number; stickers?: string[] }) => {
       const skin = SKIN_MAP[skinId];
-      if (!skin) return;
+      if (!skin || skin.sticker) return;
+      const fine: { float?: number; stickers?: string[] } = {};
+      if (typeof opts?.float === "number" && Number.isFinite(opts.float)) {
+        fine.float = Math.min(1, Math.max(0, Math.round(opts.float * 1000) / 1000));
+      }
+      if (Array.isArray(opts?.stickers)) {
+        const st = opts.stickers.filter((s) => STICKER_MAP[s]).slice(0, 4);
+        if (st.length) fine.stickers = st;
+      }
       let ok = false;
       mutate((draft) => {
         const u = draft.users[key];
@@ -1413,6 +1421,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           decidedBy: ADMIN_NAME,
           skinId: skin.id,
           skinName: `${skin.weapon} | ${skin.name}`,
+          skinOpts: Object.keys(fine).length ? fine : undefined,
         });
         ok = true;
       });
@@ -1847,7 +1856,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                 uid: uid(),
                 skinId: d.skinId,
                 ts: Date.now(),
-                float: isStickerItem(d.skinId) ? undefined : rollFloat(),
+                float: isStickerItem(d.skinId)
+                  ? undefined
+                  : typeof d.skinOpts?.float === "number"
+                    ? d.skinOpts.float
+                    : rollFloat(),
+                stickers: d.skinOpts?.stickers?.length ? [...d.skinOpts.stickers] : undefined,
               });
             } else {
               /* Eski sürümden kalan başlangıç bonusları artık uygulanmaz. */

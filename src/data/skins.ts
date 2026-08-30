@@ -1,5 +1,6 @@
 import { money, priceOf, MIN_PRICE } from "../config";
 import { STICKERS } from "./stickers";
+import { EXTRA_SKINS } from "./extraSkins";
 
 export type RarityKey =
   | "consumer"
@@ -246,8 +247,11 @@ const STICKER_SKINS: Skin[] = STICKERS.map((s) => ({
 
 export const SKINS: Skin[] = [
   ...BASE_SKINS.map(scaled),
+  ...EXTRA_SKINS.map(scaled),
   ...BASE_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeSt),
   ...BASE_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeSv),
+  ...EXTRA_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeSt),
+  ...EXTRA_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeSv),
   ...STICKER_SKINS,
 ];
 
