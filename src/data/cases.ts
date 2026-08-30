@@ -3,7 +3,7 @@ import { EXTRA_SKINS } from "./extraSkins";
 import { LEGEND_SKINS, LEGEND_IDS } from "./legends";
 import { WEAPON_CAT } from "./weaponCats";
 import { CASE_MARKUP, roundCasePrice } from "../config";
-import { TEAM_STICKER_IDS } from "./stickers";
+import { TEAM_STICKER_IDS, CHAMPION_HOLO_IDS, CHAMPION_FOIL_IDS, CHAMPION_GOLD_IDS } from "./stickers";
 import { seededRng } from "../lib/rng";
 
 const CDN = "https://community.akamai.steamstatic.com/economy/image/";
@@ -481,9 +481,25 @@ const STICKER_CASES: CaseDef[] = [
     capsule: true,
     hot: true,
     contents: {
-      milspec: TEAM_STICKER_IDS.filter((id) => !id.endsWith("-holo") && !id.endsWith("-gold")),
+      milspec: TEAM_STICKER_IDS.filter((id) => !id.endsWith("-holo") && !id.endsWith("-foil") && !id.endsWith("-gold")),
       restricted: TEAM_STICKER_IDS.filter((id) => id.endsWith("-holo")),
+      classified: TEAM_STICKER_IDS.filter((id) => id.endsWith("-foil")),
       covert: TEAM_STICKER_IDS.filter((id) => id.endsWith("-gold")),
+    },
+  },
+  {
+    id: "capsule-champions",
+    name: "Major Şampiyon Kapsülü",
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bjn_lDkShjjoYbh_ilk7OKmOvQ_dM-UHGiF0dF1uOBkXyC8mw5psDjTwt-vI3rDPwMlWJd0ROMP5xPskdLmNe7n5AeI2YJBmST9iyoavzErvbi0sb1FJQ",
+    price: 0,
+    accent: "#e4ae39",
+    tagline: "Sadece Major şampiyonları — çok değerli",
+    capsule: true,
+    hot: true,
+    contents: {
+      restricted: CHAMPION_HOLO_IDS,
+      classified: CHAMPION_FOIL_IDS,
+      covert: CHAMPION_GOLD_IDS,
     },
   },
   {

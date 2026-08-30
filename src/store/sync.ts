@@ -1,4 +1,11 @@
-import { isAdminName, type Account, type DB, type DepositReq } from "./db";
+import {
+  isAdminName,
+  type Account,
+  type DB,
+  type DepositReq,
+  type MarketListing,
+  type MarketPayment,
+} from "./db";
 
 /* -------------------------------------------------------------
    Hafif bulut senkronu — herhangi bir GET/PUT JSON ucuyla çalışır
@@ -28,6 +35,9 @@ export interface CloudDoc {
   raffle?: DB["raffle"];
   firstLogin?: DB["firstLogin"];
   settings?: DB["settings"];
+  /** gerçek oyuncu dükkanı — tüm cihazlarla paylaşılır */
+  market?: MarketListing[];
+  marketPayments?: MarketPayment[];
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -50,6 +60,13 @@ export function toCloudDoc(db: DB): CloudDoc {
     raffle: db.raffle ?? undefined,
     firstLogin: db.firstLogin ?? undefined,
     settings: db.settings ?? undefined,
+    market: (db.marketListings ?? [])
+      .filter((l) => !l.removed || Date.now() - l.ts < 3 * 24 * 3600 * 1000)
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 300),
+    marketPayments: [...(db.marketPayments ?? [])]
+      .sort((a, b) => a.ts - b.ts)
+      .slice(-400),
   };
 }
 
@@ -70,6 +87,10 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     announcement: local.announcement,
     raffle: local.raffle,
     firstLogin: local.firstLogin,
+    /* pazar: kimliğe göre birleş — en yeni durum (removed dahil) kazanır */
+    marketListings: mergeMarket(local.marketListings ?? [], cloud.market ?? []),
+    marketPayments: mergeById(local.marketPayments ?? [], cloud.marketPayments ?? []),
+    claimedMarket: local.claimedMarket ?? {},
   };
 
   /* kullanıcılar */
@@ -152,6 +173,31 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
   else if (!cloud.settings && local.settings) out.settings = local.settings;
 
   return out;
+}
+
+/* Dükkan ilanları: aynı id için en yeni revizyon kazanır.
+   removed=true (iptal/tükenme) herkes tarafından yayıldığı için silme de yayılır. */
+function mergeMarket(local: MarketListing[], cloud: MarketListing[]): MarketListing[] {
+  const map = new Map<string, MarketListing>();
+  local.forEach((l) => map.set(l.id, l));
+  cloud.forEach((cl) => {
+    const cur = map.get(cl.id);
+    if (!cur || cl.ts >= cur.ts) map.set(cl.id, cl);
+  });
+  return [...map.values()]
+    .filter((l) => !l.removed || Date.now() - l.ts < 3 * 24 * 3600 * 1000)
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, 300);
+}
+
+/* Satış kayıtları: eklemeyle büyüyen günlük — id'ye göre birleş */
+function mergeById<T extends { id: string; ts: number }>(local: T[], cloud: T[]): T[] {
+  const map = new Map<string, T>();
+  local.forEach((x) => map.set(x.id, x));
+  cloud.forEach((x) => {
+    if (!map.has(x.id)) map.set(x.id, x);
+  });
+  return [...map.values()].sort((a, b) => a.ts - b.ts).slice(-400);
 }
 
 interface SyncHandlers {

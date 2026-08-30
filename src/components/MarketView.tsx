@@ -3,10 +3,14 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowDownWideNarrow,
   ArrowUpNarrowWide,
+  Boxes,
   ChevronLeft,
   ChevronRight,
   Clock,
   Info,
+  Minus,
+  Package,
+  Plus,
   RefreshCcw,
   Search,
   ShoppingCart,
@@ -17,10 +21,11 @@ import {
 } from "lucide-react";
 import { MARKET_FEE, QUICK_SELL_RATE, mcHead, money } from "../config";
 import { RARITY, SKIN_MAP, type Skin } from "../data/skins";
-import { priceRatio, sellChance } from "../data/market";
+import { priceRatio, sellChance, bulkTotal, bulkUnitPrice, bulkMult } from "../data/market";
 import { STICKER_MAP } from "../data/stickers";
 import { WEARS, wearFromFloat } from "../data/wear";
 import { itemValue, type InvItem } from "../data/items";
+import { type MarketListing } from "../store/db";
 import { click } from "../lib/audio";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
@@ -28,7 +33,7 @@ import { SkinImg } from "./SkinCard";
 import { FloatBar, WearFilterRow, WearBadge } from "./WearUi";
 import { ItemDetailModal } from "./ItemDetailModal";
 
-type Tab = "buy" | "sell";
+type Tab = "buy" | "shop" | "sell";
 type Sort = "new" | "cheap" | "rich";
 type WearFilter = "all" | "fn" | "mw" | "ft" | "ww" | "bs";
 
@@ -129,19 +134,27 @@ function SellModal({
   uidKey,
   skin,
   baseValue,
+  maxQty = 1,
   onClose,
 }: {
   uidKey: string;
   skin: Skin;
   baseValue: number;
+  /** envanterdeki aynı skin kopya sayısı (toptan için) */
+  maxQty?: number;
   onClose: () => void;
 }) {
   const { listOnMarket, pushToast } = useGame();
   const suggested = Math.round((baseValue * 1.02) / 100) * 100;
   const [price, setPrice] = useState(String(suggested));
+  const [qty, setQty] = useState(1);
 
   const p = Math.max(100, Math.round((Number(price.replace(/[^\d]/g, "")) || 0) / 100) * 100);
-  const net = Math.round(p * (1 - MARKET_FEE));
+  const pack = qty > 1;
+  const total = pack ? bulkTotal(p, qty) : p;
+  const net = pack ? Math.round(total * (1 - MARKET_FEE)) : Math.round(p * (1 - MARKET_FEE));
+  const mult = bulkMult(qty);
+  const discountPct = Math.round((1 - mult) * 100);
   const chance = sellChance({ skinId: skin.id, price: p, baseValue });
   const speed =
     chance >= 0.3 ? { t: "Çok hızlı satılır", c: "#2fd673" }
@@ -230,10 +243,78 @@ function SellModal({
             ))}
           </div>
 
+          {/* toptan adet seçici */}
+          {maxQty > 1 && (
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-center justify-between">
+                <label className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-white/40">
+                  <Package className="h-3.5 w-3.5 text-brand-400" /> Adet (toptan)
+                </label>
+                {qty > 1 && (
+                  <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-400">
+                    %{discountPct} birim indirim
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 rounded-xl border border-line bg-ink-900 px-3 py-2">
+                <button
+                  onClick={() => setQty((q) => Math.max(1, q - 1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-ink-700 text-white/60 hover:text-white"
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </button>
+                <span className="flex-1 text-center font-display text-lg font-black text-white">
+                  {qty}
+                </span>
+                <button
+                  onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-ink-700 text-white/60 hover:text-white"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+                <span className="w-14 text-right text-[10px] text-white/30">/ {maxQty}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {[2, 5, 10, 25].filter((n) => n <= maxQty).map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setQty(n)}
+                    className={cn(
+                      "rounded-md border px-2 py-1 text-[10px] font-bold transition",
+                      qty === n
+                        ? "border-brand-500 bg-brand-500/10 text-brand-300"
+                        : "border-line bg-ink-700 text-white/45 hover:text-white"
+                    )}
+                  >
+                    {n} adet
+                  </button>
+                ))}
+                <button
+                  onClick={() => setQty(maxQty)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[10px] font-bold transition",
+                    qty === maxQty
+                      ? "border-brand-500 bg-brand-500/10 text-brand-300"
+                      : "border-line bg-ink-700 text-white/45 hover:text-white"
+                  )}
+                >
+                  Hepsi ({maxQty})
+                </button>
+              </div>
+              {qty > 1 && (
+                <div className="mt-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-[11px] text-white/60">
+                  Birim fiyat <span className="font-bold text-emerald-400">{money(bulkUnitPrice(p, qty))}</span>
+                  {" "}× {qty} adet = <span className="font-bold text-white">{money(total)}</span>
+                  <span className="ml-1 text-white/35">(paket)</span>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="mt-4 space-y-1.5 rounded-xl border border-line bg-ink-900 p-3 text-xs">
             <div className="flex justify-between">
               <span className="text-white/45">Komisyon (%{MARKET_FEE * 100})</span>
-              <span className="font-semibold text-lose">−{money(p - net)}</span>
+              <span className="font-semibold text-lose">−{money(Math.round(total * MARKET_FEE))}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-white/45">Eline geçecek</span>
@@ -247,18 +328,183 @@ function SellModal({
 
           <button
             onClick={() => {
-              if (listOnMarket(uidKey, p)) {
+              if (listOnMarket(uidKey, p, qty)) {
                 pushToast({
                   kind: "info",
-                  title: "İlan yayınlandı",
-                  sub: `${skin.weapon} | ${skin.name} — ${money(p)}`,
+                  title: qty > 1 ? "Toptan ilan yayınlandı" : "İlan yayınlandı",
+                  sub: qty > 1
+                    ? `${qty}× ${skin.weapon} | ${skin.name} — ${money(total)}`
+                    : `${skin.weapon} | ${skin.name} — ${money(total)}`,
                 });
                 onClose();
               }
             }}
             className="mt-4 h-12 w-full rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 font-display text-base font-black uppercase tracking-widest text-ink-950 transition hover:brightness-110"
           >
-            İlanı Yayınla
+            {qty > 1 ? `Paketi Yayınla — ${money(total)}` : "İlanı Yayınla"}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+/* ---------------- dükkan alım modalı (gerçek oyuncu) ---------------- */
+function ShopBuyModal({
+  listing,
+  onClose,
+}: {
+  listing: MarketListing;
+  onClose: () => void;
+}) {
+  const { buyShopListing, pushToast, balance } = useGame();
+  const maxQty = Math.max(1, listing.qty ?? 1);
+  const [qty, setQty] = useState(1);
+  const skin = SKIN_MAP[listing.skinId];
+  const total = bulkTotal(listing.unitPrice, qty);
+  const mult = bulkMult(qty);
+  const discountPct = Math.round((1 - mult) * 100);
+  const canAfford = balance >= total;
+
+  if (!skin) return null;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.93, y: 18, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.96, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 300, damping: 26 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm overflow-hidden rounded-2xl border border-line bg-ink-800 shadow-2xl"
+      >
+        <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+          <div className="flex items-center gap-2">
+            <Store className="h-4 w-4 text-brand-400" />
+            <span className="font-display text-lg font-bold">Dükkandan Al</span>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-white/40 hover:text-white">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5">
+          <div
+            className="flex items-center gap-3 rounded-xl border border-line bg-ink-900 p-3"
+            style={{ boxShadow: `inset 0 -3px 0 0 ${RARITY[skin.rarity].color}` }}
+          >
+            <SkinImg skin={skin} className="h-14 w-20" />
+            <div className="min-w-0">
+              <div className="truncate text-[10px] uppercase tracking-wider text-white/40">
+                {skin.st && <span className="text-[#cf6a32]">StatTrak™ </span>}
+                {skin.sv && <span className="text-[#e4ae39]">Hatıra </span>}
+                {skin.weapon}
+              </div>
+              <div className="truncate font-display text-sm font-bold text-white">{skin.name}</div>
+              <div className="mt-0.5 flex items-center gap-1 text-[10px] text-white/40">
+                <img
+                  src={mcHead(listing.sellerName, 24)}
+                  alt=""
+                  className="h-3.5 w-3.5 rounded"
+                  style={{ imageRendering: "pixelated" }}
+                />
+                {listing.sellerName}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center gap-2 rounded-xl border border-line bg-ink-900 px-3 py-2">
+            <button
+              onClick={() => setQty((q) => Math.max(1, q - 1))}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-ink-700 text-white/60 hover:text-white"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <span className="flex-1 text-center font-display text-lg font-black text-white">{qty}</span>
+            <button
+              onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-ink-700 text-white/60 hover:text-white"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+            <span className="w-14 text-right text-[10px] text-white/30">/ {maxQty}</span>
+          </div>
+          {(maxQty > 1) && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[2, 5, 10, 25].filter((n) => n <= maxQty).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setQty(n)}
+                  className={cn(
+                    "rounded-md border px-2 py-1 text-[10px] font-bold transition",
+                    qty === n
+                      ? "border-brand-500 bg-brand-500/10 text-brand-300"
+                      : "border-line bg-ink-700 text-white/45 hover:text-white"
+                  )}
+                >
+                  {n}
+                </button>
+              ))}
+              <button
+                onClick={() => setQty(maxQty)}
+                className={cn(
+                  "rounded-md border px-2 py-1 text-[10px] font-bold transition",
+                  qty === maxQty
+                    ? "border-brand-500 bg-brand-500/10 text-brand-300"
+                    : "border-line bg-ink-700 text-white/45 hover:text-white"
+                )}
+              >
+                Hepsi
+              </button>
+            </div>
+          )}
+
+          <div className="mt-3 space-y-1.5 rounded-xl border border-line bg-ink-900 p-3 text-xs">
+            <div className="flex justify-between">
+              <span className="text-white/45">Birim fiyat ({qty} adet)</span>
+              <span className="font-semibold text-white">{money(bulkUnitPrice(listing.unitPrice, qty))}</span>
+            </div>
+            {qty > 1 && (
+              <div className="flex justify-between">
+                <span className="text-white/45">Toplu indirim</span>
+                <span className="font-bold text-emerald-400">−%{discountPct}</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between border-t border-line pt-1.5">
+              <span className="text-white/45">Toplam</span>
+              <span className="font-display text-xl font-black text-emerald-400">{money(total)}</span>
+            </div>
+            <p className="text-[10px] text-white/30">
+              Komisyon %{MARKET_FEE * 100} — satıcıya {money(Math.round(total * (1 - MARKET_FEE)))} yatar.
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              if (buyShopListing(listing.id, qty)) {
+                pushToast({
+                  kind: "money",
+                  title: qty > 1 ? `Paket alındı (${qty} adet)` : "Satın alındı",
+                  sub: `${skin.weapon} | ${skin.name} — ${money(total)}`,
+                });
+                onClose();
+              }
+            }}
+            disabled={!canAfford}
+            className={cn(
+              "mt-4 h-12 w-full rounded-xl font-display text-base font-black uppercase tracking-widest transition",
+              canAfford
+                ? "bg-gradient-to-b from-emerald-400 to-emerald-600 text-ink-950 hover:brightness-110"
+                : "cursor-not-allowed bg-ink-600 text-white/30"
+            )}
+          >
+            {canAfford ? `Satın Al — ${money(total)}` : `Yetersiz — ${money(total)}`}
           </button>
         </div>
       </motion.div>
@@ -275,6 +521,7 @@ export function MarketView() {
     refreshMarket,
     inventory,
     balance,
+    shopListings,
   } = useGame();
 
   const [tab, setTab] = useState<Tab>("buy");
@@ -282,6 +529,7 @@ export function MarketView() {
   const [wearFilter, setWearFilter] = useState<WearFilter>("all");
   const [q, setQ] = useState("");
   const [sellTarget, setSellTarget] = useState<{ uid: string; skin: Skin } | null>(null);
+  const [shopBuy, setShopBuy] = useState<MarketListing | null>(null);
   const [detail, setDetail] = useState<{ item: InvItem; listingId?: string } | null>(null);
   const [page, setPage] = useState(1);
   const [invPage, setInvPage] = useState(1);
@@ -319,11 +567,22 @@ export function MarketView() {
     [inventory]
   );
 
+  const copyCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    inventory.forEach((i) => {
+      m[i.skinId] = (m[i.skinId] ?? 0) + 1;
+    });
+    return m;
+  }, [inventory]);
+
   const invPages = Math.max(1, Math.ceil(invItems.length / PER_PAGE));
   const safeInvPage = Math.min(invPage, invPages);
   const invPageItems = invItems.slice((safeInvPage - 1) * PER_PAGE, safeInvPage * PER_PAGE);
 
-  const listedValue = myListings.reduce((a, l) => a + l.price, 0);
+  const listedValue = myListings.reduce(
+    (a, l) => a + bulkTotal(l.price, Math.max(1, l.qty ?? 1)),
+    0
+  );
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 md:px-6">
@@ -337,9 +596,11 @@ export function MarketView() {
             Skin <span className="text-brand-400">Pazarı</span>
           </h1>
           <p className="mt-1 max-w-lg text-sm text-white/50">
-            Oyunculardan skin satın al veya kendi eşyanı <span className="font-semibold text-emerald-400">iyi fiyata</span> sat.
-            Acelen varsa envanterden hızlı satabilirsin ama sadece{" "}
-            <span className="font-semibold text-lose">%{QUICK_SELL_RATE * 100}</span> alırsın.
+            Botlardan ya da <span className="font-semibold text-emerald-400">gerçek oyuncu dükkanlarından</span>{" "}
+            satın al; botlar senin pazarından alsın. Birden fazla kopyan varsa{" "}
+            <span className="font-semibold text-brand-300">toptan paket</span> yayınla — adet arttıkça birim
+            fiyat düşer. Acelen varsa hızlı sat: sadece{" "}
+            <span className="font-semibold text-lose">%{QUICK_SELL_RATE * 100}</span>.
           </p>
         </div>
         <div className="rounded-xl border border-line bg-ink-800 px-4 py-2 text-right">
@@ -364,6 +625,23 @@ export function MarketView() {
         >
           <ShoppingCart className="h-4 w-4" /> Satın Al
           <span className="rounded-full bg-ink-600 px-1.5 text-[10px]">{botListings.length}</span>
+        </button>
+        <button
+          onClick={() => {
+            setTab("shop");
+            click();
+          }}
+          className={cn(
+            "flex items-center gap-2 rounded-xl border px-4 py-2.5 font-display text-sm font-bold uppercase tracking-wider transition",
+            tab === "shop"
+              ? "border-brand-500/60 bg-brand-500/10 text-brand-300"
+              : "border-line bg-ink-800 text-white/45 hover:text-white"
+          )}
+        >
+          <Store className="h-4 w-4" /> Dükkan
+          <span className="rounded-full bg-emerald-500/25 px-1.5 text-[10px] text-emerald-300">
+            {shopListings.length}
+          </span>
         </button>
         <button
           onClick={() => {
@@ -464,6 +742,11 @@ export function MarketView() {
                     >
                       {badge.text}
                     </span>
+                    {l.qty && l.qty > 1 && (
+                      <span className="absolute left-2 top-2 flex items-center gap-1 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-black text-emerald-300">
+                        <Boxes className="h-3 w-3" /> x{l.qty}
+                      </span>
+                    )}
                     {s.st && (
                       <span className="absolute left-2 top-2 rounded bg-[#cf6a32] px-1 py-px text-[8px] font-black text-white">
                         ST™
@@ -513,7 +796,9 @@ export function MarketView() {
                   <div className="mt-auto border-t border-line p-2.5">
                     <div className="mb-1.5 flex items-baseline justify-between">
                       <span className="font-display text-base font-black text-white">{money(l.price)}</span>
-                      <span className="text-[10px] text-white/30">değer {money(l.baseValue)}</span>
+                      <span className="text-[10px] text-white/30">
+                        {l.qty && l.qty > 1 && l.unitPrice ? `${money(bulkUnitPrice(l.unitPrice, l.qty))}/adet` : `değer ${money(l.baseValue)}`}
+                      </span>
                     </div>
                     <button
                       onClick={() => buyListing(l.id)}
@@ -526,7 +811,7 @@ export function MarketView() {
                       )}
                     >
                       <ShoppingCart className="h-3.5 w-3.5" />
-                      {canAfford ? "Satın Al" : "Yetersiz"}
+                      {l.qty && l.qty > 1 ? "Paketi Al" : canAfford ? "Satın Al" : "Yetersiz"}
                     </button>
                   </div>
                 </motion.div>
@@ -542,6 +827,152 @@ export function MarketView() {
         )}
 
         <Pager page={safePage} pages={pages} total={listings.length} onPage={setPage} />
+        </>
+      )}
+
+      {/* ---------------- DÜKKAN (GERÇEK OYUNCULAR) ---------------- */}
+      {tab === "shop" && (
+        <>
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-ink-900/50 p-2">
+            <span className="px-1 text-[10px] font-bold uppercase tracking-widest text-white/35">
+              Gerçek oyuncu dükkanları
+            </span>
+            <div className="ml-auto flex items-center gap-2 rounded-lg border border-line bg-ink-800 px-2.5">
+              <Search className="h-3.5 w-3.5 text-white/30" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Skin ara…"
+                className="h-9 w-32 bg-transparent text-xs text-white placeholder:text-white/25 focus:outline-none sm:w-48"
+              />
+            </div>
+            <button
+              onClick={() => setSort((s) => (s === "cheap" ? "rich" : "cheap"))}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-ink-800 px-3 text-[11px] font-bold text-white/50 transition hover:text-white"
+            >
+              {sort === "cheap" ? <ArrowUpNarrowWide className="h-3.5 w-3.5" /> : <ArrowDownWideNarrow className="h-3.5 w-3.5" />}
+              Fiyat
+            </button>
+          </div>
+
+          {shopListings.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-line bg-ink-900/40 py-16 text-center">
+              <Store className="mx-auto h-10 w-10 text-white/20" />
+              <p className="mt-3 text-sm font-semibold text-white/60">Şu an açık dükkan yok</p>
+              <p className="mx-auto mt-1 max-w-sm text-xs text-white/35">
+                Kendi ilanını <span className="font-bold text-brand-300">Sat</span> sekmesinden "Pazara Koy"
+                dediğinde otomatik olarak burada yayınlanır. Diğer oyuncuların görebilmesi için
+                senkron kodu girili olmalı.
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              <AnimatePresence initial={false}>
+                {shopListings
+                  .filter((l) => {
+                    const s = SKIN_MAP[l.skinId];
+                    if (!s) return false;
+                    const t = `${s.weapon} ${s.name}`.toLowerCase();
+                    return t.includes(q.trim().toLowerCase());
+                  })
+                  .sort((a, b) =>
+                    sort === "cheap"
+                      ? a.unitPrice - b.unitPrice
+                      : sort === "rich"
+                        ? b.unitPrice - a.unitPrice
+                        : b.ts - a.ts
+                  )
+                  .map((l) => {
+                    const s = SKIN_MAP[l.skinId];
+                    if (!s) return null;
+                    const r = RARITY[s.rarity];
+                    const ratio = priceRatio({ price: l.unitPrice, baseValue: l.baseValue, skinId: l.skinId });
+                    const badge = ratioBadge(ratio);
+                    const maxQty = Math.max(1, l.qty ?? 1);
+                    const packTotal = maxQty > 1 ? bulkTotal(l.unitPrice, maxQty) : l.unitPrice;
+                    const canAfford = balance >= l.unitPrice;
+                    return (
+                      <motion.div
+                        key={l.id}
+                        layout
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.94 }}
+                        className="flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800"
+                        style={{
+                          backgroundImage: `radial-gradient(120% 80% at 50% 0%, ${r.color}14, transparent 55%)`,
+                        }}
+                      >
+                        <div className="relative p-2.5">
+                          <span
+                            className="absolute right-2 top-2 rounded px-1.5 py-0.5 text-[9px] font-bold"
+                            style={{ color: badge.color, background: `${badge.color}1a` }}
+                          >
+                            {badge.text}
+                          </span>
+                          {maxQty > 1 && (
+                            <span className="absolute left-2 top-2 flex items-center gap-1 rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-black text-emerald-300">
+                              <Boxes className="h-3 w-3" /> {maxQty} ADET
+                            </span>
+                          )}
+                          <SkinImg skin={s} className="mx-auto h-20 w-full" />
+                          <div className="mt-1 truncate text-[10px] uppercase tracking-wider text-white/40">
+                            {s.weapon}
+                          </div>
+                          <div className="truncate font-display text-sm font-bold text-white/90">{s.name}</div>
+                          <div className="mt-1 flex items-center gap-1.5 text-[10px] text-white/35">
+                            <img
+                              src={mcHead(l.sellerName, 24)}
+                              alt=""
+                              className="h-4 w-4 rounded"
+                              style={{ imageRendering: "pixelated" }}
+                            />
+                            <span className="truncate">{l.sellerName}</span>
+                            <span className="ml-auto shrink-0">{ago(l.ts)}</span>
+                          </div>
+                        </div>
+
+                        <div className="mt-auto border-t border-line p-2.5">
+                          <div className="mb-1.5 flex items-baseline justify-between">
+                            <span className="font-display text-base font-black text-white">
+                              {maxQty > 1 ? money(packTotal) : money(l.unitPrice)}
+                            </span>
+                            <span className="text-[10px] text-white/30">
+                              {maxQty > 1 ? `${money(bulkUnitPrice(l.unitPrice, maxQty))}/adet` : `değer ${money(l.baseValue)}`}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setShopBuy(l);
+                              click();
+                            }}
+                            disabled={!canAfford}
+                            className={cn(
+                              "flex h-9 w-full items-center justify-center gap-1.5 rounded-lg font-display text-xs font-bold uppercase tracking-wider transition",
+                              canAfford
+                                ? "bg-gradient-to-b from-emerald-400 to-emerald-600 text-ink-950 hover:brightness-110"
+                                : "cursor-not-allowed bg-ink-600 text-white/30"
+                            )}
+                          >
+                            <ShoppingCart className="h-3.5 w-3.5" />
+                            {maxQty > 1 ? "Toptan Al" : "Satın Al"}
+                          </button>
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+              </AnimatePresence>
+            </div>
+          )}
+
+          <div className="mt-4 rounded-2xl border border-line bg-ink-900/70 p-4 text-[11px] leading-relaxed text-white/45">
+            <span className="font-bold text-white/70">Nasıl çalışır?</span> "Sat" sekmesinde bir skin için
+            birden fazla kopyan varsa adet seçip <span className="font-bold text-brand-300">toptan paket</span>{" "}
+            yayınlayabilirsin: 5, 10, 25… adet aldıkça birim fiyat düşer ve tüm paketi tek tıkla satın
+            alabilirsin. Ancak <span className="font-bold text-white/70">diğer gerçek oyuncuların</span> bu
+            ilanları görebilmesi için ana menüdeki senkron kodunun girili olması gerekir; bot alıcılar ise her
+            durumda pazarı canlı tutar.
+          </div>
         </>
       )}
 
@@ -575,6 +1006,11 @@ export function MarketView() {
                     >
                       <div className="relative p-2.5">
                         <SkinImg skin={skin} className="mx-auto h-16 w-full" />
+                        {(copyCounts[item.skinId] ?? 0) > 1 && (
+                          <span className="absolute left-2 top-2 flex items-center gap-1 rounded bg-brand-500/20 px-1.5 py-0.5 text-[9px] font-black text-brand-300">
+                            <Boxes className="h-3 w-3" /> x{copyCounts[item.skinId]} kopya
+                          </span>
+                        )}
                         {item.stickers && item.stickers.length > 0 && (
                           <div className="absolute bottom-1 left-2 flex gap-0.5">
                             {item.stickers.slice(0, 4).map((sid, i) => {
@@ -666,8 +1102,15 @@ export function MarketView() {
                                 {chance >= 0.15 ? "hızlı" : chance >= 0.05 ? "normal" : "yavaş"}
                               </span>
                             </div>
-                            <div className="font-display text-xs font-black text-emerald-400">
-                              {money(l.price)}
+                            <div className="flex items-center gap-2">
+                              {(l.qty ?? 1) > 1 && (
+                                <span className="flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-black text-emerald-300">
+                                  <Boxes className="h-2.5 w-2.5" /> x{l.qty} • {money(bulkUnitPrice(l.price, l.qty!))}/adet
+                                </span>
+                              )}
+                              <span className="font-display text-xs font-black text-emerald-400">
+                                {money(bulkTotal(l.price, Math.max(1, l.qty ?? 1)))}
+                              </span>
                             </div>
                           </div>
                           <button
@@ -701,6 +1144,11 @@ export function MarketView() {
                   komisyon sadece %{MARKET_FEE * 100}. Alıcı bulunca paran otomatik yatar.
                 </li>
                 <li>
+                  <span className="font-bold text-brand-300">Toptan paket:</span> aynı skinden birden fazla
+                  kopyan varsa adet seç (5, 10, 25…). Adet arttıkça birim fiyat düşer, paket{" "}
+                  <span className="font-bold text-emerald-400">Dükkan</span> sekmesinde de yayınlanır.
+                </li>
+                <li>
                   <span className="font-bold text-lose">Hızlı sat:</span> envanterden anında satarsın ama
                   değerin sadece %{QUICK_SELL_RATE * 100}'ini alırsın.
                 </li>
@@ -723,9 +1171,11 @@ export function MarketView() {
                 ts: 0,
               })
             }
+            maxQty={inventory.filter((i) => i.skinId === sellTarget.skin.id).length}
             onClose={() => setSellTarget(null)}
           />
         )}
+        {shopBuy && <ShopBuyModal listing={shopBuy} onClose={() => setShopBuy(null)} />}
         {detail && (() => {
           const l = detail.listingId ? botListings.find((x) => x.id === detail.listingId) : null;
           const price = l?.price ?? 0;
@@ -751,7 +1201,9 @@ export function MarketView() {
                     )}
                   >
                     <ShoppingCart className="h-4 w-4" />
-                    {balance >= price ? `Satın Al — ${money(price)}` : "Yetersiz Bakiye"}
+                    {balance >= price
+                      ? `${(l.qty ?? 1) > 1 ? "Paketi Al" : "Satın Al"} — ${money(price)}`
+                      : "Yetersiz Bakiye"}
                   </button>
                 ) : undefined
               }

@@ -53,6 +53,51 @@ export interface MyListing {
   stickers?: string[];
   /** ilan anındaki gerçek değer (aşınma + sticker dahil) */
   baseValue?: number;
+  /** toptan paket: kopya sayısı */
+  qty?: number;
+  /** toptan paket: kopya başına float/sticker */
+  copies?: ShopCopy[];
+}
+
+/** Bir kopyanın detayı (float + sticker) */
+export interface ShopCopy {
+  float?: number;
+  stickers?: string[];
+}
+
+/** Gerçek oyuncu dükkan ilanı — MQTT ile diğer oyunculara da yayınlanır */
+export interface MarketListing {
+  id: string;
+  sellerKey: string;
+  sellerName: string;
+  skinId: string;
+  /** birim fiyat (taban) */
+  unitPrice: number;
+  /** kalan adet */
+  qty: number;
+  /** kalan kopyalar */
+  copies: ShopCopy[];
+  /** ilan anındaki birim değeri */
+  baseValue: number;
+  ts: number;
+  /** iptal / tükenmiş — diğer cihazlara yayılır */
+  removed?: boolean;
+}
+
+/** Gerçek oyuncu satın alımı — satıcının bakiyesini doldurmak için kayıt */
+export interface MarketPayment {
+  id: string;
+  listingId: string;
+  sellerKey: string;
+  sellerName: string;
+  buyerKey: string;
+  buyerName: string;
+  qty: number;
+  /** alıcının ödediği (brüt) */
+  gross: number;
+  /** satıcıya kalan (komisyon sonrası) */
+  net: number;
+  ts: number;
 }
 
 export interface MissionProgress {
@@ -181,6 +226,12 @@ export interface DB {
   firstLogin?: FirstLoginEvent | null;
   /** admin otomatik kabul ayarları */
   settings?: AutoSettings;
+  /** gerçek oyuncu dükkanı — tüm cihazlarla senkronlanır */
+  marketListings?: MarketListing[];
+  /** gerçek oyuncu satış kayıtları — satıcı bakiyesini telafi eder */
+  marketPayments?: MarketPayment[];
+  /** bu cihazda bakiyeye işlenen satış kayıtları */
+  claimedMarket?: Record<string, number>;
 }
 
 const LS_KEY = "skyline:v1";
@@ -196,6 +247,9 @@ export function emptyDB(): DB {
     raffle: null,
     firstLogin: null,
     settings: { autoApproveUsers: false, autoApproveDeposits: false, ts: 0 },
+    marketListings: [],
+    marketPayments: [],
+    claimedMarket: {},
   };
 }
 
@@ -221,6 +275,9 @@ export function loadDB(): DB {
       raffle: parsed.raffle ?? null,
       firstLogin: parsed.firstLogin ?? null,
       settings: parsed.settings ?? { autoApproveUsers: false, autoApproveDeposits: false, ts: 0 },
+      marketListings: parsed.marketListings ?? [],
+      marketPayments: parsed.marketPayments ?? [],
+      claimedMarket: parsed.claimedMarket ?? {},
     };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.

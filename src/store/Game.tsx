@@ -47,6 +47,7 @@ import {
   generateTradeOffers,
   makeTradeOffer,
   sellChance,
+  bulkTotal,
   type Listing,
   type TradeOffer,
 } from "../data/market";
@@ -69,6 +70,8 @@ import {
   type InvItem,
   type MissionProgress,
   type MyListing,
+  type MarketListing,
+  type MarketPayment,
   type Stats,
   type RollLog,
   type Announcement,
@@ -315,10 +318,15 @@ interface GameState {
   botListings: Listing[];
   myListings: MyListing[];
   quickSell: (uidKey: string) => { skin: Skin | null; payout: number } | null;
-  listOnMarket: (uidKey: string, price: number) => boolean;
+  listOnMarket: (uidKey: string, price: number, qty?: number) => boolean;
   cancelListing: (listingId: string) => void;
   buyListing: (listingId: string) => boolean;
   refreshMarket: () => void;
+
+  /* gerçek oyuncu dükkanı (senkron) */
+  marketListings: MarketListing[];
+  shopListings: MarketListing[];
+  buyShopListing: (listingId: string, qty: number) => boolean;
 
   pendingUserList: Account[];
   pendingDepositList: DepositReq[];
@@ -856,28 +864,53 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     return { skin, payout };
   }, []);
 
-  /** Pazara koy — komisyon düşülür, alıcı bekler */
+  /** Pazara koy — komisyon düşülür, alıcı bekler (qty>1 = toptan paket) */
   const listOnMarket = useCallback(
-    (uidKey: string, price: number): boolean => {
+    (uidKey: string, price: number, qty = 1): boolean => {
       let ok = false;
       mutate((draft) => {
         const me = draft.users[draft.session ?? ""];
         if (!me) return;
         const item = me.inventory.find((i) => i.uid === uidKey);
         if (!item) return;
+        /* aynı skinin kopyalarını topla (seçili olan en başta) */
+        const same = me.inventory
+          .filter((i) => i.skinId === item.skinId)
+          .sort((a, b) => (a.uid === uidKey ? -1 : b.uid === uidKey ? 1 : b.ts - a.ts));
+        const take = same.slice(0, Math.max(1, qty));
+        if (take.length < qty) return;
+        const takeUids = new Set(take.map((t) => t.uid));
+        me.inventory = me.inventory.filter((i) => !takeUids.has(i.uid));
         const p = Math.max(100, Math.round(price / 100) * 100);
-        me.inventory = me.inventory.filter((i) => i.uid !== uidKey);
+        const lid = uid();
         me.listings = [
           {
-            id: uid(),
+            id: lid,
             skinId: item.skinId,
             price: p,
             ts: Date.now(),
             float: item.float,
             stickers: item.stickers,
             baseValue: itemValue(item),
+            copies: take.map((t) => ({ float: t.float, stickers: t.stickers })),
+            qty: take.length,
           },
           ...(me.listings ?? []),
+        ];
+        /* aynı ilan gerçek oyuncu dükkanında da yayınlanır */
+        draft.marketListings = [
+          {
+            id: lid,
+            sellerKey: me.key,
+            sellerName: me.name,
+            skinId: item.skinId,
+            unitPrice: p,
+            qty: take.length,
+            copies: take.map((t) => ({ float: t.float, stickers: t.stickers })),
+            baseValue: itemValue(item),
+            ts: Date.now(),
+          },
+          ...(draft.marketListings ?? []),
         ];
         ok = true;
       });
@@ -896,14 +929,32 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const l = me.listings.find((x) => x.id === listingId);
         if (!l) return;
         me.listings = me.listings.filter((x) => x.id !== listingId);
-        me.inventory.unshift({ uid: uid(), skinId: l.skinId, ts: Date.now() });
+        const qt = Math.max(1, l.qty ?? 1);
+        const copies = l.copies && l.copies.length > 0 ? l.copies : undefined;
+        for (let i = 0; i < qt; i++) {
+          /* eski kayıtlar kopya listesi taşımaz → ilan üzerindeki float/sticker kullanılır */
+          const c = copies?.[i] ?? { float: l.float, stickers: l.stickers };
+          me.inventory.unshift({
+            uid: uid(),
+            skinId: l.skinId,
+            ts: Date.now(),
+            float: c.float,
+            stickers: c.stickers,
+          });
+        }
+        /* dükkan ilanını da kapat (diğer oyunculara yayılır) */
+        const g = (draft.marketListings ?? []).find((x) => x.id === listingId);
+        if (g) {
+          g.removed = true;
+          g.ts = Date.now();
+        }
       });
       pushToast({ kind: "info", title: "İlan geri çekildi", sub: "Eşya envanterine döndü" });
     },
     [mutate, pushToast]
   );
 
-  /** Bot ilanından satın al */
+  /** Bot ilanından satın al — paket ise tüm kopyaları verir */
   const buyListing = useCallback(
     (listingId: string): boolean => {
       const l = botListingsRef.current.find((x) => x.id === listingId);
@@ -915,26 +966,157 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         return false;
       }
       me.balance = Math.round(me.balance - l.price);
-      me.inventory.unshift({ uid: uid(), skinId: l.skinId, ts: Date.now() });
+      const qt = Math.max(1, l.qty ?? 1);
+      for (let i = 0; i < qt; i++) {
+        me.inventory.unshift({
+          uid: uid(),
+          skinId: l.skinId,
+          ts: Date.now(),
+          float: l.float,
+          stickers: l.stickers,
+        });
+      }
       saveDB(fresh);
       setDb(fresh);
       notifyDbChanged();
-      const skin = SKIN_MAP[l.skinId];
-      me.inventory[0].float = l.float;
-      if (l.stickers) me.inventory[0].stickers = l.stickers;
-      saveDB(fresh);
-      setDb(fresh);
       setBotListings((prev) => prev.filter((x) => x.id !== listingId).concat(makeBotListing()));
       coinDing();
       pushToast({
         kind: "money",
-        title: "Satın alındı",
-        sub: `${skin?.weapon} | ${skin?.name} — ${money(l.price)}`,
+        title: qt > 1 ? "Toptan paket alındı" : "Satın alındı",
+        sub: qt > 1
+          ? `${qt}× ${SKIN_MAP[l.skinId]?.weapon} | ${SKIN_MAP[l.skinId]?.name} — ${money(l.price)}`
+          : `${SKIN_MAP[l.skinId]?.weapon} | ${SKIN_MAP[l.skinId]?.name} — ${money(l.price)}`,
       });
       return true;
     },
     [pushToast]
   );
+
+  /** Gerçek oyuncunun dükkan ilanından satın al — satıcıya ödeme kaydı düşer */
+  const buyShopListing = useCallback(
+    (listingId: string, qty: number): boolean => {
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me) return false;
+      const l = (fresh.marketListings ?? []).find(
+        (x) => x.id === listingId && !x.removed
+      );
+      if (!l) {
+        pushToast({ kind: "lose", title: "İlan bulunamadı", sub: "Muhtemelen satıldı ya da geri çekildi" });
+        return false;
+      }
+      if (l.sellerKey === me.key) {
+        pushToast({ kind: "lose", title: "Kendi ilanını alamazsın", sub: "Başka bir hesaptan giriş yap ya da ilanı geri çek" });
+        return false;
+      }
+      const buyQty = Math.min(qty, Math.max(1, l.qty ?? 1));
+      const total = bulkTotal(l.unitPrice, buyQty);
+      if (me.balance < total) {
+        pushToast({ kind: "lose", title: "Yetersiz bakiye", sub: `Bu alım için ${money(total)} gerekli` });
+        return false;
+      }
+      me.balance = Math.round(me.balance - total);
+      const taken = (l.copies ?? []).slice(0, buyQty);
+      for (let i = 0; i < buyQty; i++) {
+        const c = taken[i] ?? {};
+        me.inventory.unshift({
+          uid: uid(),
+          skinId: l.skinId,
+          ts: Date.now(),
+          float: c.float,
+          stickers: c.stickers,
+        });
+      }
+      /* kalan kopyaları düş; bittiysse ilanı kapat */
+      const remain = Math.max(1, l.qty ?? 1) - buyQty;
+      if (remain <= 0) {
+        l.removed = true;
+        l.qty = 0;
+        l.copies = [];
+      } else {
+        l.qty = remain;
+        l.copies = l.copies ? l.copies.slice(buyQty) : [];
+      }
+      l.ts = Date.now();
+      const net = Math.round(total * (1 - MARKET_FEE));
+      const pay: MarketPayment = {
+        id: uid(),
+        listingId: l.id,
+        sellerKey: l.sellerKey,
+        sellerName: l.sellerName,
+        buyerKey: me.key,
+        buyerName: me.name,
+        qty: buyQty,
+        gross: total,
+        net,
+        ts: Date.now(),
+      };
+      fresh.marketPayments = [...(fresh.marketPayments ?? []), pay].slice(-400);
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      coinDing();
+      const skin = SKIN_MAP[l.skinId];
+      pushToast({
+        kind: "money",
+        title: buyQty > 1 ? `Toptan alım: ${buyQty} adet` : "Dükkandan satın alındı",
+        sub: `${skin?.weapon} | ${skin?.name} — ${money(total)}`,
+      });
+      return true;
+    },
+    [pushToast]
+  );
+
+  /* Satıcı: gelen ödeme kayıtlarını bakiyeye işle + kendi ilanını güncelle */
+  const claimMarketPayments = useCallback(() => {
+    const fresh = loadDB();
+    const me = currentUser(fresh);
+    if (!me) return;
+    const claimed = fresh.claimedMarket ?? {};
+    const pending = (fresh.marketPayments ?? []).filter(
+      (p) => p.sellerKey === me.key && !claimed[p.id]
+    );
+    if (!pending.length) return;
+    let total = 0;
+    const perListing = new Map<string, number>();
+    pending.forEach((p) => {
+      claimed[p.id] = Date.now();
+      total += p.net;
+      perListing.set(p.listingId, (perListing.get(p.listingId) ?? 0) + p.qty);
+    });
+    me.balance = Math.round(me.balance + total);
+    fresh.claimedMarket = claimed;
+    /* satılan kopyaları kendi ilanımızdan düş */
+    me.listings = (me.listings ?? []).filter((l) => {
+      const soldQty = perListing.get(l.id) ?? 0;
+      if (soldQty <= 0) return true;
+      const qt = Math.max(1, l.qty ?? 1);
+      if (soldQty >= qt) return false;
+      l.qty = qt - soldQty;
+      if (l.copies && l.copies.length) l.copies = l.copies.slice(soldQty);
+      return true;
+    });
+    const day = todayKey();
+    if (!me.missions || me.missions.day !== day) me.missions = emptyMissions(day);
+    me.missions.sales += pending.length;
+    saveDB(fresh);
+    setDb(fresh);
+    notifyDbChanged();
+    coinDing();
+    pushToast({
+      kind: "money",
+      title: `Dükkan satışı: +${money(total)}`,
+      sub: `${pending.length} alım işlendi — para bakiyene eklendi`,
+    });
+  }, [pushToast]);
+
+  /* satış kayıtlarını düzenli işle (senkron gelince de işler) */
+  useEffect(() => {
+    claimMarketPayments();
+    const iv = window.setInterval(claimMarketPayments, 12000);
+    return () => clearInterval(iv);
+  }, [claimMarketPayments]);
 
   const refreshMarket = useCallback(() => {
     setBotListings(generateBotListings());
@@ -1739,13 +1921,42 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const me = currentUser(fresh);
       if (!me?.listings?.length) return;
 
-      const sold: { skin: Skin | null; net: number }[] = [];
+      const sold: { skin: Skin | null; net: number; qty: number }[] = [];
+      const claimed = fresh.claimedMarket ?? {};
       me.listings = me.listings.filter((l) => {
+        /* gerçek oyuncu zaten aldıysa bot satışı yapma (senkron gecikmesi) */
+        if (
+          (fresh.marketPayments ?? []).some(
+            (p) => p.listingId === l.id && !claimed[p.id]
+          )
+        )
+          return true;
         if (Math.random() > sellChance(l)) return true;
-        const net = Math.round(l.price * (1 - MARKET_FEE));
+        const qt = Math.max(1, l.qty ?? 1);
+        /* botlar paketi bazen komple, bazen parça parça alır */
+        const buyQty = qt > 1 && Math.random() < 0.4 ? qt : 1;
+        const net = Math.round(bulkTotal(l.price, buyQty) * (1 - MARKET_FEE));
         me.balance = Math.round(me.balance + net);
-        sold.push({ skin: SKIN_MAP[l.skinId] ?? null, net });
-        return false;
+        sold.push({ skin: SKIN_MAP[l.skinId] ?? null, net, qty: buyQty });
+        /* aynı ilanın dükkandaki kopyası da güncellensin */
+        const g = (fresh.marketListings ?? []).find((x) => x.id === l.id);
+        if (g) {
+          const gq = Math.max(1, g.qty ?? 1);
+          if (buyQty >= gq) {
+            g.removed = true;
+            g.qty = 0;
+            g.copies = [];
+          } else {
+            g.qty = gq - buyQty;
+            if (g.copies && g.copies.length) g.copies = g.copies.slice(buyQty);
+          }
+          g.ts = Date.now();
+        }
+        if (buyQty >= qt) return false;
+        /* kalan kopyaları düş */
+        l.qty = qt - buyQty;
+        if (l.copies && l.copies.length) l.copies = l.copies.slice(buyQty);
+        return true;
       });
 
       if (sold.length) {
@@ -2234,6 +2445,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     cancelListing,
     buyListing,
     refreshMarket,
+
+    /* gerçek oyuncu dükkanı */
+    marketListings: db.marketListings ?? [],
+    shopListings: (db.marketListings ?? []).filter(
+      (l) => !l.removed && l.sellerKey !== (user?.key ?? "")
+    ),
+    buyShopListing,
 
     pendingUserList: pendingUsers(db),
     pendingDepositList: pendingDeposits(db),
