@@ -288,6 +288,93 @@ const CASES_RAW: CaseDef[] = [
     },
   },
   {
+    id: "kilowatt",
+    name: "Kilowatt Case",
+    img: CDN + CASE_P + "rnEVvqf_a6VoIfGSXz7Hlbwg57QwSS_mxhl15jiGyN37c3_GZw91W8BwRflK7EfKsa2sfw",
+    price: 2.99,
+    accent: "#ff5a6e",
+    tagline: "2024'ün yeni nesli — Black Lotus & Chrome Cannon",
+    hot: true,
+    contents: {
+      milspec: [
+        "dual-berettas-hideout",
+        "mac-10-light-box",
+        "nova-dark-sigil",
+        "ssg-08-dezastre",
+        "tec-9-slag",
+        "ump-45-motorized",
+        "xm1014-irezumi",
+      ],
+      restricted: [
+        "glock-18-block-18",
+        "m4a4-etch-lord",
+        "five-seven-hybrid",
+        "mp7-just-smile",
+        "sawed-off-analog-input",
+      ],
+      classified: ["m4a1-s-black-lotus", "zeus-x27-olympus", "usp-s-jawbreaker"],
+      covert: ["awp-chrome-cannon", "ak-47-inheritance"],
+    },
+  },
+  {
+    id: "gallery",
+    name: "Gallery Case",
+    img: CDN + CASE_P + "rnYVuPD5baE6IfTFCmSRme0j5eU5SXrjkRwmt2rWnoqhdnjEPQQiDpRxTflK7EePRV2-Kg",
+    price: 2.99,
+    accent: "#53c8ff",
+    tagline: "Sanat galerisi — Gold Toof & Vaporwave",
+    hot: true,
+    contents: {
+      milspec: [
+        "usp-s-27",
+        "desert-eagle-calligraffiti",
+        "mp5-sd-statics",
+        "aug-luxe-trim",
+        "m249-hypnosis",
+        "r8-revolver-tango",
+        "scar-20-trail-blazer",
+      ],
+      restricted: [
+        "m4a4-turbine",
+        "dual-berettas-hydro-strike",
+        "mac-10-saib-oni",
+        "p90-randy-rush",
+        "ssg-08-rapid-transit",
+      ],
+      classified: ["ak-47-the-outsiders", "p250-epicenter", "ump-45-neo-noir"],
+      covert: ["glock-18-gold-toof", "m4a1-s-vaporwave"],
+    },
+  },
+  {
+    id: "fever",
+    name: "Fever Case",
+    img: CDN + CASE_P + "rncVtqv7MPE8JaHHCj_Dl-wk4-NtFirikURy4jiGwo2udHqVaAEjDZp3EflK7EeSMnMs4w",
+    price: 3.49,
+    accent: "#c1ff3d",
+    tagline: "2025'in en ateşli kasası — AWP Printstream",
+    hot: true,
+    contents: {
+      milspec: [
+        "m4a4-choppa",
+        "mag-7-resupply",
+        "ssg-08-memorial",
+        "p2000-sure-grip",
+        "usp-s-pc-grn",
+        "mp9-nexus",
+        "xm1014-mockingbird",
+      ],
+      restricted: [
+        "desert-eagle-serpent-strike",
+        "zeus-x27-tosai",
+        "nova-rising-sun",
+        "galil-ar-control",
+        "p90-wave-breaker",
+      ],
+      classified: ["ak-47-searing-rage", "glock-18-shinobu", "ump-45-k-o-factory"],
+      covert: ["famas-bad-trip", "awp-printstream"],
+    },
+  },
+  {
     id: "vault",
     name: "Gizemli Sandık",
     img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSQ7FBhrZf460DiUw6_mse3-yddvab2MfRrcqGWWGOVme10s7g_Fnm1wEx-6znRz4z7I32WaRhgVMUd4mX-iw",
@@ -381,6 +468,26 @@ const CASES_RAW: CaseDef[] = [
       restricted: tierOf(PISTOL_POOL, "restricted"),
       classified: tierOf(PISTOL_POOL, "classified"),
       covert: tierOf(PISTOL_POOL, "covert"),
+    },
+  });
+
+  /* Zeus Kasası — yeni elektroşok ailesinin tamamı */
+  CASES_RAW.push({
+    id: "zeus-case",
+    name: "Zeus Kasası",
+    /* Kilowatt Case görseli — Zeus Olympus'un geldiği gerçek kasa */
+    img: CDN + CASE_P + "rnEVvqf_a6VoIfGSXz7Hlbwg57QwSS_mxhl15jiGyN37c3_GZw91W8BwRflK7EfKsa2sfw",
+    price: 0,
+    accent: "#ffd24a",
+    tagline: "7 Zeus x27 — elektroşok avı!",
+    hot: true,
+    sealed: true,
+    contents: {
+      consumer: ["zeus-x27-swamp-ddpat"],
+      industrial: ["zeus-x27-electric-blue"],
+      milspec: ["zeus-x27-earth-mandala"],
+      restricted: ["zeus-x27-charged-up", "zeus-x27-tosai"],
+      classified: ["zeus-x27-olympus", "zeus-x27-dragon-snore"],
     },
   });
 
@@ -688,6 +795,8 @@ function enrichCase(c: CaseDef): CaseDef {
 }
 
 function ensureSkinCount(c: CaseDef): CaseDef {
+  /* sealed kasalar (gift, zeus-case vb.) içerikleri korunur — tamamlayıcı eklenmez */
+  if (c.sealed) return c;
   const contents: CaseDef["contents"] = Object.fromEntries(
     Object.entries(c.contents).map(([k, v]) => [k, [...(v ?? [])]])
   ) as CaseDef["contents"];

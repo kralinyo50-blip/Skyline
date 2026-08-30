@@ -1955,6 +1955,14 @@ const ROWS: Row[] = [
   ["xm1014-run-run-run", "XM1014", "Run Run Run", "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLpk8ewrHZk9___OPU5H_aBC26XyfpJvOhuRz39xkh_5DjRmYr8IHyXZlIjX8NxQrQJ4xSxk9flZL-0sgOIi4NGySishjQJsHhKqh3UFQ", "milspec", 0.19],
   ["xm1014-irezumi", "XM1014", "Irezumi", "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLpk8ewrHZk9___OPU5H_mBC32FzOdJvOhuRz39k0h14juBztapc3-fPVIjWZomFucMtxe9m9zmNOjltQ2N2dgTnCr_3zQJsHjkNdtnHQ", "milspec", 0.42],
   ["xm1014-mockingbird", "XM1014", "Mockingbird", "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLpk8ewrHZk9___OPU5H_2cDWyZz-l0ufNtcCW6khUz_T-AnNagJH3FbwQnCsEmTeEMs0aww9biMby3tleKjtkQmSX-2yMfv311o7FVNa3OfdQ", "milspec", 0.38],
+  /* Zeus x27 — CS2'nin yeni elektroşok ailesi (2024-2025, gerçek Steam görselleri) */
+  ["zeus-x27-swamp-ddpat", "Zeus x27", "Swamp DDPAT", "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLln4Xl7x1T9s2qYaNkI_GeMWGf0-tlpN5lRi67gVNzsDuHyNyueHmQZgUoC5AkQuEKtkHum4fjN-jjtlfXio8UzHis2igb8G81tBqfncax", "consumer", 0.03],
+  ["zeus-x27-electric-blue", "Zeus x27", "Electric Blue", "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLln4Xl7x1I4PeRbahoI-SBB2Svw-Jjtd5lRi67gVMk4WjUydf4ICiTb1N2CMRwRrQIt0KwxNXmPuyx4g3Y3o5Em36vjCIa8G81tM1Sd6W5", "industrial", 0.12],
+  ["zeus-x27-earth-mandala", "Zeus x27", "Earth Mandala", "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLln4Xl7x1T9veRbaV_NPisA2aexe96sd5lTBa_nBovp3PWyYr_I3OXbQJxXJIkF7FY4BS_l4e0Ybnl4Vba2INGyy2tiXhAvHw9_a9cBgJStbOC", "milspec", 0.5],
+  ["zeus-x27-charged-up", "Zeus x27", "Charged Up", "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLln4Xl7x1B6ue9V7d5If6XD3WU_udlo_RscCW6khUz_WXcntv8InLFbwckWJV4ReJZuxG5lNzlMb7r51bfj99EzHmsjSxA6Hl1o7FVTY6aVfU", "restricted", 2.5],
+  ["zeus-x27-tosai", "Zeus x27", "Tosai", "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLln4Xl7x1B6ue9V7BiM_GaMWuZxuZi_uM6GXC3xUh05D7WmY36IHuUZ1AjXpVwR-FZu0OxltHlN-_gsQ3Z34NbjXKpEIQyv90", "restricted", 3.5],
+  ["zeus-x27-olympus", "Zeus x27", "Olympus", "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLln4Xl7x1B6ue9V7BlNf6XC3WvxuFyj-1gSCGn2xl2sm7XnI6hdC-XPAcmXsF2RLIP4xbslty2NLvqswePjYlEySn33S9XrnE8cYTqlUY", "classified", 10.0],
+  ["zeus-x27-dragon-snore", "Zeus x27", "Dragon Snore", "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu5Dx60noTyLln4Xl7x1Y-s2hfqF_MPGAHViU0-9xv-9WVSymhiIrujqNjsH6dH7FOA8pXJZ0Q-MPshe-lte0Pu6z7lbXio5GmSv83yNJ73k54rlWT-N7rWv6YDXa", "classified", 25.0],
 ];
 
 export const EXTRA_SKINS: Skin[] = ROWS.map(([id, weapon, name, img, rarity, price]) => ({
