@@ -265,6 +265,24 @@ const STICKER_SKINS: Skin[] = STICKERS.map((s) => ({
   sticker: true,
 }));
 
+/* ------------------------------------------------------------------ */
+/* Zor çıkan (classified/covert/rare) eşyalara +%15 zam               */
+/* ------------------------------------------------------------------ */
+const HARD_DROP_MULT: Record<RarityKey, number> = {
+  consumer: 1,
+  industrial: 1,
+  milspec: 1,
+  restricted: 1,
+  classified: 1.15,
+  covert: 1.15,
+  rare: 1.15,
+};
+
+const hardBump = (s: Skin): Skin =>
+  HARD_DROP_MULT[s.rarity] !== 1
+    ? { ...s, price: Math.max(MIN_PRICE, Math.round((s.price * HARD_DROP_MULT[s.rarity]) / 100) * 100) }
+    : s;
+
 export const SKINS: Skin[] = [
   ...BASE_SKINS.map(scaled),
   ...EXTRA_SKINS.map(scaled),
@@ -276,7 +294,7 @@ export const SKINS: Skin[] = [
   ...LEGEND_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeLegendSt),
   ...LEGEND_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeLegendSv),
   ...STICKER_SKINS,
-];
+].map(hardBump);
 
 /** Yalnızca silah/eşya skinleri (sticker hariç) */
 export const WEAPON_SKINS: Skin[] = SKINS.filter((s) => !s.sticker);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Crown, Medal, MessageSquare, Send, Trophy, Users } from "lucide-react";
-import { CHAT_LINES, COMMUNITY_USERS } from "../data/fakers";
+import { ADMIRATION_LINES, CELEBRITY_LINES, CELEBRITY_USERS, CHAT_LINES, COMMUNITY_USERS } from "../data/fakers";
 import { mcHead } from "../config";
 import { fmtMoney } from "../data/skins";
 import { pick, randInt, uid } from "../lib/rng";
@@ -18,7 +18,13 @@ interface ChatMsg {
 }
 
 const AV_COLORS = ["#f98e1d", "#4b69ff", "#d32ce6", "#2fd673", "#53c8ff", "#eb4b4b", "#8847ff"];
-const ME_REPLIES = ["gg", "helal kral", "wp", "bende de aynı şanssızlık var", "şanslısın bugün sen", "aynen öyle", "hadi inş", "bana da çıkmadı o"];
+
+function botName(): string {
+  return Math.random() < 0.1 ? pick(CELEBRITY_USERS) : pick(COMMUNITY_USERS);
+}
+function botLine(): string {
+  return Math.random() < 0.1 ? pick(CELEBRITY_LINES) : pick(CHAT_LINES);
+}
 
 function Avatar({ name, size = 28 }: { name: string; size?: number }) {
   const idx = name.split("").reduce((a, ch) => a + ch.charCodeAt(0), 0) % AV_COLORS.length;
@@ -88,7 +94,7 @@ export function ChatRail() {
         if (!alive.current) return;
         setMsgs((prev) => [
           ...prev.slice(-28),
-          { id: uid(), user: pick(COMMUNITY_USERS), level: randInt(1, 42), text: pick(CHAT_LINES), ts: Date.now() },
+          { id: uid(), user: botName(), level: randInt(1, 42), text: botLine(), ts: Date.now() },
         ]);
         loop();
       }, randInt(2600, 7000));
@@ -123,15 +129,19 @@ export function ChatRail() {
       ...prev.slice(-28),
       { id: uid(), user: userName, level, text, ts: Date.now(), me: true },
     ]);
-    /* bot cevabı */
-    if (Math.random() < 0.35) {
-      window.setTimeout(() => {
-        if (!alive.current) return;
-        setMsgs((prev) => [
-          ...prev.slice(-28),
-          { id: uid(), user: pick(COMMUNITY_USERS), level: randInt(1, 42), text: pick(ME_REPLIES), ts: Date.now() },
-        ]);
-      }, randInt(1400, 3200));
+    /* herkes hayran oldu — birkaç bot kısa aralıklarla yazsın */
+    const fanCount = randInt(3, 6);
+    for (let i = 0; i < fanCount; i++) {
+      window.setTimeout(
+        () => {
+          if (!alive.current) return;
+          setMsgs((prev) => [
+            ...prev.slice(-28),
+            { id: uid(), user: botName(), level: randInt(1, 48), text: pick(ADMIRATION_LINES), ts: Date.now() },
+          ]);
+        },
+        500 + i * randInt(500, 1100)
+      );
     }
   }
 

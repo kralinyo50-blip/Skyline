@@ -530,6 +530,138 @@ function ShopBuyModal({
   );
 }
 
+/* ---------------- hepsini sat modalı ---------------- */
+function SellAllModal({ onClose }: { onClose: () => void }) {
+  const { inventory, listAllOnMarket } = useGame();
+  const [pct, setPct] = useState("10");
+
+  const p = Math.max(0, Math.min(500, Number(pct.replace(/[^\d]/g, "")) || 0));
+  const groups = useMemo(() => {
+    const m = new Map<string, { count: number; value: number }>();
+    inventory.forEach((i) => {
+      const c = m.get(i.skinId);
+      const v = itemValue(i);
+      if (c) {
+        c.count++;
+        c.value += v;
+      } else {
+        m.set(i.skinId, { count: 1, value: v });
+      }
+    });
+    return [...m.values()];
+  }, [inventory]);
+  const itemCount = inventory.length;
+  const baseTotal = groups.reduce((a, g) => a + g.value, 0);
+  const gross = inventory.reduce((a, i) => a + Math.max(100, Math.round((itemValue(i) * (1 + p / 100)) / 100) * 100), 0);
+  const net = Math.round(gross * (1 - MARKET_FEE));
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.93, y: 18, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.96, opacity: 0 }}
+        transition={{ type: "spring", stiffness: 300, damping: 26 }}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm overflow-hidden rounded-2xl border border-line bg-ink-800 shadow-2xl"
+      >
+        <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-brand-400" />
+            <span className="font-display text-lg font-bold">Envanterin Hepsini Sat</span>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-2 text-white/40 hover:text-white">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5">
+          <div className="flex items-center justify-between rounded-xl border border-line bg-ink-900 px-4 py-3 text-sm">
+            <span className="text-white/50">Envanter</span>
+            <span className="font-display font-black text-white">
+              {itemCount} eşya • {groups.length} çeşit
+            </span>
+          </div>
+          <div className="mt-2 flex items-center justify-between rounded-xl border border-line bg-ink-900 px-4 py-3 text-sm">
+            <span className="text-white/50">Piyasa değeri</span>
+            <span className="font-display font-black text-emerald-400">{money(baseTotal)}</span>
+          </div>
+
+          <label className="mb-1.5 mt-4 block text-[11px] font-bold uppercase tracking-widest text-white/40">
+            Ne kadar kâr istiyorsun?
+          </label>
+          <div className="flex items-center gap-2 rounded-xl border border-line bg-ink-900 px-4 focus-within:border-brand-500/60">
+            <TrendingUp className="h-4 w-4 text-emerald-400" />
+            <input
+              value={pct}
+              onChange={(e) => setPct(e.target.value.replace(/[^\d]/g, ""))}
+              inputMode="numeric"
+              className="h-12 min-w-0 flex-1 bg-transparent font-display text-xl font-black tabular-nums text-white focus:outline-none"
+            />
+            <span className="font-display text-sm font-black text-white/40">%</span>
+          </div>
+          <div className="mt-2 grid grid-cols-4 gap-2">
+            {[5, 10, 25, 50].map((o) => (
+              <button
+                key={o}
+                onClick={() => {
+                  setPct(String(o));
+                  click();
+                }}
+                className={cn(
+                  "rounded-lg border py-2 text-[11px] font-bold transition",
+                  p === o
+                    ? "border-brand-500 bg-brand-500/10 text-brand-300"
+                    : "border-line bg-ink-700 text-white/50 hover:text-white"
+                )}
+              >
+                %{o}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-4 space-y-1.5 rounded-xl border border-line bg-ink-900 p-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-white/45">Hepsi satışta</span>
+              <span className="font-display font-black text-white">{money(gross)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-white/45">Komisyon (%{MARKET_FEE * 100})</span>
+              <span className="font-display font-bold text-white/60">−{money(gross - net)}</span>
+            </div>
+            <div className="flex items-center justify-between border-t border-line pt-1.5">
+              <span className="text-white/45">Satınca eline geçecek</span>
+              <span className="font-display text-lg font-black text-emerald-400">{money(net)}</span>
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              if (itemCount === 0) return;
+              const r = listAllOnMarket(p);
+              if (r.ok) onClose();
+            }}
+            disabled={itemCount === 0}
+            className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 font-display text-base font-black text-ink-950 transition hover:brightness-110 disabled:opacity-40"
+          >
+            <Tag className="h-5 w-5" />
+            Hepsini Pazara Koy — {money(gross)}
+          </button>
+          <p className="mt-2 text-center text-[10px] leading-relaxed text-white/35">
+            Her eşya ayrı ilan olarak (aynı skinler paket) satışa çıkar — dilersen ilanları tek tek geri çekebilirsin.
+          </p>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 export function MarketView() {
   const {
     botListings,
@@ -550,6 +682,7 @@ export function MarketView() {
   const [shopBuy, setShopBuy] = useState<ShopItem | null>(null);
   const [shopSource, setShopSource] = useState<ShopSource>("all");
   const [detail, setDetail] = useState<{ item: InvItem; listingId?: string } | null>(null);
+  const [sellAllOpen, setSellAllOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [invPage, setInvPage] = useState(1);
 
@@ -1050,6 +1183,17 @@ export function MarketView() {
                 Satılacak Eşyanı Seç
               </span>
               <span className="ml-auto text-xs text-white/35">{invItems.length} eşya</span>
+              {invItems.length > 0 && (
+                <button
+                  onClick={() => {
+                    setSellAllOpen(true);
+                    click();
+                  }}
+                  className="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-emerald-300 transition hover:bg-emerald-500/20"
+                >
+                  <Package className="h-3.5 w-3.5" /> Hepsini Sat
+                </button>
+              )}
             </div>
 
             {invItems.length === 0 ? (
@@ -1238,6 +1382,7 @@ export function MarketView() {
             onClose={() => setSellTarget(null)}
           />
         )}
+        {sellAllOpen && <SellAllModal onClose={() => setSellAllOpen(false)} />}
         {shopBuy && <ShopBuyModal item={shopBuy} onClose={() => setShopBuy(null)} />}
         {detail && (() => {
           const l = detail.listingId ? botListings.find((x) => x.id === detail.listingId) : null;

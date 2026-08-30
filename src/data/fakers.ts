@@ -54,4 +54,24 @@ export const CHAT_LINES = [
   "şu an 7. sayfada envanterim var koleksiyonerim", "fire serpent hayaldi gerçek oldu bugün",
 ];
 
+/* Ünlü/sosyetik botlar — jackpotta deli para basarlar, sohbette ağızları gevşek */
+export const CELEBRITY_USERS = [
+  "Abdurrahman", "KeremBey", "SultanSinan", "KralCengiz", "FatihBey",
+];
+
+export const CELEBRITY_LINES = [
+  "az önce 10 kasa aldım hepsini 😎", "para bende kral, kim tutar",
+  "bu pota benim gibi zengin lazım", "eli sıkı olan çıkmasın buralardan",
+  "jackpota 5 milyon bastım yine", "herkes bana hayran, doğru düzgün yazın",
+  "pazardaki her şeyi alıyorum, boş işlerle uğraşmayın",
+];
+
+/* Sohbete mesaj yazınca herkesin yazdığı hayranlık replikleri */
+export const ADMIRATION_LINES = [
+  "hayranınım abi 😍", "efsanesin kral 👑", "bu ne ya 🔥🔥", "vay be helal olsun",
+  "seni takip ediyorum artık", "mahallenin efsanesi bu", "abi sen kimsin ya 😱",
+  "bizim için de dua et 😂", "para basmışsın bugün 💰", "okulda anlatacağım bunu",
+  "işte böyle bir efsane", "gören de ünlü sanacak 🤩",
+];
+
 export const BATTLE_VERBS = ["ezdi", "yendi", "tokatladı", "devirdi", "solladı", "havaya uçurdu"];

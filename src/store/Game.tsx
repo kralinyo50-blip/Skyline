@@ -8,6 +8,7 @@ import React, {
   useState,
 } from "react";
 import { SKIN_MAP, SKINS, WEAPON_SKINS, TIER_ORDER, type Skin } from "../data/skins";
+import { LEGEND_SKINS } from "../data/legends";
 import {
   isStickerItem,
   itemValue,
@@ -48,7 +49,7 @@ import {
   jackpotSchedule,
   isValidMcName,
 } from "../config";
-import { COMMUNITY_USERS } from "../data/fakers";
+import { CELEBRITY_USERS, COMMUNITY_USERS } from "../data/fakers";
 import {
   generateBotListings,
   makeBotListing,
@@ -367,6 +368,8 @@ interface GameState {
   myListings: MyListing[];
   quickSell: (uidKey: string) => { skin: Skin | null; payout: number } | null;
   listOnMarket: (uidKey: string, price: number, qty?: number) => boolean;
+  /** tüm envanteri kâr yüzdesine göre pazara koy */
+  listAllOnMarket: (profitPercent: number) => { ok: boolean; count: number; total: number };
   cancelListing: (listingId: string) => void;
   buyListing: (listingId: string, qty?: number) => boolean;
   refreshMarket: () => void;
@@ -998,6 +1001,76 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       return ok;
     },
     [mutate]
+  );
+
+  /** Tüm envanteri kâr yüzdesine göre pazara koy — her skin kendi paketi olur */
+  const listAllOnMarket = useCallback(
+    (profitPercent: number): { ok: boolean; count: number; total: number } => {
+      const pct = Math.max(0, Math.min(500, profitPercent));
+      let count = 0;
+      let total = 0;
+      mutate((draft) => {
+        const me = draft.users[draft.session ?? ""];
+        if (!me) return;
+        const groups = new Map<string, InvItem[]>();
+        me.inventory.forEach((i) => {
+          const g = groups.get(i.skinId) ?? [];
+          g.push(i);
+          groups.set(i.skinId, g);
+        });
+        const now = Date.now();
+        for (const [, items] of groups) {
+          const first = items[0];
+          if (!SKIN_MAP[first.skinId]) continue;
+          const unit = Math.max(100, Math.round((itemValue(first) * (1 + pct / 100)) / 100) * 100);
+          const lid = uid();
+          const taken = new Set(items.map((t) => t.uid));
+          me.inventory = me.inventory.filter((i) => !taken.has(i.uid));
+          const copies = items.map((t) => ({ float: t.float, stickers: t.stickers }));
+          me.listings = [
+            {
+              id: lid,
+              skinId: first.skinId,
+              price: unit,
+              ts: now,
+              float: first.float,
+              stickers: first.stickers,
+              baseValue: itemValue(first),
+              copies,
+              qty: items.length,
+            },
+            ...(me.listings ?? []),
+          ];
+          draft.marketListings = [
+            {
+              id: lid,
+              sellerKey: me.key,
+              sellerName: me.name,
+              skinId: first.skinId,
+              unitPrice: unit,
+              qty: items.length,
+              copies,
+              baseValue: itemValue(first),
+              ts: now,
+            },
+            ...(draft.marketListings ?? []),
+          ];
+          count += items.length;
+          total += unit * items.length;
+        }
+      });
+      if (count > 0) {
+        click();
+        coinDing();
+        pushToast({
+          kind: "money",
+          title: "Tüm envanter satışa çıktı! 📦",
+          sub: `${count} eşya, toplam ${money(total)} — kâr %${Math.round(pct)}`,
+        });
+      }
+      return { ok: count > 0, count, total };
+    },
+    [mutate, pushToast]
   );
 
   /** İlanı geri çek */
@@ -2258,6 +2331,30 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   };
 
   /** Tur için deterministik botlar + katılım zamanları (her cihaz aynısını üretir) */
+  /** Ünlü bot girişi — deli gibi para basan efsane içerikleri */
+  const celebrityEntry = (rng: () => number, round: number, idx: number, name: string): { entry: JackpotEntry; joinAt: number } => {
+    const sched = jackpotSchedule(round);
+    const items: JackpotItem[] = [];
+    const nItems = 2 + Math.floor(rng() * 3); // 2–4 efsane eşya
+    for (let j = 0; j < nItems; j++) {
+      const s = LEGEND_SKINS[Math.floor(rng() * LEGEND_SKINS.length)];
+      const float = rollFloatSeeded(rng);
+      let stickers: string[] | undefined;
+      if (rng() < 0.7) {
+        stickers = Array.from(
+          { length: 2 + Math.floor(rng() * 3) },
+          () => STICKER_POOL[Math.floor(rng() * STICKER_POOL.length)]
+        );
+      }
+      const item: InvItem = { uid: "bot", skinId: s.id, ts: 0, float, stickers };
+      items.push({ skinId: s.id, float, stickers, value: itemValue(item) });
+    }
+    return {
+      entry: { id: `bot-${round}-celeb-${idx}`, name, bot: true, items, total: items.reduce((a, x) => a + x.value, 0) },
+      joinAt: sched.start + 3500 + idx * 2500 + Math.floor(rng() * 2600),
+    };
+  };
+
   const botsForRound = (round: number): { entry: JackpotEntry; joinAt: number }[] => {
     const sched = jackpotSchedule(round);
     const rng = seededRng("skyline:jackpot:bots", round);
@@ -2286,6 +2383,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         /* botlar tura eşit aralıklı, hafif jitter'lı girer */
         joinAt: sched.start + 2500 + i * ((JACKPOT_ROUND_MS - 14000) / count) + Math.floor(rng() * 2200),
       });
+    }
+    /* her turda en az bir ünlü (Abdurrahman önce), bazen ikinci bir sosyetik */
+    const celebCount = 1 + (rng() < 0.45 ? 1 : 0);
+    for (let i = 0; i < celebCount; i++) {
+      const name = i === 0 ? CELEBRITY_USERS[0] : CELEBRITY_USERS[1 + Math.floor(rng() * (CELEBRITY_USERS.length - 1))];
+      bots.push(celebrityEntry(rng, round, i, name));
     }
     return bots;
   };
@@ -3010,6 +3113,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     myListings: user?.listings ?? [],
     quickSell,
     listOnMarket,
+    listAllOnMarket,
     cancelListing,
     buyListing,
     refreshMarket,

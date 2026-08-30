@@ -890,7 +890,7 @@ export function Header() {
                 )}
 
                 {/* paketler */}
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   {VIP_PLANS.map((p) => (
                     <div
                       key={p.id}

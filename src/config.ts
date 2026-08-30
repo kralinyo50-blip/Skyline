@@ -86,9 +86,10 @@ export const VIP_PLANS: {
   /** pazar komisyonu (0 = VIP satıcı komisyonsuz satış) */
   fee: number;
 }[] = [
-  { id: "vip-7", label: "VIP 7 Gün", days: 7, price: 250_000, cashback: 0.05, dailyMult: 1.25, fee: 0 },
-  { id: "vip-30", label: "VIP 30 Gün", days: 30, price: 800_000, cashback: 0.08, dailyMult: 1.5, fee: 0 },
-  { id: "vip-90", label: "VIP 90 Gün", days: 90, price: 2_000_000, cashback: 0.12, dailyMult: 2, fee: 0 },
+  { id: "vip-1", label: "VIP 1 Gün", days: 1, price: 250_000, cashback: 0.02, dailyMult: 1.1, fee: 0 },
+  { id: "vip-7", label: "VIP 7 Gün", days: 7, price: 1_500_000, cashback: 0.05, dailyMult: 1.25, fee: 0 },
+  { id: "vip-30", label: "VIP 30 Gün", days: 30, price: 4_500_000, cashback: 0.08, dailyMult: 1.5, fee: 0 },
+  { id: "vip-365", label: "VIP 365 Gün", days: 365, price: 8_800_000, cashback: 0.15, dailyMult: 2.5, fee: 0 },
 ];
 
 /* ---------------- JACKPOT ---------------- */
