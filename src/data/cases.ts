@@ -1,4 +1,5 @@
 import { SKIN_MAP, BASE_SKINS, RARITY, type Skin, type RarityKey, TIER_ORDER } from "./skins";
+import { LEGEND_IDS } from "./legends";
 import { CASE_MARKUP, roundCasePrice } from "../config";
 import { TEAM_STICKER_IDS } from "./stickers";
 import { seededRng } from "../lib/rng";
@@ -268,6 +269,25 @@ const CASES_RAW: CaseDef[] = [
     },
   },
 ];
+
+/* ---------------- EFSANELER KASASI (50 ikonik skin) ---------------- */
+{
+  const L = LEGEND_IDS;
+  CASES_RAW.push({
+    id: "legends",
+    name: "Efsaneler Kasası",
+    img: caseArt(["#ffd75e", "#b8860b", "#7a5c00"], "🐉"),
+    price: 0,
+    accent: "#e4ae39",
+    tagline: "50 efsane — Dragon Lore, Fire Serpent, Karambit Fade…",
+    hot: true,
+    contents: {
+      classified: L.classified,
+      covert: L.covert,
+      rare: L.rare,
+    },
+  });
+}
 
 /* ---------------- Sticker kapsülleri & stickerlı kasa ---------------- */
 const STICKER_CASES: CaseDef[] = [
