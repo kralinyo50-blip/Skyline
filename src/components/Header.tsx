@@ -1,0 +1,795 @@
+import { useEffect, useState } from "react";
+import { AnimatePresence, motion, useSpring, useTransform } from "framer-motion";
+import {
+  Backpack,
+  Banknote,
+  Boxes,
+  ChevronsUp,
+  Check,
+  Clock,
+  Dices,
+  Gift,
+  Handshake,
+  LogOut,
+  Plus,
+  ShieldCheck,
+  Sparkles,
+  Store,
+  Swords,
+  Unplug,
+  Volume2,
+  VolumeX,
+  Wallet,
+  Wifi,
+  X,
+} from "lucide-react";
+import { useGame, DAILY_COOLDOWN, type TabKey } from "../store/Game";
+import { ADMIN_NAME, BRAND, CURRENCY, SCALE, mcHead, money } from "../config";
+import { click, coinDing } from "../lib/audio";
+import { cn } from "../utils/cn";
+
+const TABS: { key: TabKey; label: string; Icon: typeof Boxes }[] = [
+  { key: "cases", label: "Kasalar", Icon: Boxes },
+  { key: "upgrader", label: "Upgrader", Icon: ChevronsUp },
+  { key: "battle", label: "Savaş", Icon: Swords },
+  { key: "games", label: "Oyunlar", Icon: Dices },
+  { key: "market", label: "Pazar", Icon: Store },
+  { key: "trade", label: "Takas", Icon: Handshake },
+  { key: "inventory", label: "Envanter", Icon: Backpack },
+];
+
+function AnimatedMoney({ value }: { value: number }) {
+  const spring = useSpring(value, { stiffness: 140, damping: 22 });
+  useEffect(() => spring.set(value), [value, spring]);
+  const text = useTransform(spring, (v) => money(v));
+  return <motion.span>{text}</motion.span>;
+}
+
+const PRESETS = [1000, 5000, 10000, 25000, 50000, 100000];
+const METHODS = ["Banka / IBAN", "Papara", "Oyun İçi Transfer", "Kripto"];
+const MIN_WITHDRAW = 5000;
+
+function ago(ts: number): string {
+  const m = Math.floor((Date.now() - ts) / 60000);
+  if (m < 1) return "az önce";
+  if (m < 60) return `${m} dk önce`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} sa önce`;
+  return `${Math.floor(h / 24)} gün önce`;
+}
+
+export function Header() {
+  const {
+    balance, tab, setTab, inventory, muted, toggleMute, pushToast,
+    level, levelTitleStr, levelProgress, xpCurrent, xpNeeded,
+    lastDaily, claimDaily, isAdmin, userName, logout,
+    requestDeposit, requestWithdraw, heldBalance, myDeposits, pendingDepositList, pendingUserList,
+    syncCode, setSyncCode, syncStatus,
+  } = useGame();
+
+  const [mode, setMode] = useState<"deposit" | "withdraw">("deposit");
+  const [payTo, setPayTo] = useState("");
+
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [codeDraft, setCodeDraft] = useState("");
+
+  const [depositOpen, setDepositOpen] = useState(false);
+  const [amount, setAmount] = useState("10000");
+  const [method, setMethod] = useState(METHODS[0]);
+  const [sent, setSent] = useState(false);
+  const [dailyOpen, setDailyOpen] = useState(false);
+  const [claimed, setClaimed] = useState<number | null>(null);
+
+  const dailyReady = !lastDaily || Date.now() - lastDaily >= DAILY_COOLDOWN;
+  const dailyLeftMs = lastDaily ? Math.max(0, lastDaily + DAILY_COOLDOWN - Date.now()) : 0;
+  const dailyLeftH = Math.floor(dailyLeftMs / 3600000);
+  const dailyLeftM = Math.floor((dailyLeftMs % 3600000) / 60000);
+
+  const myPending = myDeposits.filter((d) => d.status === "pending");
+  const adminBadge = pendingDepositList.length + pendingUserList.length;
+  const amountNum = Math.max(0, Math.round(Number(amount.replace(/[^\d]/g, "")) || 0));
+
+  const allTabs: typeof TABS = isAdmin
+    ? [...TABS, { key: "admin" as TabKey, label: "Panel", Icon: ShieldCheck }]
+    : TABS;
+
+  function submitRequest() {
+    if (mode === "withdraw") {
+      if (amountNum < MIN_WITHDRAW) {
+        pushToast({ kind: "lose", title: "Çok düşük tutar", sub: `En az ${money(MIN_WITHDRAW)} çekebilirsin` });
+        return;
+      }
+      if (amountNum > balance) {
+        pushToast({ kind: "lose", title: "Yetersiz bakiye", sub: `Kullanılabilir: ${money(balance)}` });
+        return;
+      }
+      if (!payTo.trim()) {
+        pushToast({ kind: "lose", title: "Ödeme bilgisi gerekli", sub: "IBAN / nick / cüzdan yaz" });
+        return;
+      }
+      click();
+      if (!requestWithdraw(amountNum, method, payTo.trim())) return;
+    } else {
+      if (amountNum < 100) {
+        pushToast({ kind: "lose", title: "Geçersiz tutar", sub: `En az ${money(100)} talep edebilirsin` });
+        return;
+      }
+      click();
+      requestDeposit(amountNum, method);
+    }
+    setSent(true);
+    setTimeout(() => {
+      setSent(false);
+      setDepositOpen(false);
+    }, 1700);
+  }
+
+  return (
+    <>
+      <header className="sticky top-0 z-50 border-b border-line bg-ink-950/85 backdrop-blur-md">
+        <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-3 px-4">
+          {/* logo */}
+          <button onClick={() => setTab("cases")} className="flex shrink-0 items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 shadow-[0_4px_16px_-4px_rgba(249,142,29,0.6)]">
+              <Sparkles className="h-5 w-5 text-ink-950" strokeWidth={2.4} />
+            </div>
+            <div className="hidden font-display text-xl font-bold tracking-wide sm:block">
+              {BRAND.name}
+              <span className="text-brand-400">{BRAND.suffix}</span>
+            </div>
+          </button>
+
+          {/* desktop nav */}
+          <nav className="mx-auto hidden items-center gap-1 lg:flex">
+            {allTabs.map(({ key, label, Icon }) => (
+              <button
+                key={key}
+                onClick={() => {
+                  setTab(key);
+                  click();
+                }}
+                className={cn(
+                  "relative flex items-center gap-1.5 rounded-lg px-3.5 py-2 font-display text-sm font-semibold uppercase tracking-wider transition-colors",
+                  tab === key ? "text-white" : "text-white/45 hover:text-white/80"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+                {key === "inventory" && inventory.length > 0 && (
+                  <span className="ml-0.5 rounded-full bg-brand-500/20 px-1.5 text-[10px] font-bold text-brand-300">
+                    {inventory.length}
+                  </span>
+                )}
+                {key === "admin" && adminBadge > 0 && (
+                  <span className="ml-0.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-lose px-1 text-[10px] font-black text-white" style={{ height: 18, minWidth: 18 }}>
+                    {adminBadge}
+                  </span>
+                )}
+                {tab === key && (
+                  <motion.div
+                    layoutId="nav-underline"
+                    className="absolute inset-x-3 -bottom-[13px] h-[2.5px] rounded-full bg-gradient-to-r from-brand-400 to-brand-600"
+                  />
+                )}
+              </button>
+            ))}
+          </nav>
+
+          <div className="ml-auto flex items-center gap-2 lg:ml-0">
+            {/* seviye */}
+            <div
+              className="hidden items-center gap-2 rounded-lg border border-line bg-ink-800 px-2.5 py-1.5 xl:flex"
+              title={`Seviye ${level} ${levelTitleStr} — ${xpCurrent.toFixed(0)}/${xpNeeded.toFixed(0)} XP`}
+            >
+              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-brand-400 to-brand-600 font-display text-[11px] font-black text-ink-950">
+                {level}
+              </div>
+              <div>
+                <div className="text-[10px] font-bold leading-none text-white/80">{levelTitleStr}</div>
+                <div className="mt-1 h-1 w-14 overflow-hidden rounded-full bg-ink-600">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-brand-400 to-brand-600 transition-all duration-700"
+                    style={{ width: `${levelProgress * 100}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* sunucu senkronu */}
+            <button
+              onClick={() => {
+                setCodeDraft(syncCode ?? "");
+                setConnectOpen(true);
+                click();
+              }}
+              className={cn(
+                "relative flex h-9 w-9 items-center justify-center rounded-lg border transition",
+                syncStatus === "ok"
+                  ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-400"
+                  : syncCode
+                    ? "border-brand-500/40 bg-brand-500/10 text-brand-400"
+                    : "border-line bg-ink-800 text-white/40 hover:text-white/70"
+              )}
+              title={syncCode ? `Sunucuya bağlı: ${syncCode}` : "Sunucuya bağlan"}
+            >
+              <Wifi className="h-4 w-4" />
+              {syncStatus === "ok" && (
+                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-emerald-400" />
+              )}
+            </button>
+
+            {/* günlük ödül */}
+            <button
+              onClick={() => {
+                setDailyOpen(true);
+                click();
+              }}
+              className={cn(
+                "relative flex h-9 w-9 items-center justify-center rounded-lg border transition",
+                dailyReady
+                  ? "border-brand-500/50 bg-brand-500/10 text-brand-400 hover:bg-brand-500/20"
+                  : "border-line bg-ink-800 text-white/40 hover:text-white/70"
+              )}
+              title="Günlük ödül"
+            >
+              <Gift className="h-4 w-4" />
+              {dailyReady && (
+                <span className="absolute -right-1 -top-1 flex h-2.5 w-2.5">
+                  <span className="absolute h-full w-full animate-ping rounded-full bg-brand-400 opacity-75" />
+                  <span className="h-full w-full rounded-full bg-brand-400" />
+                </span>
+              )}
+            </button>
+
+            {/* mute */}
+            <button
+              onClick={toggleMute}
+              className="hidden h-9 w-9 items-center justify-center rounded-lg border border-line bg-ink-800 text-white/50 transition hover:text-white sm:flex"
+              title={muted ? "Sesi aç" : "Sesi kapat"}
+            >
+              {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+            </button>
+
+            {/* bakiye */}
+            <div className="flex items-stretch overflow-hidden rounded-lg border border-line bg-ink-800">
+              <div className="flex items-center gap-2 px-3">
+                <Wallet className="h-4 w-4 text-brand-400" />
+                <span className="font-display text-[15px] font-bold text-emerald-400 tabular-nums">
+                  <AnimatedMoney value={balance} />
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setDepositOpen(true);
+                  click();
+                }}
+                className="relative flex items-center gap-1 bg-gradient-to-b from-brand-400 to-brand-600 px-3 font-display text-sm font-bold text-ink-950 transition hover:brightness-110"
+              >
+                <Plus className="h-4 w-4" strokeWidth={3} />
+                <span className="hidden sm:inline">Para Yatır</span>
+                {myPending.length > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-ink-950 px-1 text-[9px] font-black text-brand-300">
+                    {myPending.length}
+                  </span>
+                )}
+              </button>
+            </div>
+
+            {/* profil */}
+            <div className="flex items-center gap-2 rounded-lg border border-line bg-ink-800 py-1 pl-1.5 pr-1">
+              <img
+                src={mcHead(userName, 48)}
+                alt={userName}
+                className="h-7 w-7 rounded"
+                style={{ imageRendering: "pixelated" }}
+              />
+              <div className="hidden leading-tight md:block">
+                <div className="flex items-center gap-1 text-xs font-bold text-white">
+                  {userName}
+                  {isAdmin && <ShieldCheck className="h-3 w-3 text-brand-400" />}
+                </div>
+                <div className="text-[9px] uppercase tracking-wider text-white/35">
+                  {isAdmin ? "Yönetici" : "Vatandaş"}
+                </div>
+              </div>
+              <button
+                onClick={logout}
+                title="Çıkış yap"
+                className="flex h-7 w-7 items-center justify-center rounded-md text-white/35 transition hover:bg-white/5 hover:text-lose"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* mobil alt nav */}
+      <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-ink-950/95 backdrop-blur-md lg:hidden">
+        {allTabs.map(({ key, label, Icon }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={cn(
+              "relative flex flex-1 flex-col items-center gap-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider",
+              tab === key ? "text-brand-400" : "text-white/40"
+            )}
+          >
+            <Icon className="h-5 w-5" />
+            {label}
+            {key === "inventory" && inventory.length > 0 && (
+              <span className="absolute right-[calc(50%-22px)] top-1.5 rounded-full bg-brand-500 px-1 text-[9px] font-bold text-ink-950">
+                {inventory.length}
+              </span>
+            )}
+            {key === "admin" && adminBadge > 0 && (
+              <span className="absolute right-[calc(50%-22px)] top-1.5 rounded-full bg-lose px-1 text-[9px] font-bold text-white">
+                {adminBadge}
+              </span>
+            )}
+          </button>
+        ))}
+      </nav>
+
+      {/* ---------------- PARA YATIRMA (onaylı) ---------------- */}
+      <AnimatePresence>
+        {depositOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            onClick={() => setDepositOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 10, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 26 }}
+              onClick={(e) => e.stopPropagation()}
+              className="tiny-scroll max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-line bg-ink-800 shadow-2xl"
+            >
+              <div className="sticky top-0 flex items-center justify-between border-b border-line bg-ink-800 px-5 py-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-500/15 text-brand-400">
+                    <Banknote className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} />
+                  </div>
+                  <div>
+                    <div className="font-display text-lg font-bold">Kasa İşlemleri</div>
+                    <div className="text-[11px] text-white/40">{CURRENCY.name} • yetkili onaylı</div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setDepositOpen(false)}
+                  className="rounded-lg p-2 text-white/40 hover:bg-white/5 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-5">
+                {/* yatır / çek sekmeleri */}
+                {!sent && (
+                  <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl border border-line bg-ink-900 p-1">
+                    {([
+                      { k: "deposit" as const, label: "Para Yatır", Icon: Plus },
+                      { k: "withdraw" as const, label: "Para Çek", Icon: Banknote },
+                    ]).map(({ k, label, Icon }) => (
+                      <button
+                        key={k}
+                        onClick={() => {
+                          setMode(k);
+                          click();
+                        }}
+                        className={cn(
+                          "flex items-center justify-center gap-1.5 rounded-lg py-2.5 font-display text-sm font-bold uppercase tracking-wider transition",
+                          mode === k
+                            ? k === "withdraw"
+                              ? "bg-emerald-500/15 text-emerald-400"
+                              : "bg-brand-500/15 text-brand-300"
+                            : "text-white/35 hover:text-white/70"
+                        )}
+                      >
+                        <Icon className="h-4 w-4" /> {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {sent ? (
+                  <div className="animate-rise flex flex-col items-center gap-3 py-8 text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-500/15 text-brand-400">
+                      <Clock className="h-8 w-8" />
+                    </div>
+                    <div className="font-display text-xl font-black text-white">Talep gönderildi</div>
+                    <p className="max-w-xs text-sm text-white/45">
+                      <span className="font-bold text-emerald-400">{money(amountNum)}</span> tutarındaki{" "}
+                      {mode === "withdraw" ? "çekim" : "yatırma"} talebin{" "}
+                      <span className="font-semibold text-brand-300">{ADMIN_NAME}</span> onayına düştü.
+                      {mode === "withdraw"
+                        ? " Tutar bakiyenden bloke edildi, onaylanınca ödemen yapılacak."
+                        : " Onaylanınca paran otomatik yüklenecek."}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {mode === "withdraw" && (
+                      <div className="mb-3 flex items-center justify-between rounded-xl border border-line bg-ink-900 px-3 py-2.5 text-xs">
+                        <span className="text-white/45">Çekilebilir bakiye</span>
+                        <span className="font-display text-base font-black text-emerald-400">
+                          {money(balance)}
+                        </span>
+                      </div>
+                    )}
+                    {mode === "withdraw" && heldBalance > 0 && (
+                      <div className="mb-3 flex items-center gap-2 rounded-lg border border-brand-500/30 bg-brand-500/5 px-3 py-2 text-[11px] text-brand-200">
+                        <Clock className="h-3.5 w-3.5 shrink-0" />
+                        {money(heldBalance)} onay bekleyen çekimde bloke
+                      </div>
+                    )}
+
+                    {/* tutar girişi */}
+                    <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-widest text-white/40">
+                      {mode === "withdraw" ? "Ne kadar çekmek istiyorsun?" : "Ne kadar yatırmak istiyorsun?"}
+                    </label>
+                    <div className="flex items-center gap-2 rounded-xl border border-line bg-ink-900 px-4 focus-within:border-brand-500/60">
+                      <span className="font-display text-2xl font-black text-brand-400">
+                        {CURRENCY.symbol}
+                      </span>
+                      <input
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))}
+                        inputMode="numeric"
+                        placeholder="0"
+                        className="h-14 min-w-0 flex-1 bg-transparent font-display text-2xl font-black tabular-nums text-white placeholder:text-white/20 focus:outline-none"
+                      />
+                      <span className="shrink-0 text-xs font-bold text-white/30">{CURRENCY.short}</span>
+                    </div>
+
+                    <div className="mt-2.5 grid grid-cols-3 gap-2">
+                      {PRESETS.map((p) => (
+                        <button
+                          key={p}
+                          onClick={() => {
+                            setAmount(String(p));
+                            click();
+                          }}
+                          className={cn(
+                            "rounded-lg border py-2 font-display text-sm font-bold transition",
+                            amountNum === p
+                              ? "border-brand-500 bg-brand-500/10 text-brand-300"
+                              : "border-line bg-ink-700 text-white/55 hover:text-white"
+                          )}
+                        >
+                          {money(p)}
+                        </button>
+                      ))}
+                    </div>
+
+                    <label className="mb-1.5 mt-4 block text-[11px] font-bold uppercase tracking-widest text-white/40">
+                      Ödeme yöntemi
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {METHODS.map((m) => (
+                        <button
+                          key={m}
+                          onClick={() => {
+                            setMethod(m);
+                            click();
+                          }}
+                          className={cn(
+                            "rounded-lg border py-2.5 text-xs font-semibold transition",
+                            method === m
+                              ? "border-brand-500 bg-brand-500/10 text-brand-300"
+                              : "border-line bg-ink-700 text-white/50 hover:text-white"
+                          )}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+
+                    {mode === "withdraw" && (
+                      <>
+                        <label className="mb-1.5 mt-4 block text-[11px] font-bold uppercase tracking-widest text-white/40">
+                          Ödeme yapılacak hesap / nick
+                        </label>
+                        <input
+                          value={payTo}
+                          onChange={(e) => setPayTo(e.target.value)}
+                          placeholder={
+                            method === "Oyun İçi Transfer" ? "Minecraft nickin" : "IBAN / Papara no / cüzdan adresi"
+                          }
+                          maxLength={64}
+                          className="h-11 w-full rounded-xl border border-line bg-ink-900 px-3 text-sm text-white placeholder:text-white/25 focus:border-brand-500/60 focus:outline-none"
+                        />
+                      </>
+                    )}
+
+                    <div
+                      className={cn(
+                        "mt-4 flex items-start gap-2 rounded-xl border p-3 text-[11px] leading-relaxed text-white/50",
+                        mode === "withdraw"
+                          ? "border-emerald-500/25 bg-emerald-500/5"
+                          : "border-brand-500/25 bg-brand-500/5"
+                      )}
+                    >
+                      <ShieldCheck
+                        className={cn(
+                          "mt-0.5 h-4 w-4 shrink-0",
+                          mode === "withdraw" ? "text-emerald-400" : "text-brand-400"
+                        )}
+                      />
+                      {mode === "withdraw" ? (
+                        <span>
+                          Talebin <span className="font-bold text-emerald-300">{ADMIN_NAME}</span> tarafından
+                          incelenecek. Tutar hemen bloke edilir; reddedilirse bakiyene iade edilir.
+                          En az {money(MIN_WITHDRAW)} çekebilirsin.
+                        </span>
+                      ) : (
+                        <span>
+                          Talebin <span className="font-bold text-brand-300">{ADMIN_NAME}</span> tarafından
+                          incelenip onaylanacak. Onaylandığı anda {CURRENCY.name} bakiyene eklenir.
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={submitRequest}
+                      className={cn(
+                        "mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl font-display text-base font-black uppercase tracking-widest text-ink-950 transition hover:brightness-110",
+                        mode === "withdraw"
+                          ? "bg-gradient-to-b from-emerald-400 to-emerald-600"
+                          : "bg-gradient-to-b from-brand-400 to-brand-600"
+                      )}
+                    >
+                      {money(amountNum)} {mode === "withdraw" ? "Çekim Talebi" : "Talep Et"}
+                    </button>
+                  </>
+                )}
+
+                {/* talep geçmişi */}
+                {myDeposits.length > 0 && (
+                  <div className="mt-5 border-t border-line pt-4">
+                    <div className="mb-2 text-[11px] font-bold uppercase tracking-widest text-white/40">
+                      Taleplerim
+                    </div>
+                    <div className="tiny-scroll max-h-40 space-y-1.5 overflow-y-auto">
+                      {myDeposits.slice(0, 12).map((d) => (
+                        <div
+                          key={d.id}
+                          className="flex items-center gap-2 rounded-lg bg-ink-900 px-3 py-2 text-xs"
+                        >
+                          <span
+                            className={cn(
+                              "shrink-0 rounded px-1 py-0.5 text-[9px] font-black uppercase",
+                              d.kind === "withdraw"
+                                ? "bg-emerald-500/15 text-emerald-400"
+                                : "bg-brand-500/15 text-brand-300"
+                            )}
+                          >
+                            {d.kind === "withdraw" ? "Çekim" : "Yatır"}
+                          </span>
+                          <span className="font-display font-bold text-white/80">{money(d.amount)}</span>
+                          <span className="truncate text-[10px] text-white/30">{d.method}</span>
+                          <span className="ml-auto shrink-0 text-[10px] text-white/25">{ago(d.ts)}</span>
+                          <span
+                            className={cn(
+                              "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase",
+                              d.status === "approved"
+                                ? "bg-emerald-500/15 text-emerald-400"
+                                : d.status === "pending"
+                                  ? "bg-brand-500/15 text-brand-300"
+                                  : "bg-lose/15 text-lose"
+                            )}
+                          >
+                            {d.status === "approved" ? "Onaylandı" : d.status === "pending" ? "Bekliyor" : "Reddedildi"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------------- SUNUCUYA BAĞLAN ---------------- */}
+      <AnimatePresence>
+        {connectOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            onClick={() => setConnectOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 10, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 26 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-line bg-ink-800 p-6 shadow-2xl"
+            >
+              <button
+                onClick={() => setConnectOpen(false)}
+                className="absolute right-3 top-3 rounded-lg p-2 text-white/40 hover:bg-white/5 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div
+                  className={cn(
+                    "flex h-12 w-12 items-center justify-center rounded-xl",
+                    syncStatus === "ok"
+                      ? "bg-emerald-500/15 text-emerald-400"
+                      : "bg-brand-500/15 text-brand-400"
+                  )}
+                >
+                  <Wifi className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="font-display text-xl font-black">Sunucuya Bağlan</h3>
+                  <div className="text-xs font-semibold">
+                    {syncStatus === "ok" ? (
+                      <span className="text-emerald-400">Bağlı — talepler anında akıyor</span>
+                    ) : syncCode ? (
+                      <span className="text-brand-300">Bağlanıyor…</span>
+                    ) : (
+                      <span className="text-white/40">Şu an yalnızca bu cihazda çalışıyorsun</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <p className="mt-4 text-xs leading-relaxed text-white/45">
+                Site adresiyle birlikte sana verilen <span className="font-bold text-white/70">sunucu kodunu</span> gir.
+                Böylece para taleplerin yetkiliye anında ulaşır.
+              </p>
+
+              <div className="mt-4 flex gap-2">
+                <input
+                  value={codeDraft}
+                  onChange={(e) => setCodeDraft(e.target.value.toUpperCase())}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && codeDraft.trim().length >= 4) {
+                      setSyncCode(codeDraft);
+                      setConnectOpen(false);
+                    }
+                  }}
+                  placeholder="Örn: SKYLINE-7K2"
+                  maxLength={20}
+                  spellCheck={false}
+                  className="h-12 min-w-0 flex-1 rounded-xl border border-line bg-ink-900 px-4 font-display text-base font-bold uppercase tracking-widest text-white placeholder:text-white/20 focus:border-brand-500/60 focus:outline-none"
+                />
+                <button
+                  onClick={() => {
+                    if (codeDraft.trim().length >= 4) {
+                      setSyncCode(codeDraft);
+                      setConnectOpen(false);
+                    } else {
+                      pushToast({ kind: "lose", title: "Kod çok kısa", sub: "En az 4 karakter gir" });
+                    }
+                  }}
+                  className="h-12 shrink-0 rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 px-4 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110"
+                >
+                  {syncCode ? "Güncelle" : "Bağlan"}
+                </button>
+              </div>
+
+              {syncCode && (
+                <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-2.5">
+                  <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+                  <span className="text-xs font-semibold text-white/70">
+                    Aktif kod: <span className="font-display font-bold text-emerald-300">{syncCode}</span>
+                  </span>
+                  <button
+                    onClick={() => {
+                      setSyncCode(null);
+                      setCodeDraft("");
+                    }}
+                    className="ml-auto flex items-center gap-1 rounded-md bg-lose/10 px-2 py-1 text-[10px] font-bold text-lose hover:bg-lose/20"
+                  >
+                    <Unplug className="h-3 w-3" /> Kes
+                  </button>
+                </div>
+              )}
+
+              <p className="mt-3 text-center text-[10px] text-white/30">
+                Kodu {BRAND.name} Discord kanalından edinebilirsin
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ---------------- GÜNLÜK ÖDÜL ---------------- */}
+      <AnimatePresence>
+        {dailyOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            onClick={() => setDailyOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 10, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 26 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-line bg-ink-800 p-6 text-center shadow-2xl"
+            >
+              <div className="absolute -left-10 -top-10 h-36 w-36 rounded-full bg-brand-500/15 blur-3xl" />
+              <button
+                onClick={() => setDailyOpen(false)}
+                className="absolute right-3 top-3 rounded-lg p-2 text-white/40 hover:bg-white/5 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              <div className="animate-floaty mx-auto flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 shadow-[0_16px_40px_-8px_rgba(249,142,29,0.6)]">
+                <Gift className="h-9 w-9 text-ink-950" strokeWidth={2.2} />
+              </div>
+
+              <h3 className="mt-4 font-display text-2xl font-black">Günlük Ödül</h3>
+              <p className="mt-1 text-xs text-white/45">
+                Her 20 saatte bir {money(4 * SCALE)} – {money(18 * SCALE)} arası bedava {CURRENCY.name}
+              </p>
+
+              {claimed !== null ? (
+                <div className="mt-5 animate-rise rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4">
+                  <div className="font-display text-3xl font-black text-emerald-400">
+                    +{money(claimed)}
+                  </div>
+                  <div className="mt-1 text-xs font-semibold text-emerald-300/80">
+                    Hesabına tanımlandı — yarın görüşürüz!
+                  </div>
+                </div>
+              ) : dailyReady ? (
+                <button
+                  onClick={() => {
+                    const r = claimDaily();
+                    setClaimed(r);
+                    if (r) coinDing();
+                  }}
+                  className="mt-5 h-12 w-full rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 font-display text-base font-black uppercase tracking-widest text-ink-950 transition hover:brightness-110"
+                >
+                  Ödülü Topla
+                </button>
+              ) : (
+                <div className="mt-5 rounded-xl border border-line bg-ink-900 p-4">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-white/35">
+                    Sonraki ödüle kalan süre
+                  </div>
+                  <div className="mt-1 font-display text-2xl font-black tabular-nums text-white/80">
+                    {dailyLeftH}s {dailyLeftM}d
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* admin uyarı şeridi */}
+      {isAdmin && adminBadge > 0 && tab !== "admin" && (
+        <button
+          onClick={() => setTab("admin")}
+          className="flex w-full items-center justify-center gap-2 border-b border-brand-500/30 bg-brand-500/10 py-2 text-xs font-bold text-brand-300 transition hover:bg-brand-500/15"
+        >
+          <ShieldCheck className="h-4 w-4" />
+          {pendingDepositList.length > 0 && `${pendingDepositList.length} para talebi`}
+          {pendingDepositList.length > 0 && pendingUserList.length > 0 && " • "}
+          {pendingUserList.length > 0 && `${pendingUserList.length} üyelik başvurusu`} onayını bekliyor —
+          panele git
+        </button>
+      )}
+    </>
+  );
+}

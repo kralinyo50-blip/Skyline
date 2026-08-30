@@ -1,0 +1,171 @@
+import { isAdminName, type Account, type DB, type DepositReq } from "./db";
+
+/* -------------------------------------------------------------
+   Hafif bulut senkronu — herhangi bir GET/PUT JSON ucuyla çalışır
+   (ör. npoint.io). Belge: { v, users, deposits }
+   Talepler ve üyelik durumları paylaşılır; bakiye ve envanter
+   her oyuncunun kendi cihazında kalır (onaylanan talepler
+   oyuncunun cihazında bakiyeye işlenir).
+------------------------------------------------------------- */
+
+export type SyncStatus = "off" | "busy" | "ok" | "error";
+
+interface CloudUser {
+  key: string;
+  name: string;
+  status: Account["status"];
+  createdAt: number;
+  pub?: Account["pub"];
+}
+
+export interface CloudDoc {
+  v: 1;
+  users: Record<string, CloudUser>;
+  deposits: DepositReq[];
+}
+
+export function toCloudDoc(db: DB): CloudDoc {
+  const users: Record<string, CloudUser> = {};
+  Object.values(db.users).forEach((u) => {
+    users[u.key] = { key: u.key, name: u.name, status: u.status, createdAt: u.createdAt, pub: u.pub };
+  });
+  return {
+    v: 1,
+    users,
+    deposits: [...db.deposits].sort((a, b) => a.ts - b.ts),
+  };
+}
+
+const RANK: Record<string, number> = { pending: 0, approved: 1, rejected: 1 };
+
+/** Bulut belgesini yerel veriyle birleştirir */
+export function mergeCloud(local: DB, cloud: CloudDoc): DB {
+  const out: DB = {
+    /* kullanıcıları derin kopyala — referans paylaşımı değişikliği gizlerdi */
+    users: Object.fromEntries(
+      Object.entries(local.users).map(([k, v]) => [k, { ...v, stats: { ...v.stats } }])
+    ),
+    deposits: [...local.deposits],
+    session: local.session,
+    claimed: { ...local.claimed },
+  };
+
+  /* kullanıcılar */
+  Object.values(cloud.users ?? {}).forEach((cu) => {
+    if (!cu || !cu.key) return;
+    const lu = out.users[cu.key];
+    if (!lu) {
+      out.users[cu.key] = {
+        key: cu.key,
+        name: cu.name,
+        isAdmin: isAdminName(cu.name),
+        status: cu.status,
+        balance: 0,
+        inventory: [],
+        stats: { opened: 0, spent: 0, bestDrop: 0 },
+        lastDaily: null,
+        nonce: 1000 + Math.floor(Math.random() * 500),
+        createdAt: cu.createdAt ?? Date.now(),
+        pub: cu.pub,
+      };
+    } else {
+      /* durum: pending → approved/rejected tek yönlü ilerler */
+      if ((RANK[cu.status] ?? 0) > (RANK[lu.status] ?? 0)) lu.status = cu.status;
+      if (cu.createdAt && cu.createdAt < lu.createdAt) lu.createdAt = cu.createdAt;
+      if (cu.pub && (!lu.pub || cu.pub.ts > lu.pub.ts)) lu.pub = cu.pub;
+    }
+  });
+
+  /* talepler — kimliğe göre birleş, kararlı hali koru */
+  const map = new Map<string, DepositReq>();
+  out.deposits.forEach((d) => map.set(d.id, d));
+  (cloud.deposits ?? []).forEach((cd) => {
+    const ld = map.get(cd.id);
+    if (!ld) {
+      map.set(cd.id, cd);
+    } else if (ld.status === "pending" && cd.status !== "pending") {
+      map.set(cd.id, cd);
+    } else if (ld.status === "pending" && cd.status === "pending") {
+      /* aynı */
+    }
+  });
+  out.deposits = [...map.values()].sort((a, b) => a.ts - b.ts);
+  return out;
+}
+
+interface SyncHandlers {
+  getLocal: () => DB;
+  apply: (merged: DB) => void;
+  onStatus: (s: SyncStatus) => void;
+}
+
+let timer: number | null = null;
+let forceFlag = false;
+let inFlight = false;
+let lastPushedJson = "";
+
+export function stopSync() {
+  if (timer !== null) {
+    clearInterval(timer);
+    timer = null;
+  }
+}
+
+export function startSync(url: string, h: SyncHandlers) {
+  stopSync();
+  lastPushedJson = "";
+
+  const tick = async () => {
+    if (inFlight) return;
+    inFlight = true;
+    try {
+      const local = h.getLocal();
+      const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`, {
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(`GET ${res.status}`);
+      let cloud: CloudDoc;
+      const raw = await res.json().catch(() => null);
+      if (!raw || typeof raw !== "object" || !raw.users || !Array.isArray(raw.deposits)) {
+        cloud = { v: 1, users: {}, deposits: [] };
+      } else {
+        cloud = raw as CloudDoc;
+      }
+
+      const merged = mergeCloud(local, cloud);
+      const localChanged = JSON.stringify(merged) !== JSON.stringify(local);
+      if (localChanged) h.apply(merged);
+
+      const doc = toCloudDoc(merged);
+      const docJson = JSON.stringify(doc);
+      if (docJson !== lastPushedJson) {
+        const put = await fetch(url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: docJson,
+        });
+        if (!put.ok) throw new Error(`PUT ${put.status}`);
+        lastPushedJson = docJson;
+      }
+      h.onStatus("ok");
+    } catch {
+      h.onStatus("error");
+    } finally {
+      inFlight = false;
+      forceFlag = false;
+    }
+  };
+
+  void tick();
+  timer = window.setInterval(() => void tick(), 4000);
+  window.addEventListener("skyline:sync-force", () => {
+    if (!forceFlag) {
+      forceFlag = true;
+      void tick();
+    }
+  });
+}
+
+export function forceSync() {
+  window.dispatchEvent(new Event("skyline:sync-force"));
+}
