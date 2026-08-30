@@ -160,6 +160,13 @@ export interface FirstLoginEvent {
   winner?: { key: string; name: string; ts: number };
 }
 
+/** Admin'in otomatik kabul ayarları — en son değişiklik (ts) kazanır */
+export interface AutoSettings {
+  autoApproveUsers: boolean;
+  autoApproveDeposits: boolean;
+  ts: number;
+}
+
 export interface DB {
   users: Record<string, Account>;
   deposits: DepositReq[];
@@ -172,13 +179,24 @@ export interface DB {
   raffle?: RaffleState | null;
   /** günün ilk giriş ödülü etkinliği */
   firstLogin?: FirstLoginEvent | null;
+  /** admin otomatik kabul ayarları */
+  settings?: AutoSettings;
 }
 
 const LS_KEY = "skyline:v1";
 const SYNC_URL_KEY = "skyline:sync:url";
 
 export function emptyDB(): DB {
-  return { users: {}, deposits: [], session: null, claimed: {}, announcement: null, raffle: null, firstLogin: null };
+  return {
+    users: {},
+    deposits: [],
+    session: null,
+    claimed: {},
+    announcement: null,
+    raffle: null,
+    firstLogin: null,
+    settings: { autoApproveUsers: false, autoApproveDeposits: false, ts: 0 },
+  };
 }
 
 export function normKey(name: string): string {
@@ -202,6 +220,7 @@ export function loadDB(): DB {
       announcement: parsed.announcement ?? null,
       raffle: parsed.raffle ?? null,
       firstLogin: parsed.firstLogin ?? null,
+      settings: parsed.settings ?? { autoApproveUsers: false, autoApproveDeposits: false, ts: 0 },
     };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.

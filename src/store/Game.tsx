@@ -74,6 +74,7 @@ import {
   type Announcement,
   type RaffleState,
   type FirstLoginEvent,
+  type AutoSettings,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
@@ -306,6 +307,10 @@ interface GameState {
   startFirstLoginEvent: (reward: number) => void;
   stopFirstLoginEvent: () => void;
 
+  /* admin otomatik kabul ayarları */
+  autoSettings: AutoSettings;
+  setAutoApproval: (p: Partial<Pick<AutoSettings, "autoApproveUsers" | "autoApproveDeposits">>) => void;
+
   /* pazar */
   botListings: Listing[];
   myListings: MyListing[];
@@ -490,6 +495,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const key = normKey(name);
       let error: string | undefined;
       let invited = false;
+      let autoApproved = false;
       const ref = refCode?.trim();
       const refOk =
         !!ref &&
@@ -514,6 +520,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           acc.referredByName = ref;
           invited = true;
         }
+        /* OTOMATİK KABUL: admin açtıysa bekleyen yeni üyelikler anında onaylanır
+           (davet bağlantısı önce kurulur, sonra onay verilir) */
+        if (acc.status === "pending" && !acc.isAdmin && draft.settings?.autoApproveUsers) {
+          acc.status = "approved";
+          if (acc.stats.opened === 0 && acc.inventory.length === 0) acc.balance = 0;
+          autoApproved = true;
+        }
         draft.session = key;
 
         /* GÜNÜN İLK GİRİŞ ÖDÜLÜ — etkinlik aktifse ve bugün kazanan yoksa */
@@ -536,6 +549,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           firstLoginWin.current = { name: acc.name, reward: ev.reward };
         }
       });
+      if (autoApproved) {
+        pushToastSafe.current({
+          kind: "win",
+          title: "Üyeliğin otomatik onaylandı",
+          sub: "Hemen kasa açmaya başlayabilirsin",
+        });
+      }
       if (invited) {
         pushToastSafe.current({
           kind: "info",
@@ -1576,6 +1596,20 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     pushToast({ kind: "info", title: "İlk giriş etkinliği kapatıldı" });
   }, [mutate, pushToast]);
 
+  /* ---------------- ADMIN: OTOMATİK KABUL AYARLARI ---------------- */
+  const setAutoApproval = useCallback(
+    (p: Partial<Pick<AutoSettings, "autoApproveUsers" | "autoApproveDeposits">>) => {
+      mutate((draft) => {
+        draft.settings = {
+          ...(draft.settings ?? { autoApproveUsers: false, autoApproveDeposits: false, ts: 0 }),
+          ...p,
+          ts: Date.now(),
+        };
+      });
+    },
+    [mutate]
+  );
+
   /* ---------------- GÖREVLER ---------------- */
   const trackMission = useCallback(
     (key: MissionKey, amount = 1) => {
@@ -1767,7 +1801,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const requestDeposit = useCallback(
     (amount: number, method: string) => {
       if (!user) return;
+      let auto = false;
       mutate((draft) => {
+        auto = !!draft.settings?.autoApproveDeposits;
         draft.deposits.unshift({
           id: uid(),
           userKey: user.key,
@@ -1775,16 +1811,26 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           amount,
           method,
           kind: "deposit",
-          status: "pending",
+          status: auto ? "approved" : "pending",
           ts: Date.now(),
+          decidedTs: auto ? Date.now() : undefined,
+          decidedBy: auto ? "Otomatik Onay" : undefined,
         });
       });
       forceSync();
-      pushToast({
-        kind: "info",
-        title: "Yatırma talebin iletildi",
-        sub: `${money(amount)} — ${ADMIN_NAME} onayı bekleniyor`,
-      });
+      pushToast(
+        auto
+          ? {
+              kind: "money",
+              title: "Yatırman otomatik onaylandı",
+              sub: `${money(amount)} hesabına ekleniyor`,
+            }
+          : {
+              kind: "info",
+              title: "Yatırma talebin iletildi",
+              sub: `${money(amount)} — ${ADMIN_NAME} onayı bekleniyor`,
+            }
+      );
     },
     [user, mutate, pushToast]
   );
@@ -2146,6 +2192,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     firstLoginEvent: db.firstLogin ?? null,
     startFirstLoginEvent,
     stopFirstLoginEvent,
+
+    autoSettings: db.settings ?? { autoApproveUsers: false, autoApproveDeposits: false, ts: 0 },
+    setAutoApproval,
 
     botListings,
     myListings: user?.listings ?? [],

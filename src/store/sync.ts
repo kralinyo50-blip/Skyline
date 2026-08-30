@@ -27,6 +27,7 @@ export interface CloudDoc {
   announcement?: DB["announcement"];
   raffle?: DB["raffle"];
   firstLogin?: DB["firstLogin"];
+  settings?: DB["settings"];
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -48,6 +49,7 @@ export function toCloudDoc(db: DB): CloudDoc {
     announcement: db.announcement ?? undefined,
     raffle: db.raffle ?? undefined,
     firstLogin: db.firstLogin ?? undefined,
+    settings: db.settings ?? undefined,
   };
 }
 
@@ -63,6 +65,7 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     deposits: [...local.deposits],
     session: local.session,
     claimed: { ...local.claimed },
+    settings: local.settings,
   };
 
   /* kullanıcılar */
@@ -138,6 +141,11 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
   if (cloud.firstLogin && (!out.firstLogin || cloud.firstLogin.ts > out.firstLogin.ts))
     out.firstLogin = cloud.firstLogin;
   else if (!cloud.firstLogin && local.firstLogin) out.firstLogin = local.firstLogin;
+
+  /* otomatik kabul ayarları — en yeni değişiklik kazanır */
+  if (cloud.settings && (!out.settings || cloud.settings.ts >= out.settings.ts))
+    out.settings = cloud.settings;
+  else if (!cloud.settings && local.settings) out.settings = local.settings;
 
   return out;
 }

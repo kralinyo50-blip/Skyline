@@ -19,6 +19,7 @@ import {
   Plus,
   RefreshCcw,
   Search,
+  Settings,
   ShieldCheck,
   Unplug,
   UserRoundCheck,
@@ -35,7 +36,7 @@ import { WEARS, rollFloat, type WearKey } from "../data/wear";
 import { FloatBar } from "./WearUi";
 import { cn } from "../utils/cn";
 
-type Sec = "users" | "deposits" | "players" | "sync" | "events";
+type Sec = "users" | "deposits" | "players" | "sync" | "events" | "settings";
 
 /* ---------------- SKİN HEDİYESİ — seçim taslağı ---------------- */
 type SkinDraft = {
@@ -129,6 +130,8 @@ export function AdminPanel() {
     announcement,
     setAnnouncement,
     clearAnnouncement,
+    autoSettings,
+    setAutoApproval,
   } = useGame();
 
   const [urlInput, setUrlInput] = useState(syncUrl ?? "");
@@ -206,6 +209,7 @@ export function AdminPanel() {
     { key: "users", label: "Üyelik Onayı", Icon: UserRoundCheck, badge: pendingUserList.length },
     { key: "players", label: "Oyuncular", Icon: Users, badge: 0 },
     { key: "events", label: "Etkinlikler", Icon: PartyPopper, badge: raffle && !raffle.drawn && !raffle.cancelled ? 1 : 0 },
+    { key: "settings", label: "Ayarlar", Icon: Settings, badge: 0 },
     { key: "sync", label: "Senkron", Icon: CloudUpload, badge: 0 },
   ];
 
@@ -702,6 +706,77 @@ export function AdminPanel() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------------- AYARLAR ---------------- */}
+      {sec === "settings" && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {(
+            [
+              {
+                key: "users" as const,
+                on: autoSettings.autoApproveUsers,
+                set: (v: boolean) => setAutoApproval({ autoApproveUsers: v }),
+                Icon: UserRoundCheck,
+                title: "Üyelikleri Otomatik Kabul Et",
+                desc: "Yeni kayıt olan oyuncular onay beklemeden anında kasaları açabilir. Kapatırsan başvurular tek tek senin onayına düşer.",
+                color: "#2fd673",
+              },
+              {
+                key: "deposits" as const,
+                on: autoSettings.autoApproveDeposits,
+                set: (v: boolean) => setAutoApproval({ autoApproveDeposits: v }),
+                Icon: Banknote,
+                title: "Para Taleplerini Otomatik Kabul Et",
+                desc: "Oyuncuların yatırma talepleri onay bekletilmeden anında bakiyeye işlenir. Kapatırsan her talep senin onayından geçer.",
+                color: "#f98e1d",
+              },
+            ]
+          ).map(({ on, set, Icon, title, desc, color }) => (
+            <div key={title} className="flex items-start gap-4 rounded-2xl border border-line bg-ink-900/70 p-5">
+              <div
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                style={{ background: `${color}18`, color }}
+              >
+                <Icon className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-display text-sm font-bold uppercase tracking-wider text-white/85">{title}</div>
+                <p className="mt-1 text-[11px] leading-relaxed text-white/45">{desc}</p>
+              </div>
+              <button
+                onClick={() => {
+                  set(!on);
+                  pushToast({
+                    kind: on ? "info" : "money",
+                    title: !on ? "Otomatik kabul açıldı" : "Otomatik kabul kapatıldı",
+                    sub: title,
+                  });
+                  coinDing();
+                }}
+                className={cn(
+                  "relative h-7 w-12 shrink-0 rounded-full transition-colors",
+                  on ? "bg-emerald-500" : "bg-ink-600"
+                )}
+                aria-pressed={on}
+              >
+                <span
+                  className={cn(
+                    "absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-all",
+                    on ? "left-[22px]" : "left-0.5"
+                  )}
+                />
+              </button>
+            </div>
+          ))}
+
+          <div className="rounded-2xl border border-brand-500/25 bg-brand-500/5 p-4 text-[11px] leading-relaxed text-white/50 lg:col-span-2">
+            <ShieldCheck className="mb-1 h-4 w-4 text-brand-300" />
+            Ayarlar <span className="font-bold text-white/75">tüm cihazlara otomatik yayınlanır</span> (senkron kodu
+            giren herkes aynı ayarı kullanır). Çekim talepleri (para çekme) güvenlik için{" "}
+            <span className="font-bold text-white/75">her zaman manuel onay</span> gerektirir.
           </div>
         </div>
       )}
