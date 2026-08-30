@@ -1484,9 +1484,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     (text: string) => {
       const t = text.trim();
       mutate((draft) => {
-        draft.announcement = t
-          ? { text: t, ts: Date.now(), author: ADMIN_NAME }
-          : null;
+        if (t) {
+          draft.announcement = { text: t, ts: Date.now(), author: ADMIN_NAME };
+        } else {
+          /* tombstone: boş metin + yeni ts — silme diğer cihazlara da yayılır,
+             eski duyuru bir daha geri gelmez */
+          draft.announcement = { text: "", ts: Date.now(), author: ADMIN_NAME };
+        }
       });
       if (t) coinDing();
     },
@@ -2204,7 +2208,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     adminGiveSkin,
 
-    announcement: db.announcement ?? null,
+    /* boş metin (tombstone) UI'a null gibi görünür */
+    announcement: db.announcement?.text ? db.announcement : null,
     setAnnouncement,
     clearAnnouncement,
 

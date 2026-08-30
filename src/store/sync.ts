@@ -66,6 +66,10 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     session: local.session,
     claimed: { ...local.claimed },
     settings: local.settings,
+    /* etkinlik alanlarını yerelden başlat — silme/iptal (ts) bulutun eski halinden önce gelir */
+    announcement: local.announcement,
+    raffle: local.raffle,
+    firstLogin: local.firstLogin,
   };
 
   /* kullanıcılar */
@@ -117,10 +121,10 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
   });
   out.deposits = [...map.values()].sort((a, b) => a.ts - b.ts);
 
-  /* etkinlik alanları — en yeni (ts) olan kazanır */
+  /* etkinlik alanları — en yeni (ts) olan kazanır; yerel silme de dikkate alınır */
   if (cloud.announcement && (!out.announcement || cloud.announcement.ts > out.announcement.ts))
     out.announcement = cloud.announcement;
-  if (!cloud.announcement && local.announcement) out.announcement = local.announcement;
+  else if (!cloud.announcement && !out.announcement) out.announcement = undefined;
 
   if (cloud.raffle?.cancelled) {
     /* iptal her yerde geçerli — kimin yerel kopyası olursa olsun */
