@@ -26,6 +26,7 @@ import { ADMIN_NAME, FIRST_LOGIN_REWARD, RAFFLE_FREQ_MS, RAFFLE_PRIZE, mcHead, m
 import { click, coinDing } from "../lib/audio";
 import { useGame, levelFromSpent } from "../store/Game";
 import { SKIN_MAP, RARITY } from "../data/skins";
+import { SkinCard } from "./SkinCard";
 import { cn } from "../utils/cn";
 
 type Sec = "users" | "deposits" | "players" | "sync" | "events";
@@ -1001,7 +1002,7 @@ export function AdminPanel() {
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-2xl border border-line bg-ink-800 shadow-2xl"
+              className="flex max-h-[85vh] w-full max-w-4xl flex-col rounded-2xl border border-line bg-ink-800 shadow-2xl"
             >
               <div className="flex items-center gap-2.5 border-b border-line p-4">
                 <Gift className="h-5 w-5 text-brand-400" />
@@ -1040,10 +1041,13 @@ export function AdminPanel() {
                 </select>
               </div>
 
-              <div className="tiny-scroll grid flex-1 grid-cols-3 gap-2 overflow-y-auto p-3 sm:grid-cols-4">
+              <div className="tiny-scroll grid flex-1 grid-cols-2 gap-2.5 overflow-y-auto p-4 sm:grid-cols-3 lg:grid-cols-4">
                 {skinResults.map((s) => (
-                  <button
+                  <SkinCard
                     key={s.id}
+                    skin={s}
+                    size="sm"
+                    price={false}
                     onClick={() => {
                       adminGiveSkin(skinFor.key, s.id);
                       pushToast({
@@ -1054,25 +1058,7 @@ export function AdminPanel() {
                       coinDing();
                       setSkinFor(null);
                     }}
-                    className="group overflow-hidden rounded-xl border border-line bg-ink-900/70 text-left transition hover:border-brand-500/60"
-                  >
-                    <div className="aspect-[4/3] w-full bg-ink-950">
-                      <img
-                        src={s.img}
-                        alt={`${s.weapon} | ${s.name}`}
-                        loading="lazy"
-                        className="h-full w-full object-contain transition group-hover:scale-105"
-                      />
-                    </div>
-                    <div className="p-2">
-                      <div className="truncate text-[10px] font-bold text-white/80">
-                        {s.weapon} | {s.name}
-                      </div>
-                      <div className="mt-0.5 text-[9px] font-bold" style={{ color: RARITY[s.rarity].color }}>
-                        {RARITY[s.rarity].tr}
-                      </div>
-                    </div>
-                  </button>
+                  />
                 ))}
               </div>
             </motion.div>
