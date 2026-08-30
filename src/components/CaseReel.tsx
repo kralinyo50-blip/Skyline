@@ -460,13 +460,13 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-4 bg-ink-950/92 px-4 backdrop-blur-[6px]"
+                  className="absolute inset-0 z-20 flex overflow-y-auto bg-ink-950/92 px-4 py-3 backdrop-blur-[6px]"
                 >
                   {bigWin && (
                     <Confetti colors={[winnerRarity!.color, "#ffffff", "#f98e1d"]} />
                   )}
 
-                  <div className="animate-result flex w-full max-w-md flex-col items-center rounded-2xl border border-line bg-ink-800/90 p-6 text-center shadow-2xl">
+                  <div className="animate-result relative m-auto flex w-full max-w-md flex-col items-center rounded-2xl border border-line bg-ink-800/90 p-4 text-center shadow-2xl sm:p-6">
                     <div
                       className="absolute inset-x-0 top-0 h-40 rounded-t-2xl opacity-60"
                       style={{ background: `radial-gradient(60% 100% at 50% 0%, ${winnerRarity!.color}33, transparent)` }}
@@ -478,7 +478,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                       {winnerRarity!.tr}
                     </span>
 
-                    <div className="relative mt-1 h-40 w-64">
+                    <div className="relative mt-1 h-36 w-60 sm:h-40 sm:w-64">
                       <div className="animate-spin-slower absolute inset-0 -z-0 opacity-70" style={{ background: `conic-gradient(from 0deg, transparent 0 40%, ${winnerRarity!.color}22 50%, transparent 60% 100%)`, borderRadius: "50%" }} />
                       <SkinImg skin={winner} className="relative h-full w-full" />
                     </div>
@@ -522,11 +522,11 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                       </div>
                     )}
 
-                    <div className="mt-3 font-display text-3xl font-black text-emerald-400 drop-shadow-[0_0_20px_rgba(47,214,115,0.35)]">
+                    <div className="mt-3 font-display text-2xl font-black text-emerald-400 drop-shadow-[0_0_20px_rgba(47,214,115,0.35)] sm:text-3xl">
                       {fmtMoney(finalValue)}
                     </div>
 
-                    <div className="mt-5 grid w-full grid-cols-3 gap-2">
+                    <div className="mt-4 grid w-full grid-cols-3 gap-2">
                       <button
                         onClick={sellWin}
                         disabled={handled}
