@@ -30,6 +30,8 @@ import { SkinCard, SkinImg } from "./SkinCard";
 const ITEM_W = 168;
 const STRIDE = 178;
 const REEL_COUNT = 76;
+/** Kasa içeriği önizlemesinde gösterilecek kart sayısı (binlerce skin varken performans) */
+const PREVIEW_LIMIT = 48;
 const WIN_AT = 68;
 const SPIN_MS = 6800;
 
@@ -389,13 +391,23 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                   <span className="font-display text-sm font-bold uppercase tracking-widest text-white/60">
                     Kasa İçeriği
                   </span>
-                  <span className="text-[11px] text-white/35">{contentItems.length} eşya</span>
+                  <span className="text-[11px] text-white/35">
+                    {contentItems.length} eşya
+                    {contentItems.length > PREVIEW_LIMIT && (
+                      <span className="text-white/25"> · en değerli {PREVIEW_LIMIT} gösteriliyor</span>
+                    )}
+                  </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-5">
-                  {contentItems.map((s) => (
+                  {contentItems.slice(0, PREVIEW_LIMIT).map((s) => (
                     <SkinCard key={s.id} skin={s} size="xs" />
                   ))}
                 </div>
+                {contentItems.length > PREVIEW_LIMIT && (
+                  <p className="mt-3 rounded-lg border border-line bg-ink-800/60 px-3 py-2 text-center text-[10px] text-white/35">
+                    … ve {contentItems.length - PREVIEW_LIMIT} eşya daha — hepsi eşit şansla düşebilir
+                  </p>
+                )}
               </div>
             </div>
           </div>

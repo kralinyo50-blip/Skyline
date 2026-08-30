@@ -229,6 +229,24 @@ function makeSv(s: Skin): Skin {
 const ST_TIERS: RarityKey[] = ["milspec", "restricted", "classified", "covert"];
 const SV_TIERS: RarityKey[] = ["industrial", "milspec", "restricted", "classified", "covert"];
 
+/* Efsane (zaten final fiyatlı) varyantları — eğriye sokulmaz, doğrudan çarpan */
+function makeLegendSt(s: Skin): Skin {
+  return {
+    ...s,
+    id: s.id + "-st",
+    st: true,
+    price: Math.max(MIN_PRICE, Math.round((s.price * 2.1) / 100) * 100),
+  };
+}
+function makeLegendSv(s: Skin): Skin {
+  return {
+    ...s,
+    id: s.id + "-sv",
+    sv: true,
+    price: Math.max(MIN_PRICE, Math.round((s.price * 1.55) / 100) * 100),
+  };
+}
+
 /* Sticker'lar da evrensel eşya listesine katılır (kasa/pazar/envanter uyumu) */
 const STICKER_TIER: Record<string, RarityKey> = {
   high: "milspec",
@@ -255,6 +273,8 @@ export const SKINS: Skin[] = [
   ...EXTRA_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeSt),
   ...EXTRA_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeSv),
   ...LEGEND_SKINS,
+  ...LEGEND_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeLegendSt),
+  ...LEGEND_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeLegendSv),
   ...STICKER_SKINS,
 ];
 
