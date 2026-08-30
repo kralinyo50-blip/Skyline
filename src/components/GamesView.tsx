@@ -68,7 +68,13 @@ function Coinflip({ bet, onStart, onEnd }: GameProps) {
     const win = Math.random() < 0.5;
     const landed: Side = win ? side : side === "ct" ? "t" : "ct";
     const turns = 6 + Math.floor(Math.random() * 3);
-    setSpin((s) => s + turns * 360 + (landed === "ct" ? 0 : 180));
+    /* Son tur mod 360 = landed yüzü olacak şekilde hesapla (üst üste aynı yüz gelince de doğru) */
+    setSpin((s) => {
+      const cur = ((s % 360) + 360) % 360;
+      const want = landed === "ct" ? 0 : 180;
+      const delta = (((want - cur) % 360) + 360) % 360;
+      return s + delta + turns * 360;
+    });
 
     window.setTimeout(() => {
       setResult(landed);

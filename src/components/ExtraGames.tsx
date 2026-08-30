@@ -88,6 +88,12 @@ export function Blackjack({ bet, onStart, onEnd }: GameProps) {
   const [result, setResult] = useState<{ label: string; won: 1 | 0 | -1 } | null>(null);
   const deckRef = useRef(deck);
   deckRef.current = deck;
+  /* setState sonrası çağrılan gecikmeli/interval fonksiyonlarında
+     eski render kapanışı (stale closure) okunmasın diye refs kullanılır */
+  const playerRef = useRef<CardC[]>(player);
+  playerRef.current = player;
+  const dealerRef = useRef<CardC[]>(dealer);
+  dealerRef.current = dealer;
 
   function draw(n: number): CardC[] {
     let d = deckRef.current;
@@ -127,36 +133,46 @@ export function Blackjack({ bet, onStart, onEnd }: GameProps) {
   function hit() {
     if (phase !== "player") return;
     click();
-    const p = [...player, ...draw(1)];
+    const p = [...playerRef.current, ...draw(1)];
+    playerRef.current = p;
     setPlayer(p);
     const v = handValue(p);
     if (v > 21) return finish(-1, "Bust — 21'i geçtin", 0);
     if (v === 21) {
       setPhase("dealer");
-      window.setTimeout(stand, 350);
+      /* Güncel eli ref üzerinden okuyan karşılaştırma fonksiyonu;
+         21'e ulaşınca eski render'ın kapanışını kullanmaz */
+      window.setTimeout(() => resolveStand(), 350);
     }
   }
 
-  function stand() {
+  function resolveStand() {
     if (phase === "done") return;
     setReveal(true);
     setPhase("dealer");
-    let d = [...dealer];
+    const finalPv = handValue(playerRef.current);
+    let d = [...dealerRef.current];
     let dv = handValue(d);
     const iv = window.setInterval(() => {
       if (dv < 17) {
         d = [...d, ...draw(1)];
+        dealerRef.current = d;
         setDealer(d);
         dv = handValue(d);
         tick();
       } else {
         clearInterval(iv);
-        const pv = handValue(player);
-        if (dv > 21 || pv > dv) finish(1, "Kazandın!", bet * 2);
-        else if (pv === dv) finish(0, "Berabere", bet);
+        if (dv > 21 || finalPv > dv) finish(1, "Kazandın!", bet * 2);
+        else if (finalPv === dv) finish(0, "Berabere", bet);
         else finish(-1, "Kaybettin", 0);
       }
     }, 550);
+  }
+
+  function stand() {
+    if (phase !== "player") return;
+    click();
+    resolveStand();
   }
 
   const pv = handValue(player);
@@ -281,8 +297,9 @@ export function Blackjack({ bet, onStart, onEnd }: GameProps) {
 
 const PLINKO_ROWS = 12;
 const PLINKO_SLOTS = PLINKO_ROWS + 1;
+/* Binom (C(12,k)/4096) ağırlıklı ev ≈ 0.96 */
 const PLINKO_MULTS = [
-  5.6, 2.3, 1.2, 0.7, 0.4, 0.25, 0.2, 0.25, 0.4, 0.7, 1.2, 2.3, 5.6,
+  10.5, 5.2, 2.6, 1.6, 1.05, 0.75, 0.55, 0.75, 1.05, 1.6, 2.6, 5.2, 10.5,
 ];
 const PEG_GAP = 40;
 
@@ -321,8 +338,13 @@ export function Plinko({ bet, onStart, onEnd }: GameProps) {
     }, 2500);
   }
 
-  const xs = (path ?? []).map((p) => (p - PLINKO_ROWS / 2) * (PEG_GAP / 2));
-  const ys = (path ?? []).map((_, i) => i * (PEG_GAP * 1.05) + 22);
+  /* Top merkez-göreli konumlandırılır (pimler de calc(50% + ...) ile aynı düzende).
+     Noktalar: üstten düşüş → 0. sıra pimine çarpma → her sıra düzleminde doğru x →
+     son nokta kazanılan yuvanın tam ortasına iniş. */
+  const rowY = (r: number) => r * (PEG_GAP * 1.05) + 13; // pim merkezi hizası (top üst kenarı)
+  const slotY = PLINKO_ROWS * (PEG_GAP * 1.05) + 90 - 37; // yuva merkezi hizası
+  const xs = path ? [path[0] - PLINKO_ROWS / 2, ...path.map((p) => (p - PLINKO_ROWS / 2) * PEG_GAP)] : [];
+  const ys = path ? [6, ...path.map((_, i) => (i < PLINKO_ROWS ? rowY(i) : slotY))] : [];
   const width = PLINKO_SLOTS * PEG_GAP;
 
   return (
@@ -381,7 +403,7 @@ export function Plinko({ bet, onStart, onEnd }: GameProps) {
             initial={{ x: xs[0], y: ys[0] }}
             animate={{ x: xs, y: ys }}
             transition={{ duration: 2.4, ease: "easeInOut" }}
-            className="absolute left-0 top-0 z-10 h-3.5 w-3.5 rounded-full bg-gradient-to-b from-brand-300 to-brand-600 shadow-[0_0_12px_2px_rgba(249,142,29,0.8)]"
+            className="absolute left-1/2 top-0 z-10 -ml-[7px] h-3.5 w-3.5 rounded-full bg-gradient-to-b from-brand-300 to-brand-600 shadow-[0_0_12px_2px_rgba(249,142,29,0.8)]"
           />
         )}
       </div>
@@ -419,19 +441,20 @@ export function Plinko({ bet, onStart, onEnd }: GameProps) {
 
 /* ==================== WHEEL (ÇARK) ==================== */
 
+/* 6 kazanç + 6 kayıp; EV = 11.45 / 12 ≈ 0.954 (kasa lehine, adil oynanış) */
 const WHEEL_SEGS = [
-  { m: 2, c: "#2a3142" },
-  { m: 1.5, c: "#35405a" },
-  { m: 2, c: "#2a3142" },
-  { m: 1.2, c: "#35405a" },
-  { m: 3, c: "#2fd673" },
-  { m: 1.2, c: "#35405a" },
-  { m: 2, c: "#2a3142" },
-  { m: 1.5, c: "#35405a" },
+  { m: 0, c: "#e0453c" },
+  { m: 0.5, c: "#35405a" },
+  { m: 0, c: "#e0453c" },
+  { m: 0.75, c: "#35405a" },
+  { m: 0, c: "#e0453c" },
+  { m: 1.2, c: "#2a3142" },
+  { m: 0, c: "#e0453c" },
+  { m: 1.5, c: "#2fd673" },
+  { m: 0, c: "#e0453c" },
+  { m: 2.5, c: "#f0b13f" },
+  { m: 0, c: "#e0453c" },
   { m: 5, c: "#f0b13f" },
-  { m: 1.2, c: "#35405a" },
-  { m: 2, c: "#2a3142" },
-  { m: 10, c: "#f0b13f" },
 ];
 
 function wedgePath(cx: number, cy: number, r: number, a0: number, a1: number): string {
@@ -501,9 +524,9 @@ export function Wheel({ bet, onStart, onEnd }: GameProps) {
                     x={cx + r * 0.66 * Math.sin((mid * Math.PI) / 180)}
                     y={cx - r * 0.66 * Math.cos((mid * Math.PI) / 180) + 5}
                     textAnchor="middle"
-                    fontSize={s.m >= 5 ? 17 : 13}
+                    fontSize={s.m >= 2.5 ? 15 : 13}
                     fontWeight={900}
-                    fill={s.m >= 5 ? "#141414" : "#ffffff"}
+                    fill={s.m >= 2.5 ? "#141414" : "#ffffff"}
                     fontFamily="Rajdhani, sans-serif"
                   >
                     {s.m}x
@@ -522,7 +545,14 @@ export function Wheel({ bet, onStart, onEnd }: GameProps) {
           {result === null ? (
             <span className="text-white/25">—</span>
           ) : (
-            <span className="font-display font-black text-emerald-400">{result}x</span>
+            <span className={cn("font-display font-black", result > 1 ? "text-emerald-400" : result === 1 ? "text-white/70" : "text-lose")}>
+              {result}x
+              {result > 1
+                ? ` → +${money(Math.round(bet * result) - bet)}`
+                : result === 1
+                  ? " → Bahis iade"
+                  : " — Kaybettin"}
+            </span>
           )}
         </div>
         <button
@@ -602,7 +632,7 @@ export function Limbo({ bet, onStart, onEnd }: GameProps) {
           <input
             type="range"
             min={1}
-            max={97.5}
+            max={95}
             step={0.5}
             value={chance}
             onChange={(e) => {
