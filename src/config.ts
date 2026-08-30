@@ -26,6 +26,12 @@ export const SCALE = 100;
 /** Tüm yeni hesaplar sıfır bakiye ile başlar */
 export const START_BALANCE = 0;
 
+/** Davet edilen oyuncu bu seviyeye ulaşınca davet edene bonus verilir */
+export const REFERRAL_LEVEL = 5;
+
+/** Referans bonusu (SC) */
+export const REFERRAL_BONUS = 250 * SCALE;
+
 /** En ucuz skin fiyatı */
 export const MIN_PRICE = 1200;
 

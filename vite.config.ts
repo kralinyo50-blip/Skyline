@@ -16,4 +16,9 @@ export default defineConfig({
       "@": path.resolve(__dirname, "src"),
     },
   },
+  server: {
+    host: true,
+    port: 5173,
+    allowedHosts: [".e2b.app", ".preview.app.github.dev", "localhost"],
+  },
 });

@@ -16,6 +16,8 @@ interface CloudUser {
   status: Account["status"];
   createdAt: number;
   pub?: Account["pub"];
+  /** referans: bu hesap kimin davetiyle açıldı */
+  refTo?: string;
 }
 
 export interface CloudDoc {
@@ -27,7 +29,14 @@ export interface CloudDoc {
 export function toCloudDoc(db: DB): CloudDoc {
   const users: Record<string, CloudUser> = {};
   Object.values(db.users).forEach((u) => {
-    users[u.key] = { key: u.key, name: u.name, status: u.status, createdAt: u.createdAt, pub: u.pub };
+    users[u.key] = {
+      key: u.key,
+      name: u.name,
+      status: u.status,
+      createdAt: u.createdAt,
+      pub: u.pub,
+      refTo: u.referredBy,
+    };
   });
   return {
     v: 1,
@@ -67,12 +76,20 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
         nonce: 1000 + Math.floor(Math.random() * 500),
         createdAt: cu.createdAt ?? Date.now(),
         pub: cu.pub,
+        referredBy: cu.refTo,
+        referredByName: cu.refTo ? cu.name : undefined,
+        referralCode: cu.key,
       };
     } else {
       /* durum: pending → approved/rejected tek yönlü ilerler */
       if ((RANK[cu.status] ?? 0) > (RANK[lu.status] ?? 0)) lu.status = cu.status;
       if (cu.createdAt && cu.createdAt < lu.createdAt) lu.createdAt = cu.createdAt;
       if (cu.pub && (!lu.pub || cu.pub.ts > lu.pub.ts)) lu.pub = cu.pub;
+      if (cu.refTo && !lu.referredBy) {
+        lu.referredBy = cu.refTo;
+        lu.referredByName = cu.name;
+      }
+      if (!lu.referralCode) lu.referralCode = cu.key;
     }
   });
 

@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, ArrowRight, ShieldCheck, Sparkles, UserRound } from "lucide-react";
-import { ADMIN_NAME, BRAND, CURRENCY, isValidMcName, mcBody, mcHead } from "../config";
+import { AlertTriangle, ArrowRight, Gift, ShieldCheck, Sparkles, UserRound } from "lucide-react";
+import {
+  ADMIN_NAME,
+  BRAND,
+  CURRENCY,
+  REFERRAL_BONUS,
+  isValidMcName,
+  mcBody,
+  mcHead,
+  money,
+} from "../config";
 import { click } from "../lib/audio";
 import { useGame } from "../store/Game";
 import { SyncCodeBox } from "./SyncCodeBox";
@@ -10,10 +19,12 @@ import { cn } from "../utils/cn";
 export function LoginView() {
   const { login } = useGame();
   const [name, setName] = useState("");
+  const [ref, setRef] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState("");
 
   const valid = isValidMcName(name);
+  const refValid = ref.trim() === "" || isValidMcName(ref);
   const willBeAdmin = name.trim().toLowerCase() === ADMIN_NAME.toLowerCase();
 
   /* skin önizlemesi için gecikmeli güncelleme */
@@ -27,8 +38,12 @@ export function LoginView() {
       setError("Geçerli bir Minecraft adı gir (3-16 karakter, harf/rakam/_)");
       return;
     }
+    if (!refValid) {
+      setError("Davet kodu geçersiz — 3-16 karakter, harf/rakam/_");
+      return;
+    }
     click();
-    const res = login(name.trim());
+    const res = login(name.trim(), ref.trim() || undefined);
     if (!res.ok) setError(res.error ?? "Giriş yapılamadı");
   }
 
@@ -115,6 +130,29 @@ export function LoginView() {
                 <ShieldCheck className="h-3.5 w-3.5" /> Yönetici hesabı algılandı — panel erişimi açık
               </div>
             )}
+
+            {/* davet kodu */}
+            <div className="mt-4">
+              <label className="mb-1.5 flex items-center gap-1 text-[11px] font-bold uppercase tracking-widest text-white/40">
+                <Gift className="h-3.5 w-3.5 text-emerald-400" /> Davet Kodu (opsiyonel)
+              </label>
+              <input
+                value={ref}
+                onChange={(e) => {
+                  setRef(e.target.value);
+                  setError(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+                placeholder="Seni davet eden oyuncunun adı"
+                maxLength={16}
+                spellCheck={false}
+                className="h-11 w-full rounded-xl border border-line bg-ink-800 px-3 font-display text-sm font-semibold text-white placeholder:text-white/20 focus:border-emerald-500/50 focus:outline-none"
+              />
+              <p className="mt-1.5 text-[10px] leading-relaxed text-white/30">
+                Arkadaşının kodunu girersen, sen Seviye 5'e ulaşınca arkadaşın{" "}
+                <span className="font-bold text-emerald-400">{money(REFERRAL_BONUS)}</span> ödül kazanır.
+              </p>
+            </div>
 
             <button
               onClick={submit}

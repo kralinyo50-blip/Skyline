@@ -19,6 +19,8 @@ export interface PubProfile {
   balance: number;
   opened: number;
   invCount: number;
+  /** seviye — referans ödülleri için görünür */
+  level?: number;
   ts: number;
 }
 
@@ -66,6 +68,14 @@ export interface Account {
   missions?: MissionProgress;
   /** kullanıcının tasarladığı stickerlar */
   customStickers?: Sticker[];
+  /** referans: bu hesabın davet kodu (kendi nick key'i) */
+  referralCode?: string;
+  /** referans: kim tarafından davet edildi (davet edenin key'i) */
+  referredBy?: string;
+  referredByName?: string;
+  /** referans: seviye 5 ödülü davet edene ödendi mi */
+  refRewarded?: boolean;
+  refRewardedAt?: number;
 }
 
 export type ReqStatus = "pending" | "approved" | "rejected";
@@ -171,10 +181,12 @@ export function saveDB(db: DB) {
   }
 }
 
-export function newAccount(name: string): Account {
+export function newAccount(name: string, ref?: { code: string; name: string }): Account {
   const admin = isAdminName(name);
+  const key = normKey(name);
+  const codeOk = !!ref?.code && ref.code.trim().length >= 3 && normKey(ref.code) !== key;
   return {
-    key: normKey(name),
+    key,
     name: admin ? ADMIN_NAME : name.trim(),
     isAdmin: admin,
     status: admin ? "approved" : "pending",
@@ -185,6 +197,9 @@ export function newAccount(name: string): Account {
     nonce: 1000 + Math.floor(Math.random() * 500),
     createdAt: Date.now(),
     listings: [],
+    referralCode: key,
+    referredBy: codeOk ? normKey(ref!.code) : undefined,
+    referredByName: codeOk ? ref!.name.trim() : undefined,
   };
 }
 

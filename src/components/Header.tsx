@@ -17,6 +17,7 @@ import {
   Store,
   Swords,
   Unplug,
+  UserPlus,
   Volume2,
   VolumeX,
   Wallet,
@@ -27,6 +28,7 @@ import { useGame, DAILY_COOLDOWN, type TabKey } from "../store/Game";
 import { ADMIN_NAME, BRAND, CURRENCY, SCALE, mcHead, money } from "../config";
 import { click, coinDing } from "../lib/audio";
 import { cn } from "../utils/cn";
+import { ReferralModal } from "./ReferralModal";
 
 const TABS: { key: TabKey; label: string; Icon: typeof Boxes }[] = [
   { key: "cases", label: "Kasalar", Icon: Boxes },
@@ -79,6 +81,7 @@ export function Header() {
   const [sent, setSent] = useState(false);
   const [dailyOpen, setDailyOpen] = useState(false);
   const [claimed, setClaimed] = useState<number | null>(null);
+  const [referralOpen, setReferralOpen] = useState(false);
 
   const dailyReady = !lastDaily || Date.now() - lastDaily >= DAILY_COOLDOWN;
   const dailyLeftMs = lastDaily ? Math.max(0, lastDaily + DAILY_COOLDOWN - Date.now()) : 0;
@@ -239,6 +242,18 @@ export function Header() {
                   <span className="h-full w-full rounded-full bg-brand-400" />
                 </span>
               )}
+            </button>
+
+            {/* davet & ödül */}
+            <button
+              onClick={() => {
+                setReferralOpen(true);
+                click();
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-ink-800 text-white/40 transition hover:text-emerald-400"
+              title="Davet et — seviye ödülü kazan"
+            >
+              <UserPlus className="h-4 w-4" />
             </button>
 
             {/* mute */}
@@ -775,6 +790,11 @@ export function Header() {
             </motion.div>
           </motion.div>
         )}
+      </AnimatePresence>
+
+      {/* davet & ödül modal */}
+      <AnimatePresence>
+        {referralOpen && <ReferralModal onClose={() => setReferralOpen(false)} />}
       </AnimatePresence>
 
       {/* admin uyarı şeridi */}

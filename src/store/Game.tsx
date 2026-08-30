@@ -25,7 +25,17 @@ import {
 const STICKER_POOL = STICKERS.map((s) => s.id);
 import { setAudioMuted, coinDing, click } from "../lib/audio";
 import { randHex, uid } from "../lib/rng";
-import { SCALE, START_BALANCE, money, ADMIN_NAME, QUICK_SELL_RATE, MARKET_FEE } from "../config";
+import {
+  SCALE,
+  START_BALANCE,
+  money,
+  ADMIN_NAME,
+  QUICK_SELL_RATE,
+  MARKET_FEE,
+  REFERRAL_LEVEL,
+  REFERRAL_BONUS,
+  isValidMcName,
+} from "../config";
 import {
   generateBotListings,
   makeBotListing,
@@ -59,6 +69,14 @@ import {
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { startSync, stopSync, forceSync, toCloudDoc, type SyncStatus } from "./sync";
 import { startMqtt, stopMqtt, normalizeCode, notifyDbChanged } from "./syncMqtt";
+import {
+  startTradeNet,
+  stopTradeNet,
+  sendTradeMsg,
+  tradeScope,
+  type TradeMsg,
+  type TradeItemPayload,
+} from "./tradeNet";
 
 export type { InvItem, Stats, Account, DepositReq };
 
@@ -77,6 +95,48 @@ export interface Toast {
   kind: "win" | "lose" | "info" | "money";
   title: string;
   sub?: string;
+}
+
+/* ---------------- canlı P2P takas ---------------- */
+
+/** Gelen (henüz yanıtlanmamış) teklif */
+export interface P2pOffer {
+  id: string;
+  room: string;
+  from: string;
+  fromKey: string;
+  items: TradeItemPayload[];
+  wantCash: number;
+  note?: string;
+  ts: number;
+}
+
+export type P2pRoomStatus =
+  | "waiting" // teklif iletildi, yanıt bekleniyor
+  | "accepted" // karşı taraf kabul etti, işlem yapılıyor
+  | "done" // takas tamamlandı
+  | "declined"
+  | "cancelled"
+  | "failed"; // eşyalar artık envanterde yok
+
+export interface P2pRoom {
+  id: string;
+  room: string;
+  role: "sender" | "receiver";
+  partner: string;
+  partnerKey: string;
+  /** benim koyduğum eşyaların uid'leri */
+  myUids: string[];
+  /** benim koyduğum eşyaların iletim paketi */
+  givePayload: TradeItemPayload[];
+  /** karşı taraftan alacağım eşyalar */
+  theirItems?: TradeItemPayload[];
+  /** karşı taraftan alacağım / ödeyeceğim nakit */
+  cash?: number;
+  wantCash: number;
+  note?: string;
+  status: P2pRoomStatus;
+  ts: number;
 }
 
 export const LEVEL_TITLES: { min: number; title: string }[] = [
@@ -111,7 +171,7 @@ interface GameState {
   loggedIn: boolean;
   isAdmin: boolean;
   userName: string;
-  login: (name: string) => { ok: boolean; error?: string };
+  login: (name: string, refCode?: string) => { ok: boolean; error?: string };
   logout: () => void;
 
   balance: number;
@@ -175,6 +235,27 @@ interface GameState {
   refreshTrades: () => void;
   acceptTrade: (offerId: string, myUids: string[]) => boolean;
 
+  /* canlı P2P takas */
+  p2pOffers: P2pOffer[];
+  p2pRooms: P2pRoom[];
+  p2pStatus: "off" | "busy" | "ok" | "error";
+  p2pScope: string;
+  sendOffer: (
+    targetName: string,
+    myUids: string[],
+    wantCash: number,
+    note?: string
+  ) => { ok: boolean; error?: string };
+  respondOffer: (offerId: string, accept: boolean, myUids?: string[]) => boolean;
+  cancelOffer: (roomId: string) => boolean;
+
+  /* referans sistemi */
+  refCode: string;
+  refLevel: number;
+  refBonus: number;
+  referralFriends: Account[];
+  refInvited: boolean;
+
   /* pazar */
   botListings: Listing[];
   myListings: MyListing[];
@@ -221,6 +302,16 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const [tradeOffers, setTradeOffers] = useState<TradeOffer[]>(() => generateTradeOffers());
   const tradeOffersRef = useRef(tradeOffers);
   tradeOffersRef.current = tradeOffers;
+  /* --- canlı P2P takas durumu --- */
+  const [p2pOffers, setP2pOffers] = useState<P2pOffer[]>([]);
+  const p2pOffersRef = useRef(p2pOffers);
+  p2pOffersRef.current = p2pOffers;
+  const [p2pRooms, setP2pRooms] = useState<P2pRoom[]>([]);
+  const p2pRoomsRef = useRef(p2pRooms);
+  p2pRoomsRef.current = p2pRooms;
+  const [p2pStatus, setP2pStatus] = useState<"off" | "busy" | "ok" | "error">("off");
+  /* bir tarafta takas yalnızca bir kez işlensin */
+  const p2pExecutedRef = useRef<Set<string>>(new Set());
   const toastTimers = useRef<number[]>([]);
   const levelRef = useRef(1);
   const seenDepositRef = useRef<Set<string>>(new Set());
@@ -342,21 +433,43 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   );
 
   const login = useCallback(
-    (name: string): { ok: boolean; error?: string } => {
+    (name: string, refCode?: string): { ok: boolean; error?: string } => {
       const key = normKey(name);
       let error: string | undefined;
+      let invited = false;
+      const ref = refCode?.trim();
+      const refOk =
+        !!ref &&
+        isValidMcName(ref) &&
+        normKey(ref) !== key &&
+        normKey(ref) !== normKey(ADMIN_NAME);
       mutate((draft) => {
         let acc = draft.users[key];
         if (!acc) {
-          acc = newAccount(name);
+          const refData = refOk ? { code: ref!, name: ref! } : undefined;
+          acc = newAccount(name, refData);
+          invited = refOk;
           draft.users[key] = acc;
         }
         if (acc.status === "rejected") {
           error = "Bu hesabın başvurusu reddedilmiş. Yetkiliyle iletişime geç.";
         }
         acc.name = acc.isAdmin ? ADMIN_NAME : name.trim();
+        if (!acc.referralCode) acc.referralCode = key;
+        if (refOk && !acc.referredBy && acc.status === "pending" && !acc.isAdmin) {
+          acc.referredBy = normKey(ref!);
+          acc.referredByName = ref;
+          invited = true;
+        }
         draft.session = key;
       });
+      if (invited) {
+        pushToastSafe.current({
+          kind: "info",
+          title: `${ref} davet kodu kabul edildi`,
+          sub: `${ref} Seviye ${REFERRAL_LEVEL}'e ulaşınca ${money(REFERRAL_BONUS)} kazanacak`,
+        });
+      }
       return { ok: !error, error };
     },
     [mutate]
@@ -391,6 +504,45 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     },
     [pushToast]
   );
+
+  /* --------- REFERANS: davet edilen seviye 5 olunca davet edene bonus --------- */
+  const checkReferralReward = useCallback(() => {
+    const probe = currentUser(dbRef.current);
+    if (!probe || !probe.referredBy || probe.refRewarded) return;
+    if (levelFromSpent(probe.stats.spent) < REFERRAL_LEVEL) return;
+    let who = "";
+    let paid = 0;
+    mutate((draft) => {
+      const me = draft.users[draft.session ?? ""];
+      if (!me || !me.referredBy || me.refRewarded) return;
+      if (levelFromSpent(me.stats.spent) < REFERRAL_LEVEL) return;
+      me.refRewarded = true;
+      me.refRewardedAt = Date.now();
+      who = me.name;
+      paid = REFERRAL_BONUS;
+      /* Ödül, davet edenin cihazına onaylanmış talep olarak gider —
+         claim sistemi bakiyeyi otomatik yükler. */
+      draft.deposits.unshift({
+        id: uid(),
+        userKey: me.referredBy,
+        userName: me.referredByName ?? me.referredBy,
+        amount: REFERRAL_BONUS,
+        method: "Referans Bonusu",
+        status: "approved",
+        ts: Date.now(),
+        decidedTs: Date.now(),
+        decidedBy: "Sistem",
+      });
+    });
+    if (paid) {
+      pushToast({
+        kind: "money",
+        title: `Davet ödülü kazanıldı: +${money(paid)}`,
+        sub: `${who} Seviye ${REFERRAL_LEVEL}'e ulaştı — davet eden kişiye bonus gönderildi`,
+      });
+      coinDing();
+    }
+  }, [mutate, pushToast]);
 
   const addFunds = useCallback(
     (n: number) => updateMe((me) => void (me.balance = Math.round(me.balance + n))),
@@ -676,6 +828,353 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [pushToast]
   );
 
+  /* ---------------- CANLI P2P TAKAS (MQTT) ---------------- */
+
+  const toPayload = (it: InvItem): TradeItemPayload => ({
+    skinId: it.skinId,
+    float: it.float,
+    stickers: it.stickers,
+  });
+
+  /** Takasın eşya alışverişini yerelde uygula — her iki taraf kendi cihazında yapar */
+  const doExchange = useCallback(
+    (myUids: string[], theirItems: TradeItemPayload[], cash: number): boolean => {
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me) return false;
+      const keys = new Set(myUids);
+      const have = me.inventory.filter((i) => keys.has(i.uid));
+      if (have.length !== myUids.length) return false; /* biri artık yok */
+      me.inventory = me.inventory.filter((i) => !keys.has(i.uid));
+      theirItems.forEach((p) => {
+        const it = isStickerItem(p.skinId) ? makeStickerItem(p.skinId) : makeSkinItem(p.skinId);
+        if (typeof p.float === "number") it.float = p.float;
+        if (p.stickers) it.stickers = p.stickers;
+        me.inventory.unshift(it);
+      });
+      me.balance = Math.max(0, Math.round(me.balance + cash));
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      return true;
+    },
+    []
+  );
+
+  const upsertRoom = useCallback((room: P2pRoom) => {
+    setP2pRooms((prev) => {
+      const exists = prev.some((r) => r.id === room.id);
+      const out = exists ? prev.map((r) => (r.id === room.id ? room : r)) : [room, ...prev];
+      p2pRoomsRef.current = out;
+      return out;
+    });
+  }, []);
+
+  const handleTradeMsg = useCallback(
+    (msg: TradeMsg) => {
+      const me = currentUser(dbRef.current);
+      if (!me) return;
+
+      if (msg.t === "offer") {
+        if (msg.toKey !== me.key) return;
+        const exists = p2pOffersRef.current.some((o) => o.id === msg.id);
+        if (exists) return;
+        const offer: P2pOffer = {
+          id: msg.id,
+          room: msg.room,
+          from: msg.from,
+          fromKey: msg.fromKey,
+          items: msg.items,
+          wantCash: msg.wantCash,
+          note: msg.note,
+          ts: msg.ts,
+        };
+        setP2pOffers((prev) => {
+          const out = [offer, ...prev];
+          p2pOffersRef.current = out;
+          return out;
+        });
+        pushToastSafe.current({
+          kind: "info",
+          title: "Yeni takas teklifi",
+          sub: `${msg.from} sana ${msg.items.length} eşya teklif ediyor`,
+        });
+        click();
+        return;
+      }
+
+      if (msg.t === "accept") {
+        if (msg.toKey !== me.key) return;
+        const room = p2pRoomsRef.current.find((r) => r.id === msg.room);
+        if (!room || room.role !== "sender") return;
+        const execKey = `done:${msg.room}`;
+        if (p2pExecutedRef.current.has(execKey)) return;
+        if (!doExchange(room.myUids, msg.items, msg.cash)) {
+          upsertRoom({ ...room, status: "failed" });
+          pushToastSafe.current({
+            kind: "lose",
+            title: "Takas başarısız",
+            sub: "Koyduğun eşyalardan biri artık envanterinde yok",
+          });
+          return;
+        }
+        p2pExecutedRef.current.add(execKey);
+        upsertRoom({ ...room, status: "done", theirItems: msg.items, cash: msg.cash });
+        coinDing();
+        pushToastSafe.current({
+          kind: "win",
+          title: "Takas tamamlandı!",
+          sub: `${msg.from}: ${msg.items.length} eşya + ${money(msg.cash)} aldın`,
+        });
+        sendTradeMsg(getSyncCode(), msg.fromKey, {
+          t: "done",
+          id: msg.id,
+          room: msg.room,
+          from: me.name,
+          ts: Date.now(),
+        });
+        return;
+      }
+
+      if (msg.t === "decline") {
+        const room = p2pRoomsRef.current.find((r) => r.id === msg.room);
+        if (!room) return;
+        upsertRoom({ ...room, status: "declined" });
+        pushToastSafe.current({
+          kind: "lose",
+          title: "Teklif reddedildi",
+          sub: `${room.partner} teklifini kabul etmedi`,
+        });
+        return;
+      }
+
+      if (msg.t === "cancel") {
+        setP2pOffers((prev) => {
+          const out = prev.filter((o) => o.id !== msg.id);
+          p2pOffersRef.current = out;
+          return out;
+        });
+        const room = p2pRoomsRef.current.find((r) => r.id === msg.room);
+        if (!room) return;
+        upsertRoom({ ...room, status: "cancelled" });
+        pushToastSafe.current({
+          kind: "lose",
+          title: "Teklif iptal edildi",
+          sub: `${room.partner} teklifini geri çekti`,
+        });
+        return;
+      }
+
+      if (msg.t === "done") {
+        const room = p2pRoomsRef.current.find((r) => r.id === msg.room);
+        if (!room) return;
+        upsertRoom({ ...room, status: "done" });
+      }
+    },
+    [doExchange, upsertRoom]
+  );
+
+  /* takas ağı — giriş yapıldıysa ve onaylandıysa bağlan */
+  useEffect(() => {
+    if (!user || user.status !== "approved") {
+      stopTradeNet();
+      setP2pStatus("off");
+      return;
+    }
+    setP2pStatus("busy");
+    startTradeNet(syncCode, user.key, {
+      onMsg: handleTradeMsg,
+      onStatus: setP2pStatus,
+    });
+    return () => stopTradeNet();
+  }, [user?.key, user?.status, syncCode, handleTradeMsg]);
+
+  /** Teklif gönder — karşı oyuncunun inbox kanalına MQTT ile yazılır */
+  const sendOffer = useCallback(
+    (
+      targetName: string,
+      myUids: string[],
+      wantCash: number,
+      note?: string
+    ): { ok: boolean; error?: string } => {
+      const target = targetName.trim();
+      if (!isValidMcName(target)) return { ok: false, error: "Geçerli bir oyuncu adı gir (3-16 karakter)" };
+      const targetKey = normKey(target);
+      if (!user || targetKey === user.key) return { ok: false, error: "Kendine teklif gönderemezsin" };
+      if (!myUids.length) return { ok: false, error: "En az bir eşya seç" };
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me) return { ok: false, error: "Oturum bulunamadı" };
+      const picked = myUids
+        .map((u) => me.inventory.find((i) => i.uid === u))
+        .filter(Boolean) as InvItem[];
+      if (picked.length !== myUids.length)
+        return { ok: false, error: "Seçilen eşyalardan biri artık envanterinde yok" };
+
+      const room = uid();
+      const cash = Math.max(0, Math.round(wantCash));
+      const msg: TradeMsg = {
+        t: "offer",
+        id: room,
+        room,
+        from: me.name,
+        fromKey: me.key,
+        to: target,
+        toKey: targetKey,
+        items: picked.map(toPayload),
+        wantCash: cash,
+        note: note?.trim() || undefined,
+        ts: Date.now(),
+      };
+      if (!sendTradeMsg(getSyncCode(), targetKey, msg))
+        return { ok: false, error: "Takas ağına bağlanılamadı — Sunucu Kodu ile bağlanmayı dene" };
+
+      upsertRoom({
+        id: room,
+        room,
+        role: "sender",
+        partner: target,
+        partnerKey: targetKey,
+        myUids,
+        givePayload: msg.items,
+        wantCash: cash,
+        note: msg.note,
+        status: "waiting",
+        ts: Date.now(),
+      });
+      pushToastSafe.current({
+        kind: "info",
+        title: "Teklif gönderildi",
+        sub: `${target} takas teklifini anında alacak`,
+      });
+      return { ok: true };
+    },
+    [user, upsertRoom]
+  );
+
+  /** Gelen teklifi kabul / reddet */
+  const respondOffer = useCallback(
+    (offerId: string, accept: boolean, myUids?: string[]): boolean => {
+      const offer = p2pOffersRef.current.find((o) => o.id === offerId);
+      if (!offer) return false;
+
+      if (!accept) {
+        setP2pOffers((prev) => {
+          const out = prev.filter((o) => o.id !== offerId);
+          p2pOffersRef.current = out;
+          return out;
+        });
+        sendTradeMsg(getSyncCode(), offer.fromKey, {
+          t: "decline",
+          id: offer.id,
+          room: offer.room,
+          from: user?.name ?? "",
+          ts: Date.now(),
+        });
+        pushToastSafe.current({ kind: "info", title: "Teklif reddedildi", sub: offer.from });
+        return true;
+      }
+
+      const uidList = myUids ?? [];
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me) return false;
+      if (me.balance < offer.wantCash) {
+        pushToastSafe.current({
+          kind: "lose",
+          title: "Yetersiz bakiye",
+          sub: `Teklif sahibi ${money(offer.wantCash)} nakit istiyor`,
+        });
+        return false;
+      }
+      const picked = uidList
+        .map((u) => me.inventory.find((i) => i.uid === u))
+        .filter(Boolean) as InvItem[];
+      if (picked.length !== uidList.length) {
+        pushToastSafe.current({
+          kind: "lose",
+          title: "Eşya bulunamadı",
+          sub: "Seçtiğin eşyalardan biri artık envanterinde yok",
+        });
+        return false;
+      }
+
+      const execKey = `done:${offer.room}`;
+      if (p2pExecutedRef.current.has(execKey)) return false;
+      if (!doExchange(uidList, offer.items, -offer.wantCash)) {
+        pushToastSafe.current({
+          kind: "lose",
+          title: "Takas başarısız",
+          sub: "Seçtiğin eşyalardan biri artık envanterinde yok",
+        });
+        return false;
+      }
+      p2pExecutedRef.current.add(execKey);
+
+      const msg: TradeMsg = {
+        t: "accept",
+        id: offer.id,
+        room: offer.room,
+        from: me.name,
+        fromKey: me.key,
+        to: offer.from,
+        toKey: offer.fromKey,
+        items: picked.map(toPayload),
+        cash: offer.wantCash,
+        ts: Date.now(),
+      };
+      sendTradeMsg(getSyncCode(), offer.fromKey, msg);
+
+      setP2pOffers((prev) => {
+        const out = prev.filter((o) => o.id !== offerId);
+        p2pOffersRef.current = out;
+        return out;
+      });
+      upsertRoom({
+        id: offer.id,
+        room: offer.room,
+        role: "receiver",
+        partner: offer.from,
+        partnerKey: offer.fromKey,
+        myUids: uidList,
+        givePayload: msg.items,
+        theirItems: offer.items,
+        cash: -offer.wantCash,
+        wantCash: offer.wantCash,
+        note: offer.note,
+        status: "done",
+        ts: Date.now(),
+      });
+      coinDing();
+      pushToastSafe.current({
+        kind: "win",
+        title: "Takas tamamlandı!",
+        sub: `${offer.from} eşyaları envanterine eklendi`,
+      });
+      return true;
+    },
+    [user, doExchange, upsertRoom]
+  );
+
+  /** Gönderilen teklifi geri çek */
+  const cancelOffer = useCallback(
+    (roomId: string): boolean => {
+      const room = p2pRoomsRef.current.find((r) => r.id === roomId);
+      if (!room || room.role !== "sender" || room.status !== "waiting") return false;
+      upsertRoom({ ...room, status: "cancelled" });
+      sendTradeMsg(getSyncCode(), room.partnerKey, {
+        t: "cancel",
+        id: room.id,
+        room: room.room,
+        from: user?.name ?? "",
+        ts: Date.now(),
+      });
+      pushToastSafe.current({ kind: "info", title: "Teklif iptal edildi", sub: room.partner });
+      return true;
+    },
+    [upsertRoom, user]
+  );
+
   /* ---------------- GÖREVLER ---------------- */
   const trackMission = useCallback(
     (key: MissionKey, amount = 1) => {
@@ -812,25 +1311,29 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   };
 
   const trackOpen = useCallback(
-    (price: number) =>
+    (price: number) => {
       updateMe((me) => {
         me.stats.opened++;
         me.stats.spent = Math.round(me.stats.spent + price);
         bumpMission(me, "cases");
         bumpMission(me, "wagered", price);
         checkLevelUp(me.stats.spent, me);
-      }),
-    [updateMe, checkLevelUp]
+      });
+      checkReferralReward();
+    },
+    [updateMe, checkLevelUp, checkReferralReward]
   );
 
   const trackWager = useCallback(
-    (amount: number) =>
+    (amount: number) => {
       updateMe((me) => {
         me.stats.spent = Math.round(me.stats.spent + amount);
         bumpMission(me, "wagered", amount);
         checkLevelUp(me.stats.spent, me);
-      }),
-    [updateMe, checkLevelUp]
+      });
+      checkReferralReward();
+    },
+    [updateMe, checkLevelUp, checkReferralReward]
   );
 
   const trackDrop = useCallback(
@@ -999,6 +1502,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           balance: me.balance,
           opened: me.stats.opened,
           invCount: me.inventory.length,
+          level: levelFromSpent(me.stats.spent),
           ts: Date.now(),
         };
       });
@@ -1167,6 +1671,22 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     tradeOffers,
     refreshTrades,
     acceptTrade,
+
+    p2pOffers,
+    p2pRooms,
+    p2pStatus,
+    p2pScope: tradeScope(syncCode),
+    sendOffer,
+    respondOffer,
+    cancelOffer,
+
+    refCode: user?.referralCode ?? user?.key ?? "",
+    refLevel: REFERRAL_LEVEL,
+    refBonus: REFERRAL_BONUS,
+    referralFriends: Object.values(db.users)
+      .filter((u) => u.key !== user?.key && u.referredBy === user?.key)
+      .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)),
+    refInvited: !!user?.referredBy,
 
     botListings,
     myListings: user?.listings ?? [],

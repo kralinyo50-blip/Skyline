@@ -6,10 +6,13 @@ import {
   Coins,
   Dice5,
   Dices,
+  Disc3,
   Flame,
+  Gauge,
   History,
   Rocket,
   ShieldCheck,
+  Spade,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -21,8 +24,9 @@ import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
 import { Confetti } from "./CaseReel";
 import { Roulette, Mines, DiceGame } from "./MoreGames";
+import { Blackjack, Limbo, Plinko, Wheel } from "./ExtraGames";
 
-type Game = "coinflip" | "crash" | "roulette" | "mines" | "dice";
+type Game = "coinflip" | "crash" | "roulette" | "mines" | "dice" | "blackjack" | "plinko" | "wheel" | "limbo";
 
 const BETS = [1000, 5000, 10000, 25000, 50000];
 const HOUSE_CUT = 0.05;
@@ -535,6 +539,10 @@ export function GamesView() {
     { key: "roulette", label: "Rulet", Icon: CircleDot, desc: "Kırmızı · Siyah · Yeşil" },
     { key: "mines", label: "Mayınlar", Icon: Bomb, desc: "Elmas topla, çekil" },
     { key: "dice", label: "Zar", Icon: Dice5, desc: "Alt / üst tahmini" },
+    { key: "blackjack", label: "Blackjack", Icon: Spade, desc: "21'e ulaş, 2.5x" },
+    { key: "plinko", label: "Plinko", Icon: CircleDot, desc: "Top düş, çarpan kap" },
+    { key: "wheel", label: "Çark", Icon: Disc3, desc: "Şans çarkı · 10x" },
+    { key: "limbo", label: "Limbo", Icon: Gauge, desc: "Şansı seç, çarpanı al" },
   ];
 
   return (
@@ -619,6 +627,10 @@ export function GamesView() {
       {game === "roulette" && <Roulette bet={bet} onStart={onStart} onEnd={onEnd} />}
       {game === "mines" && <Mines bet={bet} onStart={onStart} onEnd={onEnd} />}
       {game === "dice" && <DiceGame bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "blackjack" && <Blackjack bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "plinko" && <Plinko bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "wheel" && <Wheel bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "limbo" && <Limbo bet={bet} onStart={onStart} onEnd={onEnd} />}
     </div>
   );
 }
