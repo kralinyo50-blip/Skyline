@@ -15,6 +15,7 @@ import {
   makeSkinItem,
   makeStickerItem,
   maybeAttachStickers,
+  pinnedWearOf,
 } from "../data/items";
 import { rollFloat, WEARS, WEAR_ORDER, type WearKey } from "../data/wear";
 import { MAX_STICKERS, STICKERS, STICKER_MAP, CUSTOM_STICKER_COST } from "../data/stickers";
@@ -2338,7 +2339,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const nItems = 2 + Math.floor(rng() * 3); // 2–4 efsane eşya
     for (let j = 0; j < nItems; j++) {
       const s = LEGEND_SKINS[Math.floor(rng() * LEGEND_SKINS.length)];
-      const float = rollFloatSeeded(rng);
+      const float = pinnedWearOf(s.id) ?? rollFloatSeeded(rng);
       let stickers: string[] | undefined;
       if (rng() < 0.7) {
         stickers = Array.from(
@@ -2366,7 +2367,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const nItems = 1 + Math.floor(rng() * 4);
       for (let j = 0; j < nItems; j++) {
         const s = WEAPON_SKINS[Math.floor(rng() * WEAPON_SKINS.length)];
-        const float = rollFloatSeeded(rng);
+        const float = pinnedWearOf(s.id) ?? rollFloatSeeded(rng);
         let stickers: string[] | undefined;
         if (rng() < 0.16) {
           stickers = Array.from(

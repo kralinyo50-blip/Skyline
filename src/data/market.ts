@@ -1,7 +1,6 @@
 import { SKINS, WEAPON_SKINS, SKIN_MAP, type Skin } from "./skins";
 import { COMMUNITY_USERS } from "./fakers";
-import { itemValue, type InvItem } from "./items";
-import { rollFloat } from "./wear";
+import { itemValue, pinnedWearOf, type InvItem } from "./items";
 import { STICKERS } from "./stickers";
 import { pick, randInt, uid } from "../lib/rng";
 
@@ -53,7 +52,7 @@ const STICKER_IDS = STICKERS.map((s) => s.id);
 export function makeBotListing(skin?: Skin): Listing {
   const s = skin ?? pick(SKINS);
   const isSticker = !!s.sticker;
-  const float = isSticker ? undefined : rollFloat();
+  const float = isSticker ? undefined : pinnedWearOf(s.id);
 
   let stickers: string[] | undefined;
   if (!isSticker && Math.random() < 0.16) {
@@ -147,7 +146,7 @@ export interface TradeOffer {
 }
 
 function makeTradeItem(skin: Skin): TradeItem {
-  const float = skin.sticker ? undefined : rollFloat();
+  const float = skin.sticker ? undefined : pinnedWearOf(skin.id);
   const stickers =
     !skin.sticker && Math.random() < 0.2
       ? Array.from({ length: randInt(1, 3) }, () => pick(STICKER_IDS))

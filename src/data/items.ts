@@ -74,9 +74,19 @@ export function itemRarity(item: InvItem): RarityKey | null {
 
 /** Yeni silah eşyası — düşerken aşınma ve (şansa göre) sticker alır */
 export function makeSkinItem(skinId: string, opts?: { stickered?: boolean }): InvItem {
-  const item: InvItem = { uid: uid(), skinId, ts: Date.now(), float: rollFloat() };
+  const item: InvItem = { uid: uid(), skinId, ts: Date.now(), float: pinnedWearOf(skinId) };
   if (opts?.stickered) item.stickers = [];
   return item;
+}
+
+/**
+ * SKYLINE Serisi aşınma baskıları (…-fn/-mw/-ft/-ww/-bs ve -st/-sv varyantları)
+ * temsilî aşınma ile gelir: görsel/vurgu yanlış görünmesin, float rastgele atanmaz.
+ */
+export function pinnedWearOf(skinId: string): number | undefined {
+  const m = /-(fn|mw|ft|ww|bs)(-st|-sv)?$/.exec(skinId);
+  if (!m) return rollFloat();
+  return m[1] === "fn" ? 0.02 : m[1] === "mw" ? 0.1 : m[1] === "ft" ? 0.25 : m[1] === "ww" ? 0.41 : 0.6;
 }
 
 export function makeStickerItem(stickerId: string): InvItem {
