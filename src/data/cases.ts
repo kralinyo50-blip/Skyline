@@ -6,22 +6,6 @@ import { CASE_MARKUP, roundCasePrice } from "../config";
 import { TEAM_STICKER_IDS } from "./stickers";
 import { seededRng } from "../lib/rng";
 
-/** Anime kasaları için SVG kapak görseli */
-function caseArt(colors: string[], emoji: string): string {
-  const [a, b, c] = colors;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100">
-<defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${a}"/><stop offset="60%" stop-color="${b}"/><stop offset="100%" stop-color="${a}"/></linearGradient>
-<linearGradient id="cs" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fff" stop-opacity=".35"/><stop offset="55%" stop-color="#fff" stop-opacity="0"/><stop offset="100%" stop-color="#000" stop-opacity=".5"/></linearGradient></defs>
-<path d="M10,30 L60,10 L110,30 V74 L60,94 L10,74 Z" fill="url(#cg)"/>
-<path d="M10,30 L60,50 L110,30" fill="none" stroke="${c}" stroke-width="3"/>
-<path d="M60,50 V94" stroke="${c}" stroke-width="3"/>
-<path d="M10,30 L60,10 L110,30 V74 L60,94 L10,74 Z" fill="url(#cs)"/>
-<path d="M10,30 L60,10 L110,30 V74 L60,94 L10,74 Z" fill="none" stroke="rgba(0,0,0,.5)" stroke-width="2.5"/>
-<text x="60" y="66" text-anchor="middle" font-size="26">${emoji}</text>
-</svg>`;
-  return "data:image/svg+xml," + encodeURIComponent(svg.replace(/\n/g, ""));
-}
-
 const CDN = "https://community.akamai.steamstatic.com/economy/image/";
 const CASE_P =
   "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj35VTqVBP4io_f";
@@ -326,7 +310,8 @@ const CASES_RAW: CaseDef[] = [
   CASES_RAW.push({
     id: "legends",
     name: "Efsaneler Kasası",
-    img: caseArt(["#ffd75e", "#b8860b", "#7a5c00"], "🐉"),
+    /* Chroma Case — Karambit Fade/Doppler'in geldiği ikonik kasa */
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj35VTqVBP4io_fq2wP7qr6bqI5cvHDCzfBlbcv57JqF3zrxRkj4W6Dwo34dy6QPQAoC5ZyW6dU5cxvklfG",
     price: 0,
     accent: "#e4ae39",
     tagline: "50 efsane — Dragon Lore, Fire Serpent, Karambit Fade…",
@@ -346,7 +331,8 @@ const CASES_RAW: CaseDef[] = [
   CASES_RAW.push({
     id: "ak-case",
     name: "AK-47 Kasası",
-    img: caseArt(["#ff8a3d", "#7a3c11", "#4b69ff"], "🔥"),
+    /* Operation Bravo Case — Fire Serpent'in geldiği efsane kasa */
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj7-lz1QAn4kZjf9CsVuvf7OfQ5IabBVzbHlb915bcwHCjikEp_sTnTn4z6eH6RblQlC8RwFPlK7EdXSP0Ibg",
     price: 0,
     accent: "#ff8a3d",
     tagline: "61+ AK deseni tek kasada",
@@ -363,7 +349,8 @@ const CASES_RAW: CaseDef[] = [
   CASES_RAW.push({
     id: "awp-case",
     name: "AWP Kasası",
-    img: caseArt(["#57d6ff", "#0e5f7a", "#2fd673"], "🎯"),
+    /* Operation Phoenix Weapon Case — AWP Asiimov'un geldiği kasa */
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj35VTqVBP4io_fr2wPtqP5PKVvJPSQDWSSl7sn6eMxHC3hwhl3sDuDztivJHrEagJzWZd3W6dU5fXcT7oM",
     price: 0,
     accent: "#57d6ff",
     tagline: "52+ AWP — Dragon Lore'dan Gungnir'e",
@@ -380,7 +367,8 @@ const CASES_RAW: CaseDef[] = [
   CASES_RAW.push({
     id: "pistols-case",
     name: "Pistol Kasası",
-    img: caseArt(["#b6f05a", "#3f7a1c", "#8847ff"], "🔫"),
+    /* eSports 2013 Case — klasik ilk CS:GO kasası */
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bjx-UnoUwniocSwrHEV7KaobPdud6HEWjXGmbYl6LIwHn2ywhgh5GzXzdmsc3yRalAkD5R3FvlK7Ed7JoXDRQ",
     price: 0,
     accent: "#b6f05a",
     tagline: "436 pistol — uygun başlangıç",
@@ -399,7 +387,8 @@ const CASES_RAW: CaseDef[] = [
   CASES_RAW.push({
     id: "knife-case",
     name: "Bıçak & Eldiven Kasası",
-    img: caseArt(["#e4ae39", "#7a5c00", "#cf6a32"], "🗡️"),
+    /* Falchion Case — bıçaklı ilk modern kasa */
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj35VTqVBP4io_fpWwI7Pb-P6Y5dvPEDGSSlrsh57U8HHHiwx5yt2-Dwo7_JSnCOw8oCJF0W6dU5dgrLNA1",
     price: 0,
     accent: "#e4ae39",
     tagline: "539 bıçak/eldiven — hepsi çıkabilir!",
@@ -414,7 +403,8 @@ const CASES_RAW: CaseDef[] = [
   CASES_RAW.push({
     id: "ultra-case",
     name: "Efsane StatTrak™ Kasası",
-    img: caseArt(["#ff5f9e", "#7a1039", "#ffd75e"], "⭐"),
+    /* Shattered Web Case — en yüksek değerli modern kasa */
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj35VTqVBP4io_fr3EVvKD6MKU_cKPKXWHFxLkls7FsSnDqwUl_sWTczoqheHifbwMmD5F1RvlK7Ec_KL6Q_A",
     price: 0,
     accent: "#ff5f9e",
     tagline: "StatTrak™ Dragon Lore, Howl, Fire Serpent…",
@@ -483,7 +473,7 @@ const STICKER_CASES: CaseDef[] = [
   {
     id: "capsule-esports",
     name: "E-Spor Takım Kapsülü",
-    img: caseArt(["#4b69ff", "#101a3d", "#ffd166"], "🏆"),
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bjn_lDkShjjoYbh_ilk7P2jZbFjKeSKXDfCkNF1sfF6WiW22xsjtm7XmImsJHzFPw8gXpMhRbVfs0Lrx9blNO-07wzbi4IXyHqqjCpXrnE8kTJtUHk",
     price: 0,
     accent: "#4b69ff",
     tagline: "Takımını silahına taşı",
