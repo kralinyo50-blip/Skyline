@@ -20,14 +20,17 @@ import { RARITY, SKIN_MAP, type Skin } from "../data/skins";
 import { priceRatio, sellChance } from "../data/market";
 import { STICKER_MAP } from "../data/stickers";
 import { WEARS, wearFromFloat } from "../data/wear";
-import { itemValue } from "../data/items";
+import { itemValue, type InvItem } from "../data/items";
 import { click } from "../lib/audio";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
 import { SkinImg } from "./SkinCard";
+import { FloatBar, WearFilterRow, WearBadge } from "./WearUi";
+import { ItemDetailModal } from "./ItemDetailModal";
 
 type Tab = "buy" | "sell";
 type Sort = "new" | "cheap" | "rich";
+type WearFilter = "all" | "fn" | "mw" | "ft" | "ww" | "bs";
 
 const PER_PAGE = 16;
 
@@ -276,8 +279,10 @@ export function MarketView() {
 
   const [tab, setTab] = useState<Tab>("buy");
   const [sort, setSort] = useState<Sort>("new");
+  const [wearFilter, setWearFilter] = useState<WearFilter>("all");
   const [q, setQ] = useState("");
   const [sellTarget, setSellTarget] = useState<{ uid: string; skin: Skin } | null>(null);
+  const [detail, setDetail] = useState<{ item: InvItem; listingId?: string } | null>(null);
   const [page, setPage] = useState(1);
   const [invPage, setInvPage] = useState(1);
 
@@ -286,16 +291,20 @@ export function MarketView() {
       const s = SKIN_MAP[l.skinId];
       if (!s) return false;
       const t = `${s.weapon} ${s.name}`.toLowerCase();
-      return t.includes(q.trim().toLowerCase());
+      if (!t.includes(q.trim().toLowerCase())) return false;
+      if (wearFilter !== "all") {
+        if (typeof l.float !== "number" || wearFromFloat(l.float) !== wearFilter) return false;
+      }
+      return true;
     });
     if (sort === "cheap") out = [...out].sort((a, b) => a.price - b.price);
     else if (sort === "rich") out = [...out].sort((a, b) => b.price - a.price);
     else out = [...out].sort((a, b) => b.ts - a.ts);
     return out;
-  }, [botListings, q, sort]);
+  }, [botListings, q, sort, wearFilter]);
 
   /* filtre/sıra değişince başa dön */
-  useEffect(() => setPage(1), [q, sort, tab]);
+  useEffect(() => setPage(1), [q, sort, tab, wearFilter]);
 
   const pages = Math.max(1, Math.ceil(listings.length / PER_PAGE));
   const safePage = Math.min(page, pages);
@@ -407,6 +416,13 @@ export function MarketView() {
       {/* ---------------- SATIN AL ---------------- */}
       {tab === "buy" && (
         <>
+        {/* durum (aşınma) filtresi */}
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-ink-900/50 p-2">
+          <span className="px-1 text-[10px] font-bold uppercase tracking-widest text-white/35">
+            Durum
+          </span>
+          <WearFilterRow value={wearFilter} onChange={setWearFilter} />
+        </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <AnimatePresence initial={false}>
             {pageItems.map((l) => {
@@ -427,7 +443,21 @@ export function MarketView() {
                     backgroundImage: `radial-gradient(120% 80% at 50% 0%, ${r.color}14, transparent 55%)`,
                   }}
                 >
-                  <div className="relative p-2.5">
+                  <div
+                    className="relative cursor-pointer p-2.5"
+                    onClick={() =>
+                      setDetail({
+                        item: {
+                          uid: l.id,
+                          skinId: l.skinId,
+                          ts: l.ts,
+                          float: l.float,
+                          stickers: l.stickers,
+                        },
+                        listingId: l.id,
+                      })
+                    }
+                  >
                     <span
                       className="absolute right-2 top-2 rounded px-1.5 py-0.5 text-[9px] font-bold"
                       style={{ color: badge.color, background: `${badge.color}1a` }}
@@ -460,17 +490,12 @@ export function MarketView() {
                     </div>
                     <div className="truncate font-display text-sm font-bold text-white/90">{s.name}</div>
                     {typeof l.float === "number" && (
-                      <div className="mt-0.5 flex items-center gap-1">
-                        <span
-                          className="rounded px-1 py-px text-[8px] font-black"
-                          style={{
-                            color: WEARS[wearFromFloat(l.float)].color,
-                            background: `${WEARS[wearFromFloat(l.float)].color}1a`,
-                          }}
-                        >
-                          {WEARS[wearFromFloat(l.float)].short}
-                        </span>
-                        <span className="text-[9px] tabular-nums text-white/30">{l.float.toFixed(4)}</span>
+                      <div className="mt-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <WearBadge wear={wearFromFloat(l.float)} full />
+                          <span className="text-[9px] tabular-nums text-white/30">{l.float.toFixed(4)}</span>
+                        </div>
+                        <FloatBar float={l.float} className="mt-1" />
                       </div>
                     )}
                     <div className="mt-1 flex items-center gap-1.5 text-[10px] text-white/35">
@@ -701,6 +726,38 @@ export function MarketView() {
             onClose={() => setSellTarget(null)}
           />
         )}
+        {detail && (() => {
+          const l = detail.listingId ? botListings.find((x) => x.id === detail.listingId) : null;
+          const price = l?.price ?? 0;
+          return (
+            <ItemDetailModal
+              item={detail.item}
+              onClose={() => setDetail(null)}
+              subtitle={
+                l ? "Bu ilanı görüyorsun — fiyat, aşınma ve float'a göre belirlenmiştir." : undefined
+              }
+              actions={
+                l ? (
+                  <button
+                    onClick={() => {
+                      if (buyListing(l.id)) setDetail(null);
+                    }}
+                    disabled={balance < price}
+                    className={cn(
+                      "flex h-11 w-full items-center justify-center gap-2 rounded-xl font-display text-sm font-black uppercase tracking-widest transition",
+                      balance >= price
+                        ? "bg-gradient-to-b from-emerald-400 to-emerald-600 text-ink-950 hover:brightness-110"
+                        : "cursor-not-allowed bg-ink-600 text-white/30"
+                    )}
+                  >
+                    <ShoppingCart className="h-4 w-4" />
+                    {balance >= price ? `Satın Al — ${money(price)}` : "Yetersiz Bakiye"}
+                  </button>
+                ) : undefined
+              }
+            />
+          );
+        })()}
       </AnimatePresence>
     </div>
   );

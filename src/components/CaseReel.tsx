@@ -15,6 +15,7 @@ import {
 import { rollCase, caseContentsDetailed, type CaseDef } from "../data/cases";
 import { QUICK_SELL_RATE } from "../config";
 import { rollFloat, wearFromFloat, WEARS } from "../data/wear";
+import { FloatBar, WearBadge } from "./WearUi";
 import { STICKER_MAP, STICKERS, stickerBonus } from "../data/stickers";
 import { STICKERED_DROP_CHANCE } from "../data/items";
 
@@ -486,16 +487,14 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                     <div className="font-display text-2xl font-bold text-white">{winner.name}</div>
 
                     {!winner.sticker && (
-                      <div className="mt-2 flex flex-wrap items-center justify-center gap-2 text-[11px]">
-                        <span
-                          className="rounded px-2 py-0.5 font-bold"
-                          style={{ color: wear.wear.color, background: `${wear.wear.color}1a` }}
-                        >
-                          {wear.wear.tr}
-                        </span>
-                        <span className="rounded bg-ink-600 px-2 py-0.5 font-semibold tabular-nums text-white/50">
-                          float: {wear.float.toFixed(4)}
-                        </span>
+                      <div className="mx-auto mt-2 w-full max-w-xs text-[11px]">
+                        <div className="flex flex-wrap items-center justify-center gap-2">
+                          <WearBadge wear={wearFromFloat(wear.float)} full />
+                          <span className="rounded bg-ink-600 px-2 py-0.5 font-semibold tabular-nums text-white/50">
+                            float: {wear.float.toFixed(4)}
+                          </span>
+                        </div>
+                        <FloatBar float={wear.float} className="mt-1.5" />
                       </div>
                     )}
 
