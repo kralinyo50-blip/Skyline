@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   BadgeCheck,
@@ -138,7 +138,21 @@ export function AdminPanel() {
   const [codeInput, setCodeInput] = useState(syncCode ?? "");
   const [copied, setCopied] = useState(false);
 
-  const [sec, setSec] = useState<Sec>("deposits");
+  const [sec, setSecState] = useState<Sec>(() => {
+    /* F5'te panelin alt sekmesi korunur */
+    const s = sessionStorage.getItem("skyline-adm-sec") as Sec | null;
+    return s === "users" || s === "deposits" || s === "players" || s === "sync" || s === "events" || s === "settings"
+      ? s
+      : "deposits";
+  });
+  const setSec = useCallback((s: Sec) => {
+    setSecState(s);
+    try {
+      sessionStorage.setItem("skyline-adm-sec", s);
+    } catch {
+      /* yoksay */
+    }
+  }, []);
   const [q, setQ] = useState("");
   const [adjustInputs, setAdjustInputs] = useState<Record<string, string>>({});
 

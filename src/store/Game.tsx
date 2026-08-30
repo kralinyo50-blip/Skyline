@@ -341,10 +341,36 @@ interface GameState {
 
 const GameCtx = createContext<GameState | null>(null);
 
+/** geçerli sekme anahtarları — F5 sonrası geri yükleme doğrulaması için */
+const TAB_KEYS: Record<TabKey, true> = {
+  cases: true,
+  upgrader: true,
+  battle: true,
+  games: true,
+  market: true,
+  trade: true,
+  inventory: true,
+  admin: true,
+  stats: true,
+  community: true,
+};
+
 export function GameProvider({ children }: { children: React.ReactNode }) {
   const [db, setDb] = useState<DB>(() => loadDB());
   const [muted, setMuted] = useState(false);
-  const [tab, setTab] = useState<TabKey>("cases");
+  const [tab, setTabState] = useState<TabKey>(() => {
+    /* F5'te kullanıcı aynı sekmede kalır */
+    const t = localStorage.getItem("skyline-tab") as TabKey | null;
+    return t && t in TAB_KEYS ? t : "cases";
+  });
+  const setTab = useCallback((t: TabKey) => {
+    setTabState(t);
+    try {
+      localStorage.setItem("skyline-tab", t);
+    } catch {
+      /* yoksay */
+    }
+  }, []);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [upgraderPick, setUpgraderPick] = useState<string | null>(null);
   const [serverSeed, setServerSeed] = useState(randHex(64));

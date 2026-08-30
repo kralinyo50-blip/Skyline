@@ -143,7 +143,10 @@ export function UpgraderView() {
 
   const chance = useMemo(() => {
     if (totalSel <= 0 || !target) return null;
-    return clamp((totalSel / target.price) * 0.95, 0.03, 0.95);
+    const base = clamp((totalSel / target.price) * 0.95, 0.03, 0.95);
+    /* bıçak/eldiven (★ Aşırı Nadir) upgrader'da ÇOK zor: en fazla %5 */
+    if (target.rarity === "rare") return clamp(base, 0.005, 0.05);
+    return base;
   }, [totalSel, target]);
 
   const targets = useMemo(() => {
@@ -598,14 +601,22 @@ export function UpgraderView() {
           </button>
 
           {totalSel > 0 && target && chance !== null && (
-            <div className="mt-3 flex w-full items-center justify-between rounded-lg border border-line bg-ink-800 px-3 py-2 text-[11px] text-white/45">
-              <span className="flex items-center gap-1">
-                <Info className="h-3 w-3" /> Beklenen değer
-              </span>
-              <span className="font-display font-bold text-white/75">
-                {fmtMoney(totalSel)} → <span className="text-emerald-400">{fmtMoney(target.price)}</span>
-              </span>
-            </div>
+            <>
+              <div className="mt-3 flex w-full items-center justify-between rounded-lg border border-line bg-ink-800 px-3 py-2 text-[11px] text-white/45">
+                <span className="flex items-center gap-1">
+                  <Info className="h-3 w-3" /> Beklenen değer
+                </span>
+                <span className="font-display font-bold text-white/75">
+                  {fmtMoney(totalSel)} → <span className="text-emerald-400">{fmtMoney(target.price)}</span>
+                </span>
+              </div>
+              {target.rarity === "rare" && (
+                <div className="mt-2 flex w-full items-center justify-between rounded-lg border border-amber-400/30 bg-amber-400/8 px-3 py-2 text-[11px] text-amber-300/80">
+                  <span>★ Bıçak/eldiven hedefi</span>
+                  <span className="font-display font-bold text-amber-300">En fazla %5 şans</span>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -652,15 +663,22 @@ export function UpgraderView() {
                     selected={targetId === s.id}
                     onClick={() => !spinning && setTargetId(targetId === s.id ? null : s.id)}
                     badge={
-                      <span
-                        className="absolute right-1.5 top-1.5 rounded px-1 text-[9px] font-bold"
-                        style={{
-                          color: RARITY[s.rarity].color,
-                          background: "rgba(7,9,15,0.7)",
-                        }}
-                      >
-                        x{(s.price / totalSel).toFixed(1)}
-                      </span>
+                      <>
+                        {s.rarity === "rare" && (
+                          <span className="absolute left-1.5 top-1.5 rounded bg-[#e4ae39] px-1 py-0.5 text-[8px] font-black uppercase text-ink-950 shadow">
+                            ★ Çok Zor
+                          </span>
+                        )}
+                        <span
+                          className="absolute right-1.5 top-1.5 rounded px-1 text-[9px] font-bold"
+                          style={{
+                            color: RARITY[s.rarity].color,
+                            background: "rgba(7,9,15,0.7)",
+                          }}
+                        >
+                          x{(s.price / totalSel).toFixed(1)}
+                        </span>
+                      </>
                     }
                   />
                 ))}
