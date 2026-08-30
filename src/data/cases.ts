@@ -50,8 +50,11 @@ export interface CaseDef {
 /* ------------------------------------------------------------------
    GLOBAL KATALOG — kasaların zengin havuzu
    (BASE + 1.947 gerçek Steam skin + 50 efsane; varyantlar hariç)
+   Aynı id'ye sahip skinler tekilleştirilir (efsane fiyatı kazanır).
 ------------------------------------------------------------------ */
-const GLOBAL_RAW: Skin[] = [...BASE_SKINS, ...EXTRA_SKINS, ...LEGEND_SKINS];
+const GLOBAL_BY_ID = new Map<string, Skin>();
+[...BASE_SKINS, ...EXTRA_SKINS, ...LEGEND_SKINS].forEach((s) => GLOBAL_BY_ID.set(s.id, s));
+const GLOBAL_RAW: Skin[] = [...GLOBAL_BY_ID.values()];
 
 const GLOBAL_TIER: Record<RarityKey, Skin[]> = {
   consumer: [],
@@ -807,11 +810,18 @@ export function caseContentsDetailed(caseDef: CaseDef) {
   const odds: Partial<Record<RarityKey, number>> = {};
   tiers.forEach((t) => (odds[t] = ((weights[t] ?? 0) / totalW) * 100));
 
+  const seen = new Set<string>();
   const items = tiers
     .flatMap((t) =>
       caseDef.contents[t]!.map((id) => (caseDef.souvenir ? SKIN_MAP[id + "-sv"] ?? SKIN_MAP[id] : SKIN_MAP[id]))
     )
     .filter(Boolean)
+    /* aynı id iki kez görünmesin (havuz kopyalarına karşı güvence) */
+    .filter((s) => {
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    })
     .sort(
       (a, b) =>
         RARITY[b.rarity].order - RARITY[a.rarity].order || b.price - a.price
