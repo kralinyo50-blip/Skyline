@@ -286,9 +286,9 @@ export function Header() {
           </div>
         </div>
 
-        {/* desktop nav — ikinci satır */}
-        <nav className="hidden border-t border-line/60 lg:block" style={{ scrollbarWidth: "none" }}>
-          <div className="mx-auto flex max-w-[1600px] items-center justify-center gap-0.5 overflow-x-auto px-4 py-2">
+        {/* desktop nav — ikinci satır (dar ekranlarda kendiliğinden sarar, asla taşmaz) */}
+        <nav className="hidden border-t border-line/60 lg:block">
+          <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-center gap-x-1 gap-y-1 px-4 py-1.5">
             {allTabs.map(({ key, label, Icon }) => (
               <button
                 key={key}
@@ -297,7 +297,7 @@ export function Header() {
                   click();
                 }}
                 className={cn(
-                  "relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 font-display text-[13px] font-semibold uppercase tracking-wider transition-colors",
+                  "relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-display text-xs font-semibold uppercase tracking-wider transition-colors",
                   tab === key ? "text-white" : "text-white/45 hover:text-white/80"
                 )}
               >
