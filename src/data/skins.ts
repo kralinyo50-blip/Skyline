@@ -185,8 +185,23 @@ const BASE: Skin[] = [
 /* Sadece gerçek skinler — prosedürel SVG'ler kasadan kaldırıldı. */
 export const BASE_SKINS: Skin[] = [...BASE];
 
-/** Taban fiyatı sunucu eğrisine oturt (min 1200) */
-const scaled = (s: Skin): Skin => ({ ...s, price: priceOf(s.price) });
+/** Taban fiyatı sunucu eğrisine oturt (min 1200) — nadir kademeler daha değerli */
+const RARITY_MULT: Record<RarityKey, number> = {
+  consumer: 1,
+  industrial: 1,
+  milspec: 1,
+  restricted: 1,
+  classified: 1.5,
+  covert: 2.3,
+  rare: 2.3,
+};
+
+function scaledPrice(s: Skin): number {
+  const raw = priceOf(s.price) * (RARITY_MULT[s.rarity] ?? 1);
+  return Math.max(MIN_PRICE, Math.round(raw / 100) * 100);
+}
+
+const scaled = (s: Skin): Skin => ({ ...s, price: scaledPrice(s) });
 
 /** StatTrak™ — kesim sayaçlı nadir varyant */
 function makeSt(s: Skin): Skin {
@@ -194,7 +209,7 @@ function makeSt(s: Skin): Skin {
     ...s,
     id: s.id + "-st",
     st: true,
-    price: Math.max(MIN_PRICE, Math.round((priceOf(s.price) * 2.1) / 100) * 100),
+    price: Math.max(MIN_PRICE, Math.round((scaledPrice(s) * 2.1) / 100) * 100),
   };
 }
 
@@ -204,7 +219,7 @@ function makeSv(s: Skin): Skin {
     ...s,
     id: s.id + "-sv",
     sv: true,
-    price: Math.max(MIN_PRICE, Math.round((priceOf(s.price) * 1.55) / 100) * 100),
+    price: Math.max(MIN_PRICE, Math.round((scaledPrice(s) * 1.55) / 100) * 100),
   };
 }
 

@@ -475,14 +475,53 @@ function expectedValue(c: CaseDef): number {
   }, 0);
 }
 
+/* ------------------------------------------------------------------
+   Her kasadan en az N farklı skin düşebilsin.
+   Eksik kasalar kendi kademelerinden genel havuzla tamamlanır.
+   Hediye Paketi'ne (gift) hiç dokunulmaz — içeriği ve fiyatı korunur.
+------------------------------------------------------------------ */
+const MIN_CASE_SKINS = 11;
+
+function ensureSkinCount(c: CaseDef): CaseDef {
+  if (c.id === "gift") return c;
+  const contents: CaseDef["contents"] = Object.fromEntries(
+    Object.entries(c.contents).map(([k, v]) => [k, [...(v ?? [])]])
+  ) as CaseDef["contents"];
+  const tiers = (Object.keys(contents) as RarityKey[]).filter(
+    (t) => (contents[t]?.length ?? 0) > 0
+  );
+  const total = () => tiers.reduce((a, t) => a + (contents[t]?.length ?? 0), 0);
+  let guard = 0;
+  while (total() < MIN_CASE_SKINS && guard++ < 40) {
+    let added = false;
+    for (const t of tiers) {
+      if (total() >= MIN_CASE_SKINS) break;
+      const pool = byTier(t).filter((id) => !(contents[t] ?? []).includes(id));
+      if (pool.length) {
+        contents[t] = [...(contents[t] ?? []), pool[0]];
+        added = true;
+      }
+    }
+    if (!added) break;
+  }
+  return { ...c, contents };
+}
+
 export const CASES: CaseDef[] = [
   ...CASES_RAW,
   ...STICKER_CASES,
   ...SOUVENIR_CASES,
-].map((c) => ({
-  ...c,
-  price: roundCasePrice(expectedValue(c) * CASE_MARKUP * (c.stickered ? 1.15 : 1)),
-}));
+].map((c) => {
+  const e = ensureSkinCount(c);
+  return {
+    ...e,
+    /* Hediye Paketi: değeri sabit tutulur, zor skin zammından etkilenmez */
+    price:
+      c.id === "gift"
+        ? 4200
+        : roundCasePrice(expectedValue(e) * CASE_MARKUP * (e.stickered ? 1.15 : 1)),
+  };
+});
 
 export const CASE_MAP: Record<string, CaseDef> = Object.fromEntries(
   CASES.map((c) => [c.id, c])
