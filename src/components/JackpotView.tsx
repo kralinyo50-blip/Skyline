@@ -16,7 +16,7 @@ import { mcHead, money, JACKPOT_ROUND_MS } from "../config";
 import { SKIN_MAP } from "../data/skins";
 import { itemTitle, itemValue } from "../data/items";
 import { click, coinDing } from "../lib/audio";
-import { useGame } from "../store/Game";
+import { useGame, levelFromSpent } from "../store/Game";
 import { cn } from "../utils/cn";
 import { SkinImg } from "./SkinCard";
 import { Confetti } from "./CaseReel";
@@ -157,7 +157,7 @@ function JoinModal({ onClose }: { onClose: () => void }) {
 
 /* ---------- ana ekran ---------- */
 export function JackpotView() {
-  const { jackpot, jackpotLeave, showcase, celebrateLocal } = useGame();
+  const { jackpot, jackpotLeave, showcase, celebrateLocal, allUsers } = useGame();
   const now = useNow();
   const [joinOpen, setJoinOpen] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
@@ -249,7 +249,9 @@ export function JackpotView() {
 
             {/* katılımcılar */}
             <div className="mt-5 grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-              {(jp?.entries ?? []).map((e) => (
+              {(jp?.entries ?? []).map((e) => {
+                const u = !e.bot && e.userId ? allUsers.find((x) => x.key === e.userId) : undefined;
+                return (
                 <div
                   key={e.id}
                   className={cn(
@@ -263,8 +265,21 @@ export function JackpotView() {
                       <div className="flex items-center gap-1 truncate text-xs font-bold text-white">
                         {e.me ? "Sen" : e.name}
                         {e.me && <Crown className="h-3 w-3 shrink-0 text-emerald-400" />}
+                        {!e.bot && !e.me && (
+                          <span className="flex shrink-0 items-center gap-1 rounded bg-emerald-500/15 px-1 py-px text-[8px] font-black uppercase tracking-wider text-emerald-300">
+                            <span className="h-1 w-1 animate-pulse rounded-full bg-emerald-400" />
+                            CANLI
+                          </span>
+                        )}
                       </div>
-                      <div className="font-display text-[11px] font-black text-emerald-400">{money(e.total)}</div>
+                      <div className="flex items-center gap-1.5 font-display text-[11px] font-black text-emerald-400">
+                        {money(e.total)}
+                        {u && (
+                          <span className="text-[8px] font-bold text-white/30">
+                            Lv{levelFromSpent(u.stats.spent)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="mt-1.5 flex flex-wrap gap-0.5">
@@ -286,7 +301,8 @@ export function JackpotView() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {(jp?.entries ?? []).length === 0 && !drawing && (
                 <p className="col-span-full py-6 text-center text-xs text-white/30">
                   Pot açıldı — oyuncular geliyor…

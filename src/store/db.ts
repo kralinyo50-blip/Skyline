@@ -157,6 +157,8 @@ export interface Account {
   vipPlan?: string;
   /** profil vitrini — seçilen envanter uid'leri (en fazla 3) */
   showcase?: string[];
+  /** jackpot kazançlarının ödendiği tur numaraları (çift ödeme koruması) */
+  jpPaid?: number[];
 }
 
 export type ReqStatus = "pending" | "approved" | "rejected";
@@ -254,27 +256,59 @@ export interface JackpotItem {
 export interface JackpotEntry {
   id: string;
   name: string;
-  /** gerçek kullanıcı mı */
+  /** gerçek kullanıcı key'i — botlarda yok */
+  userId?: string;
+  /** bot katılımcı mı */
+  bot?: boolean;
+  /** bu cihazın kullanıcısı mı (yerel görünüm) */
   me?: boolean;
+  /** pottan çıkıldı (senkron tombstone) */
+  left?: boolean;
   items: JackpotItem[];
   total: number;
 }
 
 export interface JackpotHistoryEntry {
+  id: string;
   name: string;
+  userId?: string;
+  bot?: boolean;
   me?: boolean;
   value: number;
   ts: number;
 }
 
-/** Canlı jackpot turu — yerel + cihazlar arası korunur */
+/** Kazanan kaydı */
+export interface JackpotWinner {
+  name: string;
+  userId?: string;
+  bot?: boolean;
+  me?: boolean;
+  value: number;
+  ts: number;
+  /** çekilişin yapıldığı cihaz — kazananı belirleme hakkı */
+  drawnBy?: string;
+  /** çekilişe katılan giriş sayısı — eksik senkronu tespit etmek için */
+  entriesCount?: number;
+}
+
+/** Biten bir turun kazancı — kazanan cihazı geç gelse bile ödeme yapılabilir */
+export interface JackpotSettledRound {
+  round: number;
+  entries: JackpotEntry[];
+  winner: JackpotWinner;
+}
+
+/** Canlı jackpot turu — tüm cihazlarla buluttan paylaşılır */
 export interface JackpotState {
   round: number;
   endsAt: number;
-  entries: JackpotEntry[];
-  winner?: { name: string; me?: boolean; value: number } | null;
   nextStartAt?: number;
+  entries: JackpotEntry[];
+  winner?: JackpotWinner | null;
   history: JackpotHistoryEntry[];
+  /** son biten turlar (çevrimdışı cihazlar için kazanç emaneti) */
+  settled?: JackpotSettledRound[];
 }
 
 export interface DB {

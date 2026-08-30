@@ -1,8 +1,11 @@
+import { jackpotSchedule } from "../config";
 import {
   isAdminName,
   type Account,
   type DB,
   type DepositReq,
+  type JackpotSettledRound,
+  type JackpotState,
   type MarketListing,
   type MarketPayment,
 } from "./db";
@@ -40,6 +43,8 @@ export interface CloudDoc {
   marketPayments?: MarketPayment[];
   /** site geneli kutlama — en yeni ts kazanır */
   celebration?: DB["celebration"];
+  /** canlı jackpot — herkes aynı potu görür */
+  jackpot?: JackpotState | null;
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -70,6 +75,30 @@ export function toCloudDoc(db: DB): CloudDoc {
       .sort((a, b) => a.ts - b.ts)
       .slice(-400),
     celebration: db.celebration ?? undefined,
+    /* jackpot: yerel görünüm bayrakları (me) kaldırılır — userId esas alınır */
+    jackpot: db.jackpot ? jackpotToCloud(db.jackpot) : null,
+  };
+}
+
+/** me bayrakları cihaza özeldir — bulut yalnızca userId/bot bilgisi taşır */
+function jackpotToCloud(jp: JackpotState): JackpotState {
+  const strip = <T extends { me?: boolean }>(x: T): T => {
+    const { me: _me, ...rest } = x;
+    return rest as T;
+  };
+  return {
+    ...jp,
+    entries: jp.entries.map(strip),
+    winner: jp.winner ? strip(jp.winner) : jp.winner,
+    history: (jp.history ?? []).map((h) => {
+      const { me: _m, ...rest } = h;
+      return rest;
+    }),
+    settled: (jp.settled ?? []).map((s) => ({
+      round: s.round,
+      entries: s.entries.map(strip),
+      winner: strip(s.winner),
+    })),
   };
 }
 
@@ -182,6 +211,112 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     out.celebration = cloud.celebration;
   else if (!cloud.celebration && !out.celebration) out.celebration = undefined;
 
+  /* jackpot — herkese aynı pot, eksik senkron korumalı birleşim */
+  out.jackpot = mergeJackpot(local.jackpot ?? null, cloud.jackpot ?? null, local.session);
+
+  return out;
+}
+
+/**
+ * Jackpot birleşimi.
+ * - Tur numarası saate bağlı deterministik: her cihaz aynı turu görür.
+ * - Aynı turda girişler id'ye göre birleştirilir; "left" tombstone kazanır.
+ * - Kazanan: daha fazla girişle çekilmiş (eksiksiz) sonuç tercih edilir.
+ * - me bayrakları her cihazda kendi oturumuna göre yeniden hesaplanır.
+ */
+function mergeJackpot(
+  local: JackpotState | null,
+  cloud: JackpotState | null,
+  session: string | null
+): JackpotState | null {
+  if (!local && !cloud) return null;
+
+  let base: JackpotState | null = null;
+  let other: JackpotState | null = null;
+
+  if (!local) base = cloud;
+  else if (!cloud) base = local;
+  else if (local.round === cloud.round) {
+    base = local;
+    other = cloud;
+  } else {
+    /* farklı tur: daha yeni tur kazanır (tur numarası saatle artar) */
+    if (local.round > cloud.round) {
+      base = local;
+      other = cloud;
+    } else {
+      base = cloud;
+      other = local;
+    }
+  }
+  if (!base) return null;
+
+  const endsAt = jackpotSchedule(base.round).endsAt;
+  const out: JackpotState = {
+    ...base,
+    endsAt,
+    nextStartAt: base.nextStartAt ?? jackpotSchedule(base.round).nextStartAt,
+    entries: [...(base.entries ?? [])],
+    history: [...(base.history ?? [])],
+    settled: [...(base.settled ?? [])],
+  };
+
+  if (other && other.round === base.round) {
+    /* girişler — id birleşimi, left damgası kazanır */
+    const emap = new Map<string, (typeof out.entries)[number]>();
+    [...base.entries, ...other.entries].forEach((e) => {
+      const cur = emap.get(e.id);
+      if (!cur) emap.set(e.id, e);
+      else if (e.left && !cur.left) emap.set(e.id, e);
+      else if (!cur.left && !e.left && !cur.userId && e.userId) emap.set(e.id, e);
+    });
+    out.entries = [...emap.values()];
+
+    /* kazanan — en eksiksiz çekiliş kazanır */
+    const pickWinner = (
+      a: JackpotState["winner"],
+      b: JackpotState["winner"]
+    ): JackpotState["winner"] => {
+      if (!a && !b) return null;
+      if (!a) return b;
+      if (!b) return a;
+      const ca = a.entriesCount ?? 0;
+      const cb = b.entriesCount ?? 0;
+      if (ca !== cb) return ca > cb ? a : b;
+      if (a.value !== b.value) return a.value > b.value ? a : b;
+      return (a.ts ?? 0) >= (b.ts ?? 0) ? a : b;
+    };
+    out.winner = pickWinner(base.winner ?? null, other.winner ?? null);
+
+    /* tarihçe — id birleşimi */
+    const hmap = new Map<string, (typeof out.history)[number]>();
+    [...base.history, ...other.history].forEach((h) => {
+      if (!hmap.has(h.id)) hmap.set(h.id, h);
+    });
+    out.history = [...hmap.values()].sort((a, b) => b.ts - a.ts).slice(0, 30);
+
+    /* biten turlar emaneti — tur başına birleş */
+    const smap = new Map<number, JackpotSettledRound>();
+    [...(base.settled ?? []), ...(other.settled ?? [])].forEach((s) => {
+      const cur = smap.get(s.round);
+      if (!cur) smap.set(s.round, s);
+      else if ((s.winner.entriesCount ?? 0) > (cur.winner.entriesCount ?? 0)) smap.set(s.round, s);
+    });
+    out.settled = [...smap.values()]
+      .sort((a, b) => b.round - a.round)
+      .slice(0, 5);
+  }
+
+  /* yerel görünüm bayrakları */
+  const isMe = (userId?: string) => !!userId && userId === session;
+  out.entries = out.entries.map((e) => ({ ...e, me: isMe(e.userId) }));
+  if (out.winner) out.winner = { ...out.winner, me: isMe(out.winner.userId) };
+  out.history = out.history.map((h) => ({ ...h, me: isMe(h.userId) }));
+  out.settled = (out.settled ?? []).map((s) => ({
+    ...s,
+    entries: s.entries.map((e) => ({ ...e, me: isMe(e.userId) })),
+    winner: { ...s.winner, me: isMe(s.winner.userId) },
+  }));
   return out;
 }
 

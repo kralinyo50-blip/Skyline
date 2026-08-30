@@ -100,6 +100,20 @@ export const JACKPOT_MAX_ENTRIES = 12;
 /** Kazanan belirlendikten sonra yeni tur başlamadan önce bekleme */
 export const JACKPOT_NEXT_MS = 6_000;
 
+/** Tam tur çevrimi (oyun + kazanan ekranı) — tüm cihazlar bu programı paylaşır */
+export const JACKPOT_CYCLE_MS = JACKPOT_ROUND_MS + JACKPOT_NEXT_MS;
+
+/** Saate bağlı deterministik tur numarası — her cihaz aynı değeri bulur */
+export function jackpotRoundAt(now: number): number {
+  return Math.floor(now / JACKPOT_CYCLE_MS);
+}
+
+/** Tura ait deterministik zamanlama (başlangıç / bitiş / sonraki tur) */
+export function jackpotSchedule(round: number): { start: number; endsAt: number; nextStartAt: number } {
+  const start = round * JACKPOT_CYCLE_MS;
+  return { start, endsAt: start + JACKPOT_ROUND_MS, nextStartAt: start + JACKPOT_CYCLE_MS };
+}
+
 /** Taban değeri sunucu ekonomisine oturtan fiyat eğrisi */
 export function priceOf(base: number): number {
   const raw = MIN_PRICE * Math.pow(1 + base, 0.62);

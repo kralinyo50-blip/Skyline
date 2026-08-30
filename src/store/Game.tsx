@@ -15,7 +15,7 @@ import {
   makeStickerItem,
   maybeAttachStickers,
 } from "../data/items";
-import { rollFloat } from "../data/wear";
+import { rollFloat, WEARS, WEAR_ORDER, type WearKey } from "../data/wear";
 import { MAX_STICKERS, STICKERS, STICKER_MAP, CUSTOM_STICKER_COST } from "../data/stickers";
 import {
   buildCustomSticker,
@@ -25,7 +25,7 @@ import {
 
 const STICKER_POOL = STICKERS.map((s) => s.id);
 import { setAudioMuted, coinDing, click } from "../lib/audio";
-import { pick, randHex, randInt, seededRng, uid } from "../lib/rng";
+import { randHex, seededRng, uid } from "../lib/rng";
 import {
   SCALE,
   START_BALANCE,
@@ -44,7 +44,8 @@ import {
   VIP_PLANS,
   JACKPOT_ROUND_MS,
   JACKPOT_MAX_ENTRIES,
-  JACKPOT_NEXT_MS,
+  jackpotRoundAt,
+  jackpotSchedule,
   isValidMcName,
 } from "../config";
 import { COMMUNITY_USERS } from "../data/fakers";
@@ -90,6 +91,9 @@ import {
   type JackpotState,
   type JackpotEntry,
   type JackpotItem,
+  type JackpotWinner,
+  type JackpotSettledRound,
+  type JackpotHistoryEntry,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
@@ -2235,40 +2239,139 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [updateMe, pushToast]
   );
 
-  /* ---------------- JACKPOT (CANLI POT) ---------------- */
+  /* ---------------- JACKPOT (CANLI POT — TÜM CİHAZLAR SENKRON) ---------------- */
 
-  /** Bot için rastgele pot eşyası üret (skin + aşınma + bazen sticker) */
-  const makeJackpotBotItem = (): JackpotItem => {
-    const s = pick(WEAPON_SKINS);
-    const float = rollFloat();
-    let stickers: string[] | undefined;
-    if (Math.random() < 0.16) {
-      stickers = Array.from({ length: randInt(1, 4) }, () => pick(STICKER_POOL));
+  /** Seed'li float üretimi — bot eşyaları her cihazda aynı çıkar */
+  const rollFloatSeeded = (rng: () => number): number => {
+    const total = WEAR_ORDER.reduce((a, k) => a + WEARS[k].weight, 0);
+    let r = rng() * total;
+    let picked: WearKey = "ft";
+    for (const k of WEAR_ORDER) {
+      r -= WEARS[k].weight;
+      if (r <= 0) {
+        picked = k;
+        break;
+      }
     }
-    const item: InvItem = { uid: "bot", skinId: s.id, ts: 0, float, stickers };
-    return { skinId: s.id, float, stickers, value: itemValue(item) };
+    const d = WEARS[picked];
+    return Math.round((d.min + rng() * (d.max - d.min)) * 10000) / 10000;
   };
 
-  const makeBotEntry = (): JackpotEntry => ({
-    id: uid(),
-    name: pick(COMMUNITY_USERS),
-    items: Array.from({ length: randInt(1, 4) }, makeJackpotBotItem),
-    total: 0,
-  });
+  /** Tur için deterministik botlar + katılım zamanları (her cihaz aynısını üretir) */
+  const botsForRound = (round: number): { entry: JackpotEntry; joinAt: number }[] => {
+    const sched = jackpotSchedule(round);
+    const rng = seededRng("skyline:jackpot:bots", round);
+    const count = 4 + Math.floor(rng() * 3); // 4–6 bot
+    const bots: { entry: JackpotEntry; joinAt: number }[] = [];
+    for (let i = 0; i < count; i++) {
+      const name = COMMUNITY_USERS[Math.floor(rng() * COMMUNITY_USERS.length)];
+      const items: JackpotItem[] = [];
+      const nItems = 1 + Math.floor(rng() * 4);
+      for (let j = 0; j < nItems; j++) {
+        const s = WEAPON_SKINS[Math.floor(rng() * WEAPON_SKINS.length)];
+        const float = rollFloatSeeded(rng);
+        let stickers: string[] | undefined;
+        if (rng() < 0.16) {
+          stickers = Array.from(
+            { length: 1 + Math.floor(rng() * 4) },
+            () => STICKER_POOL[Math.floor(rng() * STICKER_POOL.length)]
+          );
+        }
+        const item: InvItem = { uid: "bot", skinId: s.id, ts: 0, float, stickers };
+        items.push({ skinId: s.id, float, stickers, value: itemValue(item) });
+      }
+      const total = items.reduce((a, x) => a + x.value, 0);
+      bots.push({
+        entry: { id: `bot-${round}-${i}`, name, bot: true, items, total },
+        /* botlar tura eşit aralıklı, hafif jitter'lı girer */
+        joinAt: sched.start + 2500 + i * ((JACKPOT_ROUND_MS - 14000) / count) + Math.floor(rng() * 2200),
+      });
+    }
+    return bots;
+  };
 
-  const finalizeBotEntry = (e: JackpotEntry): JackpotEntry => ({
-    ...e,
-    total: e.items.reduce((a, i) => a + i.value, 0),
-  });
-
-  const freshJackpot = (): JackpotState => {
-    const bots = Array.from({ length: randInt(3, 5) }, makeBotEntry).map(finalizeBotEntry);
+  /** Deterministik yeni tur — geçmiş ve emanet korunur */
+  const freshJackpot = (
+    round: number,
+    history: JackpotHistoryEntry[],
+    settled: JackpotSettledRound[]
+  ): JackpotState => {
+    const sched = jackpotSchedule(round);
+    const now = Date.now();
+    const bots = botsForRound(round)
+      .filter((b) => b.joinAt <= now)
+      .map((b) => b.entry);
     return {
-      round: Math.floor(Date.now() / 1000) % 100000,
-      endsAt: Date.now() + JACKPOT_ROUND_MS,
+      round,
+      endsAt: sched.endsAt,
+      nextStartAt: sched.nextStartAt,
       entries: bots,
-      history: [],
+      history,
+      settled,
     };
+  };
+
+  /** Deterministik çekiliş — aynı girişler her cihazda aynı kazananı verir */
+  const drawJackpot = (jp: JackpotState, now: number): JackpotWinner | null => {
+    const pool = (jp.entries ?? []).filter((e) => !e.left && e.total > 0);
+    const total = pool.reduce((a, e) => a + e.total, 0);
+    if (!pool.length || total <= 0) return null;
+    const sorted = [...pool].sort((a, b) => a.id.localeCompare(b.id));
+    const rng = seededRng("skyline:jackpot:draw", `${jp.round}:${sorted.map((e) => e.id).join(",")}`);
+    const r = rng() * total;
+    let acc = 0;
+    let winner = sorted[sorted.length - 1];
+    for (const e of sorted) {
+      acc += e.total;
+      if (r <= acc) {
+        winner = e;
+        break;
+      }
+    }
+    return {
+      name: winner.name,
+      userId: winner.userId,
+      bot: winner.bot,
+      value: total,
+      ts: now,
+      entriesCount: pool.length,
+    };
+  };
+
+  /** Kazananın kendi cihazında ödeme (yalnızca emanet edilmiş turdan) */
+  const settleJackpotWin = (me: Account, round: number, entries: JackpotEntry[], winner: JackpotWinner) => {
+    const paid = me.jpPaid ?? [];
+    if (paid.includes(round)) return;
+    me.jpPaid = [...paid, round].slice(-20);
+    entries
+      .filter((e) => !e.left)
+      .forEach((e) =>
+        e.items.forEach((it) => {
+          me.inventory.unshift({
+            uid: uid(),
+            skinId: it.skinId,
+            ts: Date.now(),
+            float: it.float,
+            stickers: it.stickers,
+          });
+        })
+      );
+    const top3 = [...me.inventory]
+      .sort((a, b) => itemValue(b) - itemValue(a))
+      .slice(0, 3)
+      .map((i) => i.uid);
+    me.showcase = top3;
+    pushToastSafe.current({
+      kind: "win",
+      title: `JACKPOT KAZANDIN! 🎉 ${money(winner.value)}`,
+      sub: `${entries.length} katılımcının potu envanterine eklendi`,
+    });
+    setLocalCelebration({
+      id: uid(),
+      text: "JACKPOT!",
+      sub: `${money(winner.value)} değerinde pot kazandın`,
+    });
+    coinDing();
   };
 
   /** Oyuncu pota eşya katar (envanterden düşer) */
@@ -2278,11 +2381,15 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const fresh = loadDB();
       const me = currentUser(fresh);
       if (!me) return { ok: false, error: "Oturum bulunamadı" };
-      if (!fresh.jackpot) fresh.jackpot = freshJackpot();
+      const now = Date.now();
+      const round = jackpotRoundAt(now);
+      if (!fresh.jackpot || fresh.jackpot.round !== round) {
+        fresh.jackpot = freshJackpot(round, fresh.jackpot?.history ?? [], fresh.jackpot?.settled ?? []);
+      }
       const jp = fresh.jackpot;
-      if (jp.winner || Date.now() >= jp.endsAt) return { ok: false, error: "Bu tur kapanmış, yenisi başlıyor" };
-      if (Date.now() > jp.endsAt - 5000) return { ok: false, error: "Tura katılım son 5 saniye kapatıldı" };
-      const meEntry = jp.entries.find((e) => e.me);
+      if (jp.winner || now >= jp.endsAt) return { ok: false, error: "Bu tur kapanmış, yenisi başlıyor" };
+      if (now > jp.endsAt - 5000) return { ok: false, error: "Tura katılım son 5 saniye kapatıldı" };
+      const meEntry = jp.entries.find((e) => e.userId === me.key && !e.left);
       if (meEntry) return { ok: false, error: "Zaten pottasın — çıkıp tekrar girebilirsin" };
       const take = me.inventory.filter((i) => uids.includes(i.uid));
       if (take.length !== uids.length) return { ok: false, error: "Seçili eşyalardan biri artık yok" };
@@ -2293,10 +2400,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         value: itemValue(i),
       }));
       me.inventory = me.inventory.filter((i) => !uids.includes(i.uid));
-      jp.entries.push({ id: uid(), name: me.name, me: true, items, total: items.reduce((a, i) => a + i.value, 0) });
+      jp.entries.push({
+        id: uid(),
+        name: me.name,
+        userId: me.key,
+        me: true,
+        items,
+        total: items.reduce((a, i) => a + i.value, 0),
+      });
       saveDB(fresh);
       setDb(fresh);
       notifyDbChanged();
+      forceSync();
       coinDing();
       return { ok: true };
     },
@@ -2304,15 +2419,15 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  /** Potadan çık — eşyaların iade edilir */
+  /** Potadan çık — eşyaların iade edilir (tombstone ile senkron silinir) */
   const jackpotLeave = useCallback((): boolean => {
     const fresh = loadDB();
     const me = currentUser(fresh);
     const jp = fresh.jackpot;
     if (!me || !jp || jp.winner || Date.now() >= jp.endsAt) return false;
-    const idx = jp.entries.findIndex((e) => e.me);
-    if (idx < 0) return false;
-    const entry = jp.entries[idx];
+    const entry = jp.entries.find((e) => e.userId === me.key && !e.left);
+    if (!entry) return false;
+    entry.left = true;
     entry.items.forEach((it) => {
       me.inventory.unshift({
         uid: uid(),
@@ -2322,110 +2437,97 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         stickers: it.stickers,
       });
     });
-    jp.entries.splice(idx, 1);
     saveDB(fresh);
     setDb(fresh);
     notifyDbChanged();
+    forceSync();
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* jackpot motoru — her saniye bot katılımı + çekiliş */
+  /* jackpot motoru — deterministik botlar, tek kazanan, emanet ödemeleri */
   useEffect(() => {
     if (!user || user.status !== "approved") return;
     const iv = window.setInterval(() => {
       const fresh = loadDB();
-      let jp = fresh.jackpot;
-      if (!jp) {
-        jp = freshJackpot();
-        fresh.jackpot = jp;
-        saveDB(fresh);
-        setDb(fresh);
-        notifyDbChanged();
-        return;
-      }
+      const me = currentUser(fresh);
+      if (!me) return;
       const now = Date.now();
-      /* yeni tur başlat */
-      if (jp.winner && jp.nextStartAt && now >= jp.nextStartAt) {
-        jp = freshJackpot();
-        jp.history = (fresh.jackpot?.history ?? []).slice(0, 30);
+      const round = jackpotRoundAt(now);
+      const sched = jackpotSchedule(round);
+      let jp = fresh.jackpot;
+      let changed = false;
+
+      /* tur yok / eskimiş / kazanan ekranı bitti → yeni tur */
+      if (!jp || jp.round !== round || (jp.winner && now >= (jp.nextStartAt ?? sched.nextStartAt))) {
+        const settled = [...(jp?.settled ?? [])];
+        const oldJp = jp;
+        if (oldJp?.winner) {
+          const cur = settled.find((s) => s.round === oldJp.round);
+          const next = { round: oldJp.round, entries: oldJp.entries, winner: oldJp.winner };
+          if (!cur) settled.unshift(next);
+          else if ((oldJp.winner.entriesCount ?? 0) > (cur.winner.entriesCount ?? 0)) settled[settled.indexOf(cur)] = next;
+        }
+        jp = freshJackpot(round, (jp?.history ?? []).slice(0, 30), settled.slice(0, 5));
         fresh.jackpot = jp;
+        changed = true;
+      } else if (jp.round === round) {
+        /* deterministik çekiliş — süre dolunca */
+        if (!jp.winner && now >= jp.endsAt) {
+          const winner = drawJackpot(jp, now);
+          if (winner) {
+            jp.winner = winner;
+            jp.nextStartAt = sched.nextStartAt;
+            jp.history = [
+              {
+                id: `${round}-${winner.name}`,
+                name: winner.name,
+                userId: winner.userId,
+                bot: winner.bot,
+                value: winner.value,
+                ts: now,
+              },
+              ...(jp.history ?? []),
+            ].slice(0, 30);
+            changed = true;
+          }
+        }
+        /* botlar programa göre katılır */
+        if (!jp.winner) {
+          const live = jp.entries.filter((e) => !e.left).length;
+          if (live < JACKPOT_MAX_ENTRIES) {
+            for (const b of botsForRound(round)) {
+              if (b.joinAt <= now && !jp.entries.some((e) => e.id === b.entry.id)) {
+                if (jp.entries.filter((e) => !e.left).length >= JACKPOT_MAX_ENTRIES) break;
+                jp.entries.push(b.entry);
+                changed = true;
+              }
+            }
+          }
+        }
+      }
+
+      if (changed) {
         saveDB(fresh);
         setDb(fresh);
         notifyDbChanged();
-        return;
       }
-      /* çekiliş */
-      if (!jp.winner && now >= jp.endsAt) {
-        const pool = jp.entries;
-        const total = pool.reduce((a, e) => a + e.total, 0);
-        if (!pool.length || total <= 0) {
-          jp.endsAt = now + 2000;
+
+      /* emanet kazançları — bu cihazın kullanıcısı kazandıysa öde */
+      const allSettled = [
+        ...(fresh.jackpot?.settled ?? []),
+        ...(jp?.settled ?? []),
+      ];
+      const seen = new Set<number>();
+      for (const s of allSettled) {
+        if (seen.has(s.round)) continue;
+        seen.add(s.round);
+        if (s.winner.userId === me.key && !(me.jpPaid ?? []).includes(s.round)) {
+          settleJackpotWin(me, s.round, s.entries, s.winner);
           saveDB(fresh);
           setDb(fresh);
           notifyDbChanged();
-          return;
         }
-        let r = Math.random() * total;
-        let winner = pool[pool.length - 1];
-        for (const e of pool) {
-          r -= e.total;
-          if (r <= 0) {
-            winner = e;
-            break;
-          }
-        }
-        const winValue = total;
-        jp.winner = { name: winner.name, me: winner.me, value: winValue };
-        jp.nextStartAt = now + JACKPOT_NEXT_MS;
-        jp.history = [
-          { name: winner.name, me: winner.me, value: winValue, ts: now },
-          ...(jp.history ?? []),
-        ].slice(0, 30);
-        /* kullanıcı kazandıysa tüm pot envantere girer */
-        if (winner.me) {
-          const me = currentUser(fresh);
-          if (me) {
-            jp.entries.forEach((e) =>
-              e.items.forEach((it) => {
-                me.inventory.unshift({
-                  uid: uid(),
-                  skinId: it.skinId,
-                  ts: now,
-                  float: it.float,
-                  stickers: it.stickers,
-                });
-              })
-            );
-            /* en değerli üçlüyü vitrine otomatik koy */
-            const top3 = [...me.inventory]
-              .sort((a, b) => itemValue(b) - itemValue(a))
-              .slice(0, 3)
-              .map((i) => i.uid);
-            me.showcase = top3;
-            saveDB(fresh);
-            setDb(fresh);
-            notifyDbChanged();
-            pushToastSafe.current({
-              kind: "win",
-              title: `JACKPOT KAZANDIN! 🎉 ${money(winValue)}`,
-              sub: `Tüm pot (${jp.entries.length} katılımcı) envanterine eklendi`,
-            });
-            setLocalCelebration({ id: uid(), text: "JACKPOT!", sub: `${money(winValue)} değerinde pot kazandın` });
-            coinDing();
-          }
-        }
-        saveDB(fresh);
-        setDb(fresh);
-        notifyDbChanged();
-        return;
-      }
-      /* botlar zamanla katılır */
-      if (!jp.winner && jp.entries.length < JACKPOT_MAX_ENTRIES && now < jp.endsAt - 8000 && Math.random() < 0.12) {
-        jp.entries.push(finalizeBotEntry(makeBotEntry()));
-        saveDB(fresh);
-        setDb(fresh);
-        notifyDbChanged();
       }
     }, 1000);
     return () => clearInterval(iv);
