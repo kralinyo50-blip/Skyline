@@ -174,7 +174,7 @@ function xpCum(level: number): number {
 
 export function levelFromSpent(spent: number): number {
   let lvl = 1;
-  while (xpCum(lvl + 1) <= spent && lvl < 199) lvl++;
+  while (xpCum(lvl + 1) <= spent && lvl < 500) lvl++;
   return lvl;
 }
 
