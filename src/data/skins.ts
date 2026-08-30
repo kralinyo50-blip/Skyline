@@ -195,8 +195,8 @@ const RARITY_MULT: Record<RarityKey, number> = {
   restricted: 1,
   classified: 1.5,
   covert: 2.3,
-  /* bıçak/eldiven ★ Aşırı Nadir — düşmesi çok zor, fiyatı prestij */
-  rare: 2.3,
+  /* bıçak/eldiven ★ Aşırı Nadir — düşmesi çok zor, fiyatı prestij (+%30 zam: 2.3 → 2.99) */
+  rare: 2.99,
 };
 
 function scaledPrice(s: Skin): number {

@@ -68,7 +68,8 @@ function tierOf(pool: Skin[], tier: RarityKey): string[] {
   return pool.filter((s) => s.rarity === tier).map((s) => s.id);
 }
 
-/* CS gerçek oranlarına yakın ağırlıklar (onbinde) */
+/* CS gerçek oranlarına yakın ağırlıklar (onbinde) —
+   ★ Aşırı Nadir (bıçak/eldiven) bilinçli olarak çok nadir: ~%0.04 */
 export const TIER_WEIGHTS: Record<RarityKey, number> = {
   consumer: 7000,
   industrial: 5000,
@@ -76,7 +77,7 @@ export const TIER_WEIGHTS: Record<RarityKey, number> = {
   restricted: 1598,
   classified: 320,
   covert: 64,
-  rare: 26,
+  rare: 4,
 };
 
 /* standart kasa ağırlıkları (milspec tabanlı) */
@@ -85,7 +86,7 @@ const W_CASE: Partial<Record<RarityKey, number>> = {
   restricted: 1598,
   classified: 320,
   covert: 64,
-  rare: 26,
+  rare: 4,
 };
 
 function byTier(tier: RarityKey): string[] {
@@ -772,7 +773,9 @@ function rollCaseWith(caseDef: CaseDef, rng: () => number): Skin {
 }
 
 /* Pity: kasadan covert/rare çekme garantisi — garanti dolduysa
-   doğrudan yüksek kademe havuzundan döndür (deterministik değil, oyun içi kural) */
+   doğrudan yüksek kademe havuzundan döndür (deterministik değil, oyun içi kural).
+   Bıçak/eldiven (rare) pity'de bile çok nadir: kademe ağırlığıyla seçilir
+   (covert:rare ≈ 64:6), yani garanti neredeyse her zaman covert olur. */
 export function rollCasePity(caseDef: CaseDef): Skin {
   const weights = weightsFor(caseDef);
   const tiers = (Object.keys(caseDef.contents) as RarityKey[]).filter(
@@ -780,7 +783,18 @@ export function rollCasePity(caseDef: CaseDef): Skin {
   );
   const high = tiers.filter((t) => t === "covert" || t === "rare");
   if (!high.length) return rollCase(caseDef);
-  const pool = high.flatMap((t) => caseDef.contents[t]!);
+  /* yüksek kademe içinde kademe ağırlığıyla seç (rare ≈ %8.6) */
+  const totalW = high.reduce((a, t) => a + (weights[t] ?? 0), 0);
+  let roll = Math.random() * totalW;
+  let tier: RarityKey = high[0];
+  for (const t of high) {
+    roll -= weights[t] ?? 0;
+    if (roll <= 0) {
+      tier = t;
+      break;
+    }
+  }
+  const pool = caseDef.contents[tier]!;
   const id = pool[Math.floor(Math.random() * pool.length)];
   let skin = SKIN_MAP[id];
   if (skin && skin.rarity !== "rare" && Math.random() < 0.1) {

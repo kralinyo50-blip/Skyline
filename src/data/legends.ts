@@ -60,7 +60,13 @@ const ROWS: Row[] = [
 ];
 
 export const LEGEND_SKINS: Skin[] = ROWS.map(([id, weapon, name, img, rarity, price]) => ({
-  id, weapon, name, rarity, price, img: CDN + img,
+  id,
+  weapon,
+  name,
+  rarity,
+  /* ★ Aşırı Nadir (bıçak/eldiven) efsane skinleri de %30 zamdan geçer */
+  price: rarity === "rare" ? Math.round((price * 1.3) / 100) * 100 : price,
+  img: CDN + img,
 }));
 
 export const LEGEND_IDS: Record<RarityKey, string[]> = {
