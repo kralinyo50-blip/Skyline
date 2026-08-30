@@ -143,6 +143,19 @@ export function UpgraderView() {
     setSelUids((prev) => prev.filter((u) => inventory.some((i) => i.uid === u)));
   }, [inventory]);
 
+  /* F5: sayfa yenilenmeden seçili skin algılanıp silinir */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "F5") {
+        e.preventDefault();
+        setUpgraderPick(null);
+        setSelUids([]);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setUpgraderPick]);
+
   const chance = useMemo(() => {
     if (totalSel <= 0 || !target) return null;
     const base = clamp((totalSel / target.price) * 0.95, 0.005, 0.95);

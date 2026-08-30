@@ -27,7 +27,16 @@ import {
   Wifi,
   X,
 } from "lucide-react";
-import { ADMIN_NAME, FIRST_LOGIN_REWARD, RAFFLE_FREQ_MS, RAFFLE_PRIZE, mcHead, money } from "../config";
+import {
+  ADMIN_NAME,
+  FIRST_LOGIN_REWARD,
+  RAFFLE_FREQ_MS,
+  RAFFLE_PRIZE,
+  ADMIN_ADJUST_MAX,
+  ADMIN_ADJUST_DAILY,
+  mcHead,
+  money,
+} from "../config";
 import { click, coinDing } from "../lib/audio";
 import { useGame, levelFromSpent } from "../store/Game";
 import { SKIN_MAP, RARITY, type Skin } from "../data/skins";
@@ -132,6 +141,9 @@ export function AdminPanel() {
     clearAnnouncement,
     autoSettings,
     setAutoApproval,
+    adminLog,
+    celebration,
+    celebrate,
   } = useGame();
 
   const [urlInput, setUrlInput] = useState(syncUrl ?? "");
@@ -155,6 +167,18 @@ export function AdminPanel() {
   }, []);
   const [q, setQ] = useState("");
   const [adjustInputs, setAdjustInputs] = useState<Record<string, string>>({});
+  /* onay akışı: işlem uygulanmadan önce gerekçe + onay şart */
+  const [confirmAdj, setConfirmAdj] = useState<{
+    key: string;
+    name: string;
+    amount: number;
+    dir: 1 | -1;
+  } | null>(null);
+  const [adjReason, setAdjReason] = useState("");
+  const [confirmTyped, setConfirmTyped] = useState("");
+  /* kutlama */
+  const [celebText, setCelebText] = useState("");
+  const [celebArmed, setCelebArmed] = useState(false);
 
   /* etkinlik ayarları */
   const [raffleMin, setRaffleMin] = useState(String(Math.round(RAFFLE_FREQ_MS / 60000)));
@@ -190,21 +214,54 @@ export function AdminPanel() {
     [skinResults, skinPage]
   );
 
-  function applyAdjustment(key: string, name: string, direction: 1 | -1) {
+  /** onay modalını aç — doğrudan işlem yapılmaz */
+  function requestAdjustment(key: string, name: string, direction: 1 | -1) {
     const raw = adjustInputs[key] ?? "";
     const amount = Math.round(Number(raw.replace(/[^\d]/g, "")) || 0);
     if (amount <= 0) {
       pushToast({ kind: "lose", title: "Geçerli bir tutar gir", sub: name });
       return;
     }
-    adminAdjust(key, amount * direction);
+    if (Math.abs(amount) > ADMIN_ADJUST_MAX) {
+      pushToast({
+        kind: "lose",
+        title: "Tek işlem sınırı aşıldı",
+        sub: `En fazla ${money(ADMIN_ADJUST_MAX)} — 24 saatte ${money(ADMIN_ADJUST_DAILY)}`,
+      });
+      return;
+    }
+    click();
+    setConfirmAdj({ key, name, amount, dir: direction });
+    setAdjReason("");
+    setConfirmTyped("");
+  }
+
+  /** onay modalından işlemi uygula — gerekçe + "ONAY" yazılması zorunlu */
+  function applyAdjustment() {
+    if (!confirmAdj) return;
+    const { key, name, amount, dir } = confirmAdj;
+    const reason = adjReason.trim();
+    if (reason.length < 3) {
+      pushToast({ kind: "lose", title: "İşlem gerekçesi yaz", sub: "En az 3 karakter — denetim kaydı için zorunlu" });
+      return;
+    }
+    if (confirmTyped.trim().toUpperCase() !== "ONAY") {
+      pushToast({ kind: "lose", title: "Onay için ONAY yaz", sub: "Kötüye kullanımı önlemek için zorunlu" });
+      return;
+    }
+    const res = adminAdjust(key, amount * dir, reason);
+    if (!res.ok) {
+      pushToast({ kind: "lose", title: "İşlem reddedildi", sub: res.error ?? "Bilinmeyen hata" });
+      return;
+    }
     coinDing();
     pushToast({
-      kind: direction > 0 ? "money" : "info",
-      title: direction > 0 ? `${name} hesabına ${money(amount)} eklenecek` : `${name} hesabından ${money(amount)} silinecek`,
-      sub: "Oyuncunun cihazına işlem gönderildi",
+      kind: dir > 0 ? "money" : "info",
+      title: dir > 0 ? `${name} hesabına ${money(amount)} eklendi` : `${name} hesabından ${money(amount)} silindi`,
+      sub: `Gerekçe: ${reason.slice(0, 60)}`,
     });
     setAdjustInputs((prev) => ({ ...prev, [key]: "" }));
+    setConfirmAdj(null);
   }
 
   const players = useMemo(
@@ -668,6 +725,76 @@ export function AdminPanel() {
             </p>
           </div>
 
+          {/* ============ KUTLAMA ============ */}
+          <div className="rounded-2xl border border-amber-400/30 bg-gradient-to-b from-amber-400/8 to-ink-900/70 p-5">
+            <div className="flex items-center gap-2">
+              <PartyPopper className="h-4 w-4 text-amber-300" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Site Geneli Kutlama
+              </span>
+              {celebration && Date.now() - celebration.ts < 60 * 60 * 1000 && (
+                <span className="ml-auto rounded-full bg-amber-400/15 px-2.5 py-1 text-[10px] font-black uppercase text-amber-300">
+                  Yayında
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-white/40">
+              Tüm cihazlarda konfeti + mesaj patlatır. Büyük ödüller, çekilişler ve özel günler için kullan.
+            </p>
+            <input
+              value={celebText}
+              onChange={(e) => setCelebText(e.target.value)}
+              maxLength={90}
+              placeholder="Örn: Çekiliş kazananı belli oldu! 🎉"
+              className="mt-4 h-11 w-full rounded-xl border border-line bg-ink-900 px-3 text-sm text-white placeholder:text-white/25 focus:border-amber-400/60 focus:outline-none"
+            />
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  const t = celebText.trim();
+                  if (!t) {
+                    pushToast({ kind: "lose", title: "Kutlama metnini yaz", sub: "Boş kutlama gönderilemez" });
+                    return;
+                  }
+                  if (!celebArmed) {
+                    setCelebArmed(true);
+                    pushToast({
+                      kind: "info",
+                      title: "Kutlama silahlandı",
+                      sub: "Yanlışlıkla göndermemek için bir kez daha bas — tekrar basmadan gönderilmez",
+                    });
+                    return;
+                  }
+                  celebrate(t);
+                  setCelebText("");
+                  setCelebArmed(false);
+                  pushToast({ kind: "money", title: "Kutlama yayınlandı 🎉", sub: t.slice(0, 60) });
+                }}
+                className={cn(
+                  "flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl font-display text-sm font-black uppercase tracking-wider transition",
+                  celebArmed
+                    ? "bg-gradient-to-b from-lose to-red-700 text-white hover:brightness-110"
+                    : "bg-gradient-to-b from-amber-400 to-amber-600 text-ink-950 hover:brightness-110"
+                )}
+              >
+                <PartyPopper className="h-4 w-4" />
+                {celebArmed ? "Emin misin? Onayla" : "Kutla"}
+              </button>
+              {celebArmed && (
+                <button
+                  onClick={() => setCelebArmed(false)}
+                  className="flex h-11 w-16 items-center justify-center rounded-xl border border-line bg-ink-800 font-display text-sm font-bold text-white/50 transition hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            <p className="mt-3 text-[10px] leading-relaxed text-white/35">
+              Yanlışlıkla gönderimi önlemek için iki aşamalı onay kullanılır: önce <b>Kutla</b>, sonra tekrar
+              basarak yayınla. Kutlama tüm cihazlara senkronlanır.
+            </p>
+          </div>
+
           {/* ============ DUYURU ============ */}
           <div className="rounded-2xl border border-line bg-ink-900/70 p-5 lg:col-span-2">
             <div className="flex items-center gap-2">
@@ -1080,7 +1207,7 @@ export function AdminPanel() {
                           }))
                         }
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") applyAdjustment(u.key, u.name, 1);
+                          if (e.key === "Enter") requestAdjustment(u.key, u.name, 1);
                         }}
                         inputMode="numeric"
                         placeholder="Tutar"
@@ -1088,13 +1215,13 @@ export function AdminPanel() {
                       />
                     </div>
                     <button
-                      onClick={() => applyAdjustment(u.key, u.name, 1)}
+                      onClick={() => requestAdjustment(u.key, u.name, 1)}
                       className="flex h-8 items-center gap-0.5 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2 text-[11px] font-bold text-emerald-400 transition hover:bg-emerald-500/20"
                     >
                       <Plus className="h-3 w-3" strokeWidth={3} /> Ekle
                     </button>
                     <button
-                      onClick={() => applyAdjustment(u.key, u.name, -1)}
+                      onClick={() => requestAdjustment(u.key, u.name, -1)}
                       className="flex h-8 items-center gap-0.5 rounded-lg border border-lose/40 bg-lose/10 px-2 text-[11px] font-bold text-lose transition hover:bg-lose/20"
                     >
                       <Minus className="h-3 w-3" strokeWidth={3} /> Sil
@@ -1135,6 +1262,146 @@ export function AdminPanel() {
           )}
         </div>
       )}
+
+      {/* ---------------- DENETİM KAYDI ---------------- */}
+      {sec === "players" && (
+        <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-ink-900/70">
+          <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
+            <ShieldCheck className="h-4 w-4 text-brand-400" />
+            <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+              Denetim Kaydı
+            </span>
+            <span className="ml-auto text-[10px] font-bold text-white/30">
+              {adminLog.filter((l) => Date.now() - l.ts < 24 * 3600 * 1000).length} işlem / 24s • tek işlem{" "}
+              {money(ADMIN_ADJUST_MAX)} • 24s {money(ADMIN_ADJUST_DAILY)}
+            </span>
+          </div>
+          {adminLog.length === 0 ? (
+            <p className="py-8 text-center text-sm text-white/30">Henüz bakiye işlemi yapılmadı</p>
+          ) : (
+            <div className="divide-y divide-line">
+              {adminLog.slice(0, 12).map((l) => (
+                <div key={l.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5">
+                  <span className="text-[10px] font-bold text-white/25">{ago(l.ts)}</span>
+                  <span className="text-xs font-bold text-white/60">{l.actor}</span>
+                  <span className="text-white/25">→</span>
+                  <span className="text-xs font-bold text-white">{l.targetName}</span>
+                  <span
+                    className={cn(
+                      "rounded px-1.5 py-0.5 font-display text-[11px] font-black",
+                      l.amount > 0 ? "bg-emerald-500/15 text-emerald-400" : "bg-lose/15 text-lose"
+                    )}
+                  >
+                    {l.amount > 0 ? "+" : ""}
+                    {money(l.amount)}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-white/35" title={l.reason}>
+                    {l.reason}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ---------------- BAKİYE İŞLEMİ ONAY MODALI ---------------- */}
+      <AnimatePresence>
+        {confirmAdj && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[95] flex items-center justify-center bg-ink-950/90 p-4 backdrop-blur"
+            onClick={() => setConfirmAdj(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 12 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 260, damping: 22 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md rounded-2xl border border-line bg-ink-900 p-5"
+            >
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-brand-400" />
+                <span className="font-display text-base font-bold uppercase tracking-wider text-white/90">
+                  İşlemi Onayla
+                </span>
+              </div>
+              <div className="mt-3 rounded-xl border border-line bg-ink-800 px-4 py-3 text-sm">
+                <div className="flex justify-between text-white/60">
+                  <span>Hesap</span>
+                  <span className="font-bold text-white">{confirmAdj.name}</span>
+                </div>
+                <div className="mt-1.5 flex justify-between text-white/60">
+                  <span>İşlem</span>
+                  <span
+                    className={cn(
+                      "font-display font-black",
+                      confirmAdj.dir > 0 ? "text-emerald-400" : "text-lose"
+                    )}
+                  >
+                    {confirmAdj.dir > 0 ? "+" : "−"}
+                    {money(confirmAdj.amount)}
+                  </span>
+                </div>
+              </div>
+
+              <label className="mt-4 block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  İşlem Gerekçesi (denetim kaydı — zorunlu)
+                </span>
+                <textarea
+                  value={adjReason}
+                  onChange={(e) => setAdjReason(e.target.value)}
+                  rows={2}
+                  maxLength={140}
+                  placeholder="Örn: Çekiliş ödülü manuel teslim"
+                  autoFocus
+                  className="w-full resize-none rounded-xl border border-line bg-ink-800 px-3 py-2.5 text-sm text-white placeholder:text-white/25 focus:border-brand-500/60 focus:outline-none"
+                />
+              </label>
+
+              <label className="mt-3 block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Onay için <span className="text-brand-300">ONAY</span> yaz
+                </span>
+                <input
+                  value={confirmTyped}
+                  onChange={(e) => setConfirmTyped(e.target.value)}
+                  placeholder="ONAY"
+                  className="h-11 w-full rounded-xl border border-line bg-ink-800 px-3 font-display text-sm font-bold uppercase text-white placeholder:text-white/20 focus:border-brand-500/60 focus:outline-none"
+                />
+              </label>
+
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={() => setConfirmAdj(null)}
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-ink-800 font-display text-sm font-bold text-white/60 transition hover:text-white"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  onClick={applyAdjustment}
+                  className={cn(
+                    "flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl font-display text-sm font-black uppercase tracking-wider transition",
+                    confirmAdj.dir > 0
+                      ? "bg-gradient-to-b from-emerald-400 to-emerald-600 text-ink-950 hover:brightness-110"
+                      : "bg-gradient-to-b from-lose to-red-700 text-white hover:brightness-110"
+                  )}
+                >
+                  <Check className="h-4 w-4" strokeWidth={3} /> Onayla
+                </button>
+              </div>
+              <p className="mt-3 text-[10px] leading-relaxed text-white/30">
+                Sınırlar: tek işlem {money(ADMIN_ADJUST_MAX)}, 24 saatte {money(ADMIN_ADJUST_DAILY)}. Admin
+                hesaplarına işlem yapılamaz; her işlem gerekçesiyle denetim kaydına yazılır.
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ---------------- SKİN HEDİYE MODALI (TAM EKRAN) ---------------- */}
       <AnimatePresence>
@@ -1316,7 +1583,7 @@ function SkinDetailPanel({
   onClose: () => void;
   onSent: () => void;
 }) {
-  const { adminGiveSkin } = useGame();
+  const { adminGiveSkin, pushToast } = useGame();
   const baseId = draft.id.replace(/-(st|sv)$/, "");
   const skin = SKIN_MAP[baseId];
   if (!skin) return null;
@@ -1330,7 +1597,11 @@ function SkinDetailPanel({
     const opts: { float?: number; stickers?: string[] } = {};
     if (draft.wear !== "random") opts.float = draft.float;
     if (draft.stickers.length) opts.stickers = draft.stickers;
-    adminGiveSkin(playerKey, finalId, opts);
+    const res = adminGiveSkin(playerKey, finalId, opts);
+    if (!res.ok) {
+      pushToast({ kind: "lose", title: "Skin gönderilemedi", sub: res.error ?? "Bilinmeyen hata" });
+      return;
+    }
     onSent();
   }
 

@@ -38,6 +38,8 @@ export interface CloudDoc {
   /** gerçek oyuncu dükkanı — tüm cihazlarla paylaşılır */
   market?: MarketListing[];
   marketPayments?: MarketPayment[];
+  /** site geneli kutlama — en yeni ts kazanır */
+  celebration?: DB["celebration"];
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -67,6 +69,7 @@ export function toCloudDoc(db: DB): CloudDoc {
     marketPayments: [...(db.marketPayments ?? [])]
       .sort((a, b) => a.ts - b.ts)
       .slice(-400),
+    celebration: db.celebration ?? undefined,
   };
 }
 
@@ -171,6 +174,11 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
   if (cloud.settings && (!out.settings || cloud.settings.ts >= out.settings.ts))
     out.settings = cloud.settings;
   else if (!cloud.settings && local.settings) out.settings = local.settings;
+
+  /* kutlama — en yeni ts kazanır */
+  if (cloud.celebration && (!out.celebration || cloud.celebration.ts > out.celebration.ts))
+    out.celebration = cloud.celebration;
+  else if (!cloud.celebration && !out.celebration) out.celebration = undefined;
 
   return out;
 }

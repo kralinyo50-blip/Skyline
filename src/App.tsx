@@ -15,6 +15,7 @@ import { InventoryView } from "./components/InventoryView";
 import { StatsView } from "./components/StatsView";
 import { CommunityView } from "./components/CommunityView";
 import { EventBanners } from "./components/EventBanners";
+import { CelebrationOverlay } from "./components/CelebrationOverlay";
 import { AdminPanel } from "./components/AdminPanel";
 import { Toasts } from "./components/Toasts";
 import { Footer } from "./components/Footer";
@@ -67,6 +68,7 @@ function Shell() {
         <Footer />
       </main>
 
+      <CelebrationOverlay />
       <Toasts />
     </div>
   );

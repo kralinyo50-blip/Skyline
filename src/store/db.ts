@@ -212,6 +212,24 @@ export interface AutoSettings {
   ts: number;
 }
 
+/** Admin bakiye işlem kaydı — kötüye kullanım denetimi için */
+export interface AdminLogEntry {
+  id: string;
+  actor: string;
+  targetKey: string;
+  targetName: string;
+  amount: number;
+  reason: string;
+  ts: number;
+}
+
+/** Site geneli kutlama — tüm cihazlara yayınlanır */
+export interface Celebration {
+  text: string;
+  ts: number;
+  by: string;
+}
+
 export interface DB {
   users: Record<string, Account>;
   deposits: DepositReq[];
@@ -232,6 +250,10 @@ export interface DB {
   marketPayments?: MarketPayment[];
   /** bu cihazda bakiyeye işlenen satış kayıtları */
   claimedMarket?: Record<string, number>;
+  /** admin bakiye işlem denetim kaydı (yerel) */
+  adminLog?: AdminLogEntry[];
+  /** site geneli kutlama */
+  celebration?: Celebration | null;
 }
 
 const LS_KEY = "skyline:v1";
@@ -250,6 +272,8 @@ export function emptyDB(): DB {
     marketListings: [],
     marketPayments: [],
     claimedMarket: {},
+    adminLog: [],
+    celebration: null,
   };
 }
 
@@ -278,6 +302,8 @@ export function loadDB(): DB {
       marketListings: parsed.marketListings ?? [],
       marketPayments: parsed.marketPayments ?? [],
       claimedMarket: parsed.claimedMarket ?? {},
+      adminLog: parsed.adminLog ?? [],
+      celebration: parsed.celebration ?? null,
     };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.

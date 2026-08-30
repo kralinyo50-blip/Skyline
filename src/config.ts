@@ -43,6 +43,14 @@ export const RAFFLE_FREQ_MS = 60 * 60 * 1000;
 /** Otomatik çekiliş: varsayılan ödül (SC) */
 export const RAFFLE_PRIZE = 100000;
 
+/* ---------------- ADMIN GÜVENLİK ---------------- */
+
+/** Admin bakiye işlemi: tek seferde en fazla bu kadar (SC) */
+export const ADMIN_ADJUST_MAX = 50_000_000;
+
+/** Admin bakiye işlemi: 24 saat içinde en fazla bu kadar (SC) */
+export const ADMIN_ADJUST_DAILY = 250_000_000;
+
 /* ---------------- PITY (GARANTİ) SİSTEMİ ---------------- */
 
 /** Bu kadar açılışta covert/rare çıkmazsa bir sonraki garanti */

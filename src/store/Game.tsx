@@ -39,6 +39,8 @@ import {
   FIRST_LOGIN_REWARD,
   RAFFLE_FREQ_MS,
   RAFFLE_PRIZE,
+  ADMIN_ADJUST_MAX,
+  ADMIN_ADJUST_DAILY,
   isValidMcName,
 } from "../config";
 import {
@@ -78,6 +80,8 @@ import {
   type RaffleState,
   type FirstLoginEvent,
   type AutoSettings,
+  type AdminLogEntry,
+  type Celebration,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
@@ -163,6 +167,9 @@ export interface P2pRoom {
 }
 
 export const LEVEL_TITLES: { min: number; title: string }[] = [
+  { min: 999, title: "İlahi" },
+  { min: 500, title: "Efsanevi" },
+  { min: 100, title: "Usta" },
   { min: 30, title: "Efsane" },
   { min: 20, title: "Elmas" },
   { min: 15, title: "Platin" },
@@ -177,7 +184,7 @@ function xpCum(level: number): number {
 
 export function levelFromSpent(spent: number): number {
   let lvl = 1;
-  while (xpCum(lvl + 1) <= spent && lvl < 500) lvl++;
+  while (xpCum(lvl + 1) <= spent && lvl < 999) lvl++;
   return lvl;
 }
 
@@ -290,7 +297,11 @@ interface GameState {
   claimAch: (id: string) => void;
 
   /* admin: skin hediyesi */
-  adminGiveSkin: (key: string, skinId: string, opts?: { float?: number; stickers?: string[] }) => void;
+  adminGiveSkin: (
+    key: string,
+    skinId: string,
+    opts?: { float?: number; stickers?: string[] }
+  ) => { ok: boolean; error?: string };
 
   /* duyuru */
   announcement: Announcement | null;
@@ -309,6 +320,13 @@ interface GameState {
   firstLoginEvent: FirstLoginEvent | null;
   startFirstLoginEvent: (reward: number) => void;
   stopFirstLoginEvent: () => void;
+
+  /* kutlamalar */
+  celebration: Celebration | null;
+  celebrate: (text: string) => void;
+  /** yerel kutlama (seviye atlama vb. — sadece bu cihaz) */
+  localCelebration: { id: string; text: string; sub?: string } | null;
+  celebrateLocal: (text: string, sub?: string) => void;
 
   /* admin otomatik kabul ayarları */
   autoSettings: AutoSettings;
@@ -336,7 +354,8 @@ interface GameState {
   rejectUser: (key: string) => void;
   approveDeposit: (id: string) => void;
   rejectDeposit: (id: string) => void;
-  adminAdjust: (key: string, delta: number) => void;
+  adminAdjust: (key: string, delta: number, reason?: string) => { ok: boolean; error?: string };
+  adminLog: AdminLogEntry[];
   resetAll: () => void;
 
   syncUrl: string | null;
@@ -403,6 +422,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const p2pExecutedRef = useRef<Set<string>>(new Set());
   const toastTimers = useRef<number[]>([]);
   const levelRef = useRef(1);
+
+  /* ---------------- KUTLAMALAR ---------------- */
+  const [localCelebration, setLocalCelebration] = useState<{
+    id: string;
+    text: string;
+    sub?: string;
+  } | null>(null);
   const seenDepositRef = useRef<Set<string>>(new Set());
   const dbRef = useRef(db);
   dbRef.current = db;
@@ -418,6 +444,25 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     saveDB(fresh);
     setDb(fresh);
     notifyDbChanged();
+  }, []);
+
+  /** Site geneli kutlama — tüm cihazlara yayınlanır (admin) */
+  const celebrate = useCallback(
+    (text: string) => {
+      const t = text.trim();
+      if (!t) return;
+      mutate((draft) => {
+        draft.celebration = { text: t, ts: Date.now(), by: ADMIN_NAME };
+      });
+      coinDing();
+    },
+    [mutate]
+  );
+
+  /** Yerel kutlama — yalnızca bu cihazda konfeti patlatır */
+  const celebrateLocal = useCallback((text: string, sub?: string) => {
+    setLocalCelebration({ id: uid(), text, sub });
+    coinDing();
   }, []);
 
   /* aynı tarayıcıdaki sekmeler arası senkron */
@@ -675,9 +720,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           sub: `Seviye ödülü ${money(reward)} hesabına yatırıldı`,
         });
         coinDing();
+        /* kutlama: 50. seviye ve üstü konfeti ile duyurulur */
+        if (newLevel >= 50) {
+          celebrateLocal(`Seviye ${newLevel} — ${levelTitle(newLevel)}! 🎉`, `+${money(reward)} seviye ödülü`);
+        }
       }
     },
-    [pushToast]
+    [pushToast, celebrateLocal]
   );
 
   /* --------- REFERANS: davet edilen seviye 5 olunca davet edene bonus --------- */
@@ -1622,9 +1671,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   /* ---------------- ADMIN: SKİN HEDİYESİ ---------------- */
   const adminGiveSkin = useCallback(
-    (key: string, skinId: string, opts?: { float?: number; stickers?: string[] }) => {
+    (key: string, skinId: string, opts?: { float?: number; stickers?: string[] }): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      const u = dbRef.current.users[key];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      if (!u) return { ok: false, error: "Oyuncu bulunamadı" };
+      if (u.isAdmin || key === me.key) return { ok: false, error: "Admin hesaplarına skin gönderilemez" };
       const skin = SKIN_MAP[skinId];
-      if (!skin || skin.sticker) return;
+      if (!skin || skin.sticker) return { ok: false, error: "Geçersiz skin" };
       const fine: { float?: number; stickers?: string[] } = {};
       if (typeof opts?.float === "number" && Number.isFinite(opts.float)) {
         fine.float = Math.min(1, Math.max(0, Math.round(opts.float * 1000) / 1000));
@@ -1633,14 +1687,15 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const st = opts.stickers.filter((s) => STICKER_MAP[s]).slice(0, 4);
         if (st.length) fine.stickers = st;
       }
+      const id = uid();
       let ok = false;
       mutate((draft) => {
-        const u = draft.users[key];
-        if (!u) return;
+        const target = draft.users[key];
+        if (!target) return;
         draft.deposits.unshift({
-          id: uid(),
-          userKey: u.key,
-          userName: u.name,
+          id,
+          userKey: target.key,
+          userName: target.name,
           amount: 0,
           method: "Yetkili Skin Hediyesi",
           status: "approved",
@@ -1651,12 +1706,26 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           skinName: `${skin.weapon} | ${skin.name}`,
           skinOpts: Object.keys(fine).length ? fine : undefined,
         });
+        draft.adminLog = [
+          {
+            id,
+            actor: me.name,
+            targetKey: target.key,
+            targetName: target.name,
+            amount: 0,
+            reason: `Skin hediyesi: ${skin.weapon} | ${skin.name}`,
+            ts: Date.now(),
+          },
+          ...(draft.adminLog ?? []),
+        ].slice(0, 300);
         ok = true;
       });
       if (ok) {
         coinDing();
         pushToast({ kind: "win", title: "Skin hediyesi gönderildi", sub: `${skin.weapon} | ${skin.name}` });
+        return { ok: true };
       }
+      return { ok: false, error: "İşlem uygulanamadı" };
     },
     [mutate, pushToast]
   );
@@ -2267,30 +2336,72 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [mutate]
   );
 
+  /* --------- ADMIN KÖTÜYE KULLANIM KORUMASI ---------
+     - Tek işlem sınırı ve 24 saatlik toplam sınır
+     - Zorunlu gerekçe (neden) alanı
+     - Kendine / admin hesaplarına işlem yasağı
+     - Her işlem denetim kaydına (adminLog) yazılır */
   const adminAdjust = useCallback(
-    (key: string, delta: number) =>
+    (key: string, delta: number, reason?: string): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const u = dbRef.current.users[key];
+      if (!u) return { ok: false, error: "Oyuncu bulunamadı" };
+      if (u.isAdmin || key === me.key) return { ok: false, error: "Admin hesaplarına işlem yapılamaz" };
+      if (!Number.isFinite(delta) || delta === 0) return { ok: false, error: "Geçersiz tutar" };
+      const amount = Math.round(delta);
+      if (Math.abs(amount) > ADMIN_ADJUST_MAX) {
+        return { ok: false, error: `Tek işlem sınırı: ${money(ADMIN_ADJUST_MAX)}` };
+      }
+      const note = (reason ?? "").trim();
+      if (note.length < 3) return { ok: false, error: "İşlem gerekçesi en az 3 karakter olmalı" };
+
+      /* 24 saatlik kümülatif sınır */
+      const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
+      const used =
+        (dbRef.current.adminLog ?? [])
+          .filter((l) => l.ts > dayAgo && l.actor === me.name)
+          .reduce((a, l) => a + Math.abs(l.amount), 0) + Math.abs(amount);
+      if (used > ADMIN_ADJUST_DAILY) {
+        return { ok: false, error: `24 saatlik işlem sınırı: ${money(ADMIN_ADJUST_DAILY)}` };
+      }
+
+      const id = uid();
       mutate((draft) => {
-        const u = draft.users[key];
-        if (!u || !Number.isFinite(delta) || delta === 0) return;
-        const amount = Math.round(delta);
-        const id = uid();
+        const target = draft.users[key];
+        if (!target) return;
         /* Aynı cihazda/oturumda gösterim anında güncellensin diye bakiyeyi
            doğrudan değiştir; depozit "claimed" işaretlenir ki oyuncunun cihazı
            gelince TALEP üzerinden kesin olarak bir kez daha işlensin. */
-        u.balance = Math.max(0, Math.round(u.balance + amount));
+        target.balance = Math.max(0, Math.round(target.balance + amount));
         draft.claimed[id] = Date.now();
         draft.deposits.unshift({
           id,
-          userKey: u.key,
-          userName: u.name,
+          userKey: target.key,
+          userName: target.name,
           amount,
           method: amount > 0 ? "Yetkili Para Ekleme" : "Yetkili Para Silme",
           status: "approved",
           ts: Date.now(),
           decidedTs: Date.now(),
           decidedBy: ADMIN_NAME,
+          reason: note,
         });
-      }),
+        draft.adminLog = [
+          {
+            id,
+            actor: me.name,
+            targetKey: target.key,
+            targetName: target.name,
+            amount,
+            reason: note,
+            ts: Date.now(),
+          },
+          ...(draft.adminLog ?? []),
+        ].slice(0, 300);
+      });
+      return { ok: true };
+    },
     [mutate]
   );
 
@@ -2435,6 +2546,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     startFirstLoginEvent,
     stopFirstLoginEvent,
 
+    celebration: db.celebration ?? null,
+    celebrate,
+    localCelebration,
+    celebrateLocal,
+
     autoSettings: db.settings ?? { autoApproveUsers: false, autoApproveDeposits: false, ts: 0 },
     setAutoApproval,
 
@@ -2462,6 +2578,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     approveDeposit,
     rejectDeposit,
     adminAdjust,
+    adminLog: db.adminLog ?? [],
     resetAll,
 
     syncUrl,

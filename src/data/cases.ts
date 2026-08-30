@@ -720,10 +720,13 @@ export const CASES: CaseDef[] = [
   return {
     ...e,
     /* Hediye Paketi: değeri sabit tutulur (4200$) — zor skin zammından etkilenmez */
+    /* Bıçak & Eldiven Kasası: +%45 zam (bıçak/eldiven zammının üzerine) */
     price:
       c.id === "gift"
         ? 4200
-        : roundCasePrice(expectedValue(e) * CASE_MARKUP * (e.stickered ? 1.15 : 1)),
+        : c.id === "knife-case"
+          ? roundCasePrice(expectedValue(e) * CASE_MARKUP * 1.45 * (e.stickered ? 1.15 : 1))
+          : roundCasePrice(expectedValue(e) * CASE_MARKUP * (e.stickered ? 1.15 : 1)),
   };
 });
 

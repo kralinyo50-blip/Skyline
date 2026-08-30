@@ -64,8 +64,8 @@ export const LEGEND_SKINS: Skin[] = ROWS.map(([id, weapon, name, img, rarity, pr
   weapon,
   name,
   rarity,
-  /* ★ Aşırı Nadir (bıçak/eldiven) efsane skinleri de %30 zamdan geçer */
-  price: rarity === "rare" ? Math.round((price * 1.3) / 100) * 100 : price,
+  /* ★ Aşırı Nadir (bıçak/eldiven) efsane skinleri de +%35 zamdan geçer (1.3 → 1.76) */
+  price: rarity === "rare" ? Math.round((price * 1.76) / 100) * 100 : price,
   img: CDN + img,
 }));
 
