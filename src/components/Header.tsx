@@ -146,43 +146,7 @@ export function Header() {
             </div>
           </button>
 
-          {/* desktop nav */}
-          <nav className="mx-auto hidden min-w-0 flex-1 items-center justify-center gap-0.5 overflow-x-auto lg:flex" style={{ scrollbarWidth: "none" }}>
-            {allTabs.map(({ key, label, Icon }) => (
-              <button
-                key={key}
-                onClick={() => {
-                  setTab(key);
-                  click();
-                }}
-                className={cn(
-                  "relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-2 font-display text-[13px] font-semibold uppercase tracking-wider transition-colors",
-                  tab === key ? "text-white" : "text-white/45 hover:text-white/80"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-                {key === "inventory" && inventory.length > 0 && (
-                  <span className="ml-0.5 rounded-full bg-brand-500/20 px-1.5 text-[10px] font-bold text-brand-300">
-                    {inventory.length}
-                  </span>
-                )}
-                {key === "admin" && adminBadge > 0 && (
-                  <span className="ml-0.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-lose px-1 text-[10px] font-black text-white" style={{ height: 18, minWidth: 18 }}>
-                    {adminBadge}
-                  </span>
-                )}
-                {tab === key && (
-                  <motion.div
-                    layoutId="nav-underline"
-                    className="absolute inset-x-3 -bottom-[13px] h-[2.5px] rounded-full bg-gradient-to-r from-brand-400 to-brand-600"
-                  />
-                )}
-              </button>
-            ))}
-          </nav>
-
-          <div className="ml-auto flex items-center gap-2 lg:ml-0">
+          <div className="ml-auto flex items-center gap-2">
             {/* seviye */}
             <div
               className="hidden items-center gap-2 rounded-lg border border-line bg-ink-800 px-2.5 py-1.5 xl:flex"
@@ -321,16 +285,54 @@ export function Header() {
             </div>
           </div>
         </div>
+
+        {/* desktop nav — ikinci satır */}
+        <nav className="hidden border-t border-line/60 lg:block" style={{ scrollbarWidth: "none" }}>
+          <div className="mx-auto flex max-w-[1600px] items-center justify-center gap-0.5 overflow-x-auto px-4 py-2">
+            {allTabs.map(({ key, label, Icon }) => (
+              <button
+                key={key}
+                onClick={() => {
+                  setTab(key);
+                  click();
+                }}
+                className={cn(
+                  "relative flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 font-display text-[13px] font-semibold uppercase tracking-wider transition-colors",
+                  tab === key ? "text-white" : "text-white/45 hover:text-white/80"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+                {key === "inventory" && inventory.length > 0 && (
+                  <span className="ml-0.5 rounded-full bg-brand-500/20 px-1.5 text-[10px] font-bold text-brand-300">
+                    {inventory.length}
+                  </span>
+                )}
+                {key === "admin" && adminBadge > 0 && (
+                  <span className="ml-0.5 flex items-center justify-center rounded-full bg-lose px-1.5 text-[10px] font-black text-white" style={{ height: 18, minWidth: 18 }}>
+                    {adminBadge}
+                  </span>
+                )}
+                {tab === key && (
+                  <motion.div
+                    layoutId="nav-underline"
+                    className="absolute inset-x-3 bottom-0 h-[2.5px] rounded-full bg-gradient-to-r from-brand-400 to-brand-600"
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        </nav>
       </header>
 
       {/* mobil alt nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-ink-950/95 backdrop-blur-md lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-50 flex overflow-x-auto border-t border-line bg-ink-950/95 backdrop-blur-md lg:hidden" style={{ scrollbarWidth: "none" }}>
         {allTabs.map(({ key, label, Icon }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
             className={cn(
-              "relative flex flex-1 flex-col items-center gap-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider",
+              "relative flex min-w-[62px] flex-1 flex-col items-center gap-1 overflow-hidden py-2.5 text-[9px] font-semibold uppercase tracking-wider",
               tab === key ? "text-brand-400" : "text-white/40"
             )}
           >
