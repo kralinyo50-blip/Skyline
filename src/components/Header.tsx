@@ -119,7 +119,7 @@ export function Header() {
   const amountNum = Math.max(0, Math.round(Number(amount.replace(/[^\d]/g, "")) || 0));
 
   /* yatırma paketleri — admin panelinden değiştirilebilir */
-  const packs = (depositPacks?.packs?.length ? depositPacks.packs : DEFAULT_DEPOSIT_PACKS).sort(
+  const packs = [...(depositPacks?.packs?.length ? depositPacks.packs : DEFAULT_DEPOSIT_PACKS)].sort(
     (a, b) => a.amount - b.amount
   );
   const activePack = mode === "deposit" ? packs.find((p) => p.amount === amountNum) : undefined;
