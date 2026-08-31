@@ -1,5 +1,5 @@
 import { SKIN_MAP, BASE_SKINS, RARITY, currentPriceRev, hypotheticalSkinPrice, type EconomyWaveLike, type Skin, type RarityKey, TIER_ORDER } from "./skins";
-import type { CaseSale, PriceSettings } from "../store/db";
+import type { CaseSale, CustomCase, PriceSettings } from "../store/db";
 import { EXTRA_SKINS } from "./extraSkins";
 import { LEGEND_SKINS, LEGEND_IDS } from "./legends";
 import { WEAPON_CAT } from "./weaponCats";
@@ -31,7 +31,27 @@ export interface CaseDef {
   sealed?: boolean;
   /** yükleme anındaki orijinal beklenen değer (fiyat çarpanı hesabı için) */
   origValue?: number;
+  /** admin özel kasası: kalan stok (sınırlı) */
+  stock?: number;
+  /** admin özel kasası: sınırlı rozeti */
+  limited?: boolean;
   contents: Partial<Record<RarityKey, string[]>>;
+}
+
+/** Admin özel kasasını CaseDef'e çevir (mağazada satılır, stok düşer) */
+export function toCaseDef(c: CustomCase): CaseDef {
+  return {
+    id: c.id,
+    name: c.name,
+    img: c.img,
+    price: c.price,
+    accent: c.accent,
+    tagline: c.tagline,
+    origValue: c.origValue || c.price,
+    stock: c.stock,
+    limited: true,
+    contents: c.contents,
+  };
 }
 
 /* ------------------------------------------------------------------
@@ -766,7 +786,7 @@ const SOUVENIR_CASES: CaseDef[] = [
 ];
 
 /* Kasa fiyatı = beklenen değer × kâr payı (otomatik dengeli) */
-function expectedValue(
+export function expectedValue(
   c: CaseDef,
   priceOf: (s: Skin) => number = (s) => s.price
 ): number {

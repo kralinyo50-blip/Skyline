@@ -183,6 +183,12 @@ export function AdminPanel() {
     resetEconomy,
     depositPacks,
     setDepositPacks,
+    coupons,
+    createCoupon,
+    deactivateCoupon,
+    customCases,
+    createCustomCase,
+    deleteCustomCase,
   } = useGame();
 
   const depositPackList = useMemo(
@@ -192,6 +198,22 @@ export function AdminPanel() {
       ),
     [depositPacks]
   );
+  /* kupon: kasa seçenekleri */
+  const couponCaseList = useMemo(() => CASES.filter((c) => !c.souvenir), []);
+  const couponList = useMemo(() => (coupons ?? []).sort((a, b) => b.ts - a.ts), [coupons]);
+  /* özel kasa içerik seçenekleri — kademeye göre skinler */
+  const ccSkinsByTier = useMemo(() => {
+    const tiers = ["consumer", "industrial", "milspec", "restricted", "classified", "covert", "rare"] as const;
+    const map: Record<string, Skin[]> = {};
+    for (const t of tiers) {
+      map[t] = Object.values(SKIN_MAP)
+        .filter((sk) => !sk.st && !sk.sv && sk.rarity === t && sk.price >= 800)
+        .sort((a, b) => b.price - a.price)
+        .slice(0, 60);
+    }
+    return map;
+  }, []);
+
   /* paket hediyesi yardımcıları */
   const giftCases = useMemo(() => CASES.filter((c) => !c.capsule && !c.souvenir), []);
   const giftSkins = useMemo(
@@ -206,6 +228,21 @@ export function AdminPanel() {
     const sk = SKIN_MAP[g.id];
     return sk ? `${sk.weapon} | ${sk.name}` : g.id;
   };
+
+  /* kupon oluşturma */
+  const [cpCode, setCpCode] = useState("");
+  const [cpKind, setCpKind] = useState<"balance" | "case" | "percent">("percent");
+  const [cpValue, setCpValue] = useState("10");
+  const [cpCase, setCpCase] = useState("");
+  const [cpUses, setCpUses] = useState(25);
+  /* özel kasa oluşturma */
+  const [ccName, setCcName] = useState("");
+  const [ccPrice, setCcPrice] = useState(10000);
+  const [ccStock, setCcStock] = useState(25);
+  const [ccTier, setCcTier] = useState("covert");
+  const [ccSkinId, setCcSkinId] = useState("");
+  const [ccContents, setCcContents] = useState<Partial<Record<string, string[]>>>({});
+  const ccTotal = Object.values(ccContents).reduce((a, ids) => a + (ids?.length ?? 0), 0);
 
   const [urlInput, setUrlInput] = useState(syncUrl ?? "");
   const [codeInput, setCodeInput] = useState(syncCode ?? "");
@@ -2396,6 +2433,312 @@ export function AdminPanel() {
                 <RotateCcw className="h-3 w-3" /> Varsayılana döndür
               </button>
             </div>
+          </div>
+
+          {/* ============ KUPON / KOD ============ */}
+          <div className="rounded-2xl border border-violet-500/25 bg-gradient-to-b from-violet-500/8 to-ink-900/70 p-5 lg:col-span-2">
+            <div className="flex items-center gap-2">
+              <Tag className="h-4 w-4 text-violet-400" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Kupon / Kod
+              </span>
+              <span className="ml-auto rounded-full bg-ink-600 px-2 py-0.5 text-[9px] font-black uppercase text-white/40">
+                SKY20 gibi · sınırlı kullanım
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+              <span className="font-bold text-violet-300">Bakiye</span> kuponu anında para verir,{" "}
+              <span className="font-bold text-violet-300">% Bonus</span> sonraki yatırmaya ek yüzde ekler,{" "}
+              <span className="font-bold text-violet-300">Kasa</span> kuponu bedava kasa açar. Kullanıcılar Para Yatır
+              ekranından kodu girer; her kupon bir kez kullanılır, toplam adet sınırlıdır.
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-5">
+              <input
+                value={cpCode}
+                onChange={(e) => setCpCode(e.target.value.toUpperCase())}
+                placeholder="KOD (örn. SKY20)"
+                maxLength={24}
+                className="h-10 rounded-lg border border-line bg-ink-900 px-3 font-mono text-sm font-bold tracking-widest text-white placeholder:text-white/25 focus:border-violet-500/60 focus:outline-none"
+              />
+              <select
+                value={cpKind}
+                onChange={(e) => setCpKind(e.target.value as any)}
+                className="h-10 rounded-lg border border-line bg-ink-900 px-2 text-xs font-bold text-white/70 focus:outline-none"
+              >
+                <option value="percent">% Bonus (yatırma)</option>
+                <option value="balance">Bakiye</option>
+                <option value="case">Bedava Kasa</option>
+              </select>
+              {cpKind !== "case" ? (
+                <input
+                  value={cpValue}
+                  onChange={(e) => setCpValue(e.target.value.replace(/[^\d]/g, ""))}
+                  placeholder={cpKind === "percent" ? "%10" : "10000"}
+                  className="h-10 rounded-lg border border-line bg-ink-900 px-3 text-sm font-bold text-white placeholder:text-white/25 focus:border-violet-500/60 focus:outline-none"
+                />
+              ) : (
+                <select
+                  value={cpCase}
+                  onChange={(e) => setCpCase(e.target.value)}
+                  className="h-10 rounded-lg border border-line bg-ink-900 px-2 text-xs font-bold text-white/70 focus:outline-none"
+                >
+                  <option value="">Kasa seç…</option>
+                  {couponCaseList.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <select
+                value={cpUses}
+                onChange={(e) => setCpUses(Number(e.target.value))}
+                className="h-10 rounded-lg border border-line bg-ink-900 px-2 text-xs font-bold text-white/70 focus:outline-none"
+              >
+                {[1, 5, 10, 25, 50, 100, 500].map((n) => (
+                  <option key={n} value={n}>
+                    {n} kullanım
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => {
+                  const res = createCoupon({
+                    code: cpCode,
+                    kind: cpKind,
+                    value: Number(cpValue) || 0,
+                    caseId: cpKind === "case" ? cpCase : undefined,
+                    maxUses: cpUses,
+                  });
+                  if (res.ok) {
+                    setCpCode("");
+                    setCpValue("10");
+                    setCpCase("");
+                  } else pushToast({ kind: "lose", title: "Kupon oluşturulamadı", sub: res.error });
+                }}
+                className="flex h-10 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-b from-violet-400 to-violet-600 font-display text-sm font-bold text-ink-950 transition hover:brightness-110"
+              >
+                <Plus className="h-4 w-4" /> Oluştur
+              </button>
+            </div>
+
+            {couponList.length > 0 && (
+              <div className="mt-3 space-y-1.5">
+                {couponList.map((c) => (
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg border border-line bg-ink-900/70 px-3 py-2">
+                    <span className="font-mono text-sm font-black tracking-widest text-violet-300">{c.code}</span>
+                    <span className="rounded bg-ink-700 px-1.5 py-0.5 text-[9px] font-bold text-white/50">
+                      {c.kind === "balance"
+                        ? money(c.value)
+                        : c.kind === "percent"
+                          ? `+%${c.value}`
+                          : `Kasa: ${CASES.find((x) => x.id === c.caseId)?.name ?? c.caseId}`}
+                    </span>
+                    <span className={cn("text-[9px] font-black uppercase", c.active ? "text-emerald-400" : "text-white/25")}>
+                      {c.active ? `${c.usedCount}/${c.maxUses} kullanıldı` : "kapatıldı"}
+                    </span>
+                    <span className="ml-auto flex gap-1">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard?.writeText(c.code).catch(() => {});
+                          pushToast({ kind: "info", title: "Kod kopyalandı", sub: c.code });
+                        }}
+                        className="rounded bg-ink-700 px-2 py-1 text-[9px] font-bold text-white/50 hover:text-white"
+                      >
+                        Kopyala
+                      </button>
+                      {c.active && (
+                        <button
+                          onClick={() => deactivateCoupon(c.id)}
+                          className="rounded bg-lose/10 px-2 py-1 text-[9px] font-bold text-lose hover:bg-lose/20"
+                        >
+                          Kapat
+                        </button>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* ============ ÖZEL KASA OLUŞTURUCU ============ */}
+          <div className="rounded-2xl border border-sky-500/25 bg-gradient-to-b from-sky-500/8 to-ink-900/70 p-5 lg:col-span-2">
+            <div className="flex items-center gap-2">
+              <Package className="h-4 w-4 text-sky-400" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Özel Kasa Oluşturucu
+              </span>
+              <span className="ml-auto rounded-full bg-ink-600 px-2 py-0.5 text-[9px] font-black uppercase text-white/40">
+                Sınırlı stok · mağazada satılır
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+              İçeriğini sen seçtiğin kasa mağazada "Sınırlı" rozetiyle görünür. Her açılışta stok düşer,
+              stok bitince satıştan kalkar. Fiyat, skin fiyat dalgalarıyla birlikte otomatik ölçeklenir.
+            </p>
+
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <input
+                value={ccName}
+                onChange={(e) => setCcName(e.target.value)}
+                placeholder="Kasa adı (örn. Kaan Özel Kasa)"
+                maxLength={40}
+                className="h-10 rounded-lg border border-line bg-ink-900 px-3 text-sm font-bold text-white placeholder:text-white/25 focus:border-sky-500/60 focus:outline-none"
+              />
+              <div className="flex h-10 items-center gap-1 overflow-x-auto rounded-lg border border-line bg-ink-900 px-2">
+                <span className="shrink-0 text-[9px] font-bold uppercase text-white/30">Fiyat</span>
+                {[2500, 5000, 10000, 25000, 50000, 100000].map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setCcPrice(p)}
+                    className={cn(
+                      "shrink-0 rounded px-1.5 py-1 text-[10px] font-black",
+                      ccPrice === p ? "bg-sky-500 text-ink-950" : "bg-ink-700 text-white/45 hover:text-white"
+                    )}
+                  >
+                    {p >= 1000 ? p / 1000 + "k" : p}
+                  </button>
+                ))}
+              </div>
+              <div className="flex h-10 items-center gap-1 overflow-x-auto rounded-lg border border-line bg-ink-900 px-2">
+                <span className="shrink-0 text-[9px] font-bold uppercase text-white/30">Stok</span>
+                {[5, 10, 25, 50, 100, 250].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setCcStock(n)}
+                    className={cn(
+                      "shrink-0 rounded px-1.5 py-1 text-[10px] font-black",
+                      ccStock === n ? "bg-sky-500 text-ink-950" : "bg-ink-700 text-white/45 hover:text-white"
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-line bg-ink-900/60 p-3">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Kasa içeriği · {ccTotal} skin
+                </span>
+                <button
+                  onClick={() => setCcContents({})}
+                  className="rounded bg-ink-700 px-2 py-1 text-[9px] font-bold text-white/40 hover:text-white"
+                >
+                  Temizle
+                </button>
+              </div>
+              <div className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
+                {(["consumer", "industrial", "milspec", "restricted", "classified", "covert", "rare"] as const).map((t) => (
+                  <div key={t} className="flex items-center gap-1.5">
+                    <span className="w-24 shrink-0 text-[10px] font-bold" style={{ color: RARITY[t].color }}>
+                      {RARITY[t].tr} ({ccContents[t]?.length ?? 0})
+                    </span>
+                    <select
+                      value={ccTier === t ? ccSkinId : ""}
+                      onChange={(e) => {
+                        setCcTier(t);
+                        setCcSkinId(e.target.value);
+                      }}
+                      className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-ink-800 px-1.5 text-[10px] font-bold text-white/60 focus:outline-none"
+                    >
+                      <option value="">Skin seç…</option>
+                      {ccSkinsByTier[t].map((sk) => (
+                        <option key={sk.id} value={sk.id}>
+                          {sk.weapon} | {sk.name}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        if (!ccSkinId || ccTier !== t) return;
+                        setCcContents((prev) => {
+                          const all = Object.values(prev).flat();
+                          if (all.includes(ccSkinId)) return prev;
+                          return { ...prev, [t]: [...(prev[t] ?? []), ccSkinId] };
+                        });
+                        setCcSkinId("");
+                      }}
+                      className="h-8 shrink-0 rounded-lg bg-sky-500/15 px-2 text-[10px] font-black text-sky-300 hover:bg-sky-500/25"
+                    >
+                      + Ekle
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {ccTotal > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1 border-t border-line pt-2">
+                  {Object.entries(ccContents).flatMap(([t, ids]) =>
+                    (ids ?? []).map((id) => (
+                      <span
+                        key={id}
+                        className="flex items-center gap-1 rounded bg-ink-700 px-1.5 py-0.5 text-[9px] font-bold text-white/55"
+                      >
+                        {SKIN_MAP[id]?.weapon} | {SKIN_MAP[id]?.name}
+                        <button
+                          onClick={() =>
+                            setCcContents((prev) => ({
+                              ...prev,
+                              [t]: (prev[t] ?? []).filter((x) => x !== id),
+                            }))
+                          }
+                          className="text-white/30 hover:text-lose"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => {
+                const res = createCustomCase({
+                  name: ccName,
+                  price: ccPrice,
+                  stock: ccStock,
+                  contents: ccContents,
+                });
+                if (!res.ok) pushToast({ kind: "lose", title: "Kasa oluşturulamadı", sub: res.error });
+                else {
+                  setCcName("");
+                  setCcContents({});
+                }
+              }}
+              disabled={ccTotal === 0 || ccName.trim().length < 3}
+              className="mt-3 flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-sky-400 to-sky-600 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110 disabled:opacity-40"
+            >
+              <Package className="h-4 w-4" /> Özel Kasayı Yayınla ({ccTotal} skin · {money(ccPrice)} · {ccStock} adet)
+            </button>
+
+            {customCases.length > 0 && (
+              <div className="mt-3 space-y-1.5">
+                {customCases.map((c) => (
+                  <div key={c.id} className="flex items-center gap-2 rounded-lg border border-line bg-ink-900/70 px-3 py-2">
+                    <img src={c.img} alt="" className="h-8 w-8 rounded object-contain" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-bold text-white/80">{c.name}</div>
+                      <div className="text-[9px] text-white/35">
+                        {money(c.price)} · {Object.values(c.contents).flat().length} skin · stok{" "}
+                        <span className={cn("font-black", c.stock > 0 ? "text-emerald-400" : "text-lose")}>
+                          {c.stock}/{c.origStock}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => deleteCustomCase(c.id)}
+                      className="rounded bg-lose/10 px-2 py-1 text-[9px] font-bold text-lose hover:bg-lose/20"
+                    >
+                      Kaldır
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

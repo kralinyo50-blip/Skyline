@@ -10,6 +10,8 @@ import {
   type MarketPayment,
   type PriceSnap,
   type DepositPackSettings,
+  type CouponSettings,
+  type CustomCase,
 } from "./db";
 
 /* -------------------------------------------------------------
@@ -66,6 +68,10 @@ export interface CloudDoc {
   priceSnaps?: PriceSnap[];
   /** yatırma paketleri — en yeni ts kazanır */
   depositPacks?: DepositPackSettings;
+  /** kuponlar — en yeni ts kazanır */
+  coupons?: CouponSettings;
+  /** admin özel kasaları — id birleşimi */
+  customCases?: CustomCase[];
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -108,6 +114,8 @@ export function toCloudDoc(db: DB): CloudDoc {
     economyConfig: db.economyConfig ?? undefined,
     priceSnaps: [...(db.priceSnaps ?? [])].sort((a, b) => a.ts - b.ts).slice(-300),
     depositPacks: db.depositPacks ?? undefined,
+    coupons: db.coupons ?? undefined,
+    customCases: [...(db.customCases ?? [])].slice(-100),
   };
 }
 
@@ -165,6 +173,8 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     economyConfig: local.economyConfig,
     priceSnaps: [...(local.priceSnaps ?? [])],
     depositPacks: local.depositPacks,
+    coupons: local.coupons,
+    customCases: [...(local.customCases ?? [])],
   };
 
   /* kullanıcılar */
@@ -298,6 +308,24 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
   if (cloud.depositPacks && (!out.depositPacks || cloud.depositPacks.ts > out.depositPacks.ts))
     out.depositPacks = cloud.depositPacks;
   else if (!cloud.depositPacks && !out.depositPacks) out.depositPacks = undefined;
+
+  /* kuponlar — en yeni ts kazanır (kullanım artışı ts'yi de yükseltir) */
+  if (cloud.coupons && (!out.coupons || cloud.coupons.ts > out.coupons.ts)) out.coupons = cloud.coupons;
+  else if (!cloud.coupons && !out.coupons) out.coupons = undefined;
+
+  /* özel kasalar — id birleşimi, en yeni durum kazanır */
+  {
+    const cmap = new Map<string, CustomCase>();
+    (out.customCases ?? []).forEach((c) => {
+      if (c && c.id) cmap.set(c.id, c);
+    });
+    (cloud.customCases ?? []).forEach((c) => {
+      if (!c || !c.id) return;
+      const cur = cmap.get(c.id);
+      if (!cur || c.ts > cur.ts) cmap.set(c.id, c);
+    });
+    out.customCases = [...cmap.values()].sort((a, b) => a.ts - b.ts);
+  }
 
   /* fiyat geçmişi — id birleşimi, en yeni 300 kare korunur */
   {

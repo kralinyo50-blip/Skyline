@@ -107,10 +107,12 @@ import {
   type DepositPack,
   type DepositPackSettings,
   type DepositPackGift,
+  type Coupon,
+  type CustomCase,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
-import { CASES, rollCaseSeeded, rollCasePity, casePrice, type CaseDef } from "../data/cases";
+import { CASES, rollCaseSeeded, rollCasePity, casePrice, expectedValue, type CaseDef } from "../data/cases";
 import { applyPriceOverrides, skinBasePrice, currentPriceRev, waveTierFactor, waveFadeEnd } from "../data/skins";
 import {
   startSync,
@@ -247,6 +249,8 @@ interface GameState {
   loggedIn: boolean;
   isAdmin: boolean;
   userName: string;
+  /** aktif kupon bonusu (sonraki yatırmaya eklenir) */
+  couponBonus?: { pct: number; until: number; code: string } | null;
   login: (name: string, refCode?: string) => { ok: boolean; error?: string };
   logout: () => void;
 
@@ -293,6 +297,19 @@ interface GameState {
   /** yatırma paketleri + yönetim (admin auto-save) */
   depositPacks: DepositPackSettings | null;
   setDepositPacks: (packs: DepositPack[]) => { ok: boolean; error?: string };
+  /** kupon sistemi */
+  coupons: Coupon[];
+  redeemCoupon: (code: string) => { ok: boolean; error?: string; note?: string };
+  createCoupon: (
+    c: { code: string; kind: Coupon["kind"]; value: number; caseId?: string; maxUses: number }
+  ) => { ok: boolean; error?: string };
+  deactivateCoupon: (id: string) => void;
+  /** admin özel kasaları */
+  customCases: CustomCase[];
+  createCustomCase: (
+    c: { name: string; price: number; stock: number; contents: Partial<Record<string, string[]>>; tagline?: string }
+  ) => { ok: boolean; error?: string };
+  deleteCustomCase: (id: string) => void;
   requestWithdraw: (amount: number, method: string, payTo: string) => boolean;
   heldBalance: number;
 
@@ -1853,6 +1870,21 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         });
         return { skin: rollCaseSeeded(def, "0", 0), seed: "0", nonce: 0, forced: false };
       }
+      /* admin özel kasası: sınırlı stok — açılışta bir adet düşer */
+      if (def.limited || def.id.startsWith("custom-")) {
+        const cc = fresh.customCases?.find((x) => x.id === def.id);
+        if (!cc || !cc.active) {
+          pushToastSafe.current({ kind: "lose", title: "Kasa yayından kalkmış", sub: def.name });
+          return { skin: rollCaseSeeded(def, "0", 0), seed: "0", nonce: 0, forced: false };
+        }
+        if (cc.stock <= 0) {
+          pushToastSafe.current({ kind: "lose", title: "Bu özel kasa tükendi", sub: "Stok bitene kadar bekleyebilirsin" });
+          return { skin: rollCaseSeeded(def, "0", 0), seed: "0", nonce: 0, forced: false };
+        }
+        fresh.customCases = (fresh.customCases ?? []).map((x) =>
+          x.id === def.id ? { ...x, stock: x.stock - 1, ts: Date.now() } : x
+        );
+      }
       me.balance = Math.round(me.balance - price);
       me.nonce++;
       const nonce = me.nonce;
@@ -3269,8 +3301,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         auto = !!draft.settings?.autoApproveDeposits;
         /* paket bonusu — talep anında sabitlenir (sonradan değişse bile korunur) */
         const pack = (draft.depositPacks?.packs ?? []).find((p) => p.amount === amount);
-        const bonus = pack?.bonus ?? 0;
+        /* kupon % bonusu: sonraki yatırmaya eklenir, kullanılınca temizlenir */
+        const meU = draft.users[user.key];
+        const cb = meU?.couponBonus;
+        const cbOn = cb && cb.until > Date.now();
+        const coupon = cbOn ? Math.min(100, Math.max(0, cb.pct)) : 0;
+        const bonus = (pack?.bonus ?? 0) + coupon;
         const credit = amount + Math.round((amount * bonus) / 100);
+        if (meU && cbOn) meU.couponBonus = undefined;
         const gifts: DepositPackGift[] = (pack?.gifts ?? []).map((g) => ({ ...g }));
         draft.deposits.unshift({
           id: uid(),
@@ -3332,6 +3370,202 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       return { ok: true };
     },
     [mutate, pushToast]
+  );
+
+  /* ---------------- KUPON / KOD SİSTEMİ ---------------- */
+  const createCoupon = useCallback(
+    (c: { code: string; kind: Coupon["kind"]; value: number; caseId?: string; maxUses: number }): {
+      ok: boolean;
+      error?: string;
+    } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const code = c.code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (code.length < 3) return { ok: false, error: "Kod en az 3 karakter olmalı (A-Z, 0-9)" };
+      const kind = c.kind;
+      const value = Math.max(0, Math.round(c.value) || 0);
+      const maxUses = Math.max(1, Math.min(10000, Math.round(c.maxUses) || 1));
+      if (kind === "balance" && value < 100) return { ok: false, error: "Bakiye kuponu en az 100 olmalı" };
+      if (kind === "percent" && (value < 1 || value > 100)) return { ok: false, error: "% bonus 1-100 arası" };
+      if (kind === "case" && !c.caseId) return { ok: false, error: "Kasa seçilmedi" };
+      let dup = false;
+      mutate((draft) => {
+        const list = draft.coupons?.coupons ?? [];
+        if (list.some((x) => x.active && x.code === code)) {
+          dup = true;
+          return;
+        }
+        const now = Date.now();
+        draft.coupons = {
+          ts: now,
+          by: me.name,
+          coupons: [
+            {
+              id: uid(),
+              code,
+              kind,
+              value,
+              caseId: kind === "case" ? c.caseId : undefined,
+              maxUses,
+              usedCount: 0,
+              active: true,
+              ts: now,
+              by: me.name,
+            },
+            ...list,
+          ].slice(0, 200),
+        };
+      });
+      if (dup) return { ok: false, error: "Bu kod zaten var" };
+      pushToast({
+        kind: "money",
+        title: `Kupon oluşturuldu: ${code}`,
+        sub: `${kind === "balance" ? money(value) + " bakiye" : kind === "percent" ? `+%${value} yatırma bonusu` : "bedava kasa"} · ${maxUses} kullanım`,
+      });
+      coinDing();
+      return { ok: true };
+    },
+    [mutate, pushToast]
+  );
+
+  const redeemCoupon = useCallback(
+    (raw: string): { ok: boolean; error?: string; note?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me) return { ok: false, error: "Giriş yapmalısın" };
+      const code = raw.trim().toUpperCase();
+      if (code.length < 3) return { ok: false, error: "Kod çok kısa" };
+      const c = (dbRef.current.coupons?.coupons ?? []).find((x) => x.active && x.code === code);
+      if (!c) return { ok: false, error: "Geçersiz kod" };
+      if (c.expiresAt && c.expiresAt < Date.now()) return { ok: false, error: "Kodun süresi dolmuş" };
+      if (c.usedCount >= c.maxUses) return { ok: false, error: "Bu kod tükenmiş" };
+      if ((me.usedCoupons ?? []).includes(c.id)) return { ok: false, error: "Bu kodu zaten kullandın" };
+      let note = "";
+      let applied = false;
+      mutate((draft) => {
+        const u = draft.users[me.key];
+        const cur = draft.coupons?.coupons.find((x) => x.id === c.id);
+        if (!u || !cur || !cur.active) return;
+        u.usedCoupons = [...(u.usedCoupons ?? []), c.id].slice(-60);
+        const now = Date.now();
+        if (c.kind === "balance") {
+          u.balance = Math.round(u.balance + c.value);
+          note = `${money(c.value)} bakiyene eklendi`;
+        } else if (c.kind === "percent") {
+          u.couponBonus = { pct: Math.min(100, Math.max(1, c.value)), until: now + 24 * 3600_000, code: c.code };
+          note = `Sonraki yatırmana +%${c.value} bonus (24 saat)`;
+        } else if (c.kind === "case") {
+          const def = CASES.find((x) => x.id === c.caseId);
+          if (!def) return;
+          const skin = rollCaseSeeded(def, randHex(64), Math.floor(Math.random() * 1e9) + 1);
+          u.inventory.unshift(makeSkinItem(skin.id));
+          note = `${def.name} açıldı → ${skin.weapon} | ${skin.name}`;
+        }
+        cur.usedCount = Math.min(cur.maxUses, cur.usedCount + 1);
+        draft.coupons = { ts: now, by: c.by, coupons: draft.coupons!.coupons };
+        applied = true;
+      });
+      if (!applied) return { ok: false, error: "Kod kullanılamadı" };
+      pushToast({ kind: "money", title: "Kupon kullanıldı 🎟️", sub: note });
+      coinDing();
+      return { ok: true, note };
+    },
+    [mutate, pushToast]
+  );
+
+  const deactivateCoupon = useCallback(
+    (id: string) =>
+      mutate((draft) => {
+        const list = draft.coupons?.coupons ?? [];
+        const now = Date.now();
+        draft.coupons = {
+          ts: now,
+          by: draft.coupons?.by ?? "admin",
+          coupons: list.map((x) => (x.id === id ? { ...x, active: false, ts: now } : x)),
+        };
+      }),
+    [mutate]
+  );
+
+  /* ---------------- ADMIN ÖZEL KASALARI ---------------- */
+  const createCustomCase = useCallback(
+    (c: {
+      name: string;
+      price: number;
+      stock: number;
+      contents: Partial<Record<string, string[]>>;
+      tagline?: string;
+      img?: string;
+      accent?: string;
+    }): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const name = c.name.trim();
+      if (name.length < 3) return { ok: false, error: "Kasa adı en az 3 karakter" };
+      const price = Math.max(100, Math.min(10_000_000, Math.round(c.price) || 0));
+      const stock = Math.max(1, Math.min(999, Math.round(c.stock) || 1));
+      /* içerikleri doğrula: sadece SKIN_MAP'te olanlar */
+      const contents: Partial<Record<string, string[]>> = {};
+      let total = 0;
+      for (const [r, ids] of Object.entries(c.contents ?? {})) {
+        const clean = (ids ?? []).filter((id) => !!SKIN_MAP[id]);
+        if (clean.length > 0) {
+          contents[r] = clean.slice(0, 40);
+          total += clean.length;
+        }
+      }
+      if (total < 1) return { ok: false, error: "En az 1 skin eklemelisin" };
+      if (total > 60) return { ok: false, error: "En fazla 60 skin eklenebilir" };
+      const img = c.img ?? (CASES.find((x) => x.id === "vault")?.img ?? "");
+      const def: CaseDef = {
+        id: "tmp",
+        name,
+        img,
+        price,
+        accent: c.accent ?? "#f98e1d",
+        tagline: c.tagline?.trim() || "Sınırlı özel kasa",
+        contents,
+      };
+      const origValue = expectedValue(def, (sk: Skin) => skinBasePrice(sk.id));
+      const now = Date.now();
+      mutate((draft) => {
+        draft.customCases = [
+          {
+            id: `custom-${uid()}`,
+            name,
+            img,
+            price,
+            accent: c.accent ?? "#f98e1d",
+            tagline: c.tagline?.trim() || "Sınırlı özel kasa",
+            origValue: Math.max(1, Math.round(origValue)),
+            contents,
+            stock,
+            origStock: stock,
+            ts: now,
+            by: me.name,
+            active: true,
+          },
+          ...(draft.customCases ?? []),
+        ].slice(0, 100);
+      });
+      pushToast({
+        kind: "money",
+        title: "Özel kasa yayınlandı 📦",
+        sub: `${name} · ${price} · ${stock} adet — mağazada görünüyor`,
+      });
+      coinDing();
+      return { ok: true };
+    },
+    [mutate, pushToast]
+  );
+
+  const deleteCustomCase = useCallback(
+    (id: string) =>
+      mutate((draft) => {
+        draft.customCases = (draft.customCases ?? []).map((x) =>
+          x.id === id ? { ...x, active: false, ts: Date.now() } : x
+        );
+      }),
+    [mutate]
   );
 
   /* --------- para çekme talebi (bakiye anında bloke edilir) --------- */
@@ -3764,6 +3998,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     loggedIn: !!user,
     isAdmin: !!user?.isAdmin,
     userName: user?.name ?? "",
+    couponBonus: user?.couponBonus,
     login,
     logout,
 
@@ -3815,6 +4050,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     requestWithdraw,
     depositPacks: db.depositPacks ?? null,
     setDepositPacks,
+    coupons: db.coupons?.coupons ?? [],
+    redeemCoupon,
+    createCoupon,
+    deactivateCoupon,
+    customCases: (db.customCases ?? []).filter((x) => x.active),
+    createCustomCase,
+    deleteCustomCase,
     heldBalance: myDeposits
       .filter((d) => d.kind === "withdraw" && d.status === "pending")
       .reduce((a, d) => a + d.amount, 0),

@@ -164,6 +164,10 @@ export interface Account {
   jpPaid?: number[];
   /** haftalık istatistik tabanı — hafta değişince sıfırlanır */
   weekBase?: { key: string; spent: number; opened: number };
+  /** kullanıcının kullandığı kupon id'leri */
+  usedCoupons?: string[];
+  /** aktif yatırma bonusu (Y kuponundan) — sonraki yatırmaya eklenir */
+  couponBonus?: { pct: number; until: number; code: string };
 }
 
 export type ReqStatus = "pending" | "approved" | "rejected";
@@ -223,6 +227,60 @@ export interface DepositPackSettings {
   ts: number;
   by: string;
   packs: DepositPack[];
+}
+
+/* ---------------- KUPON / KOD SİSTEMİ ---------------- */
+
+/** Kupon türü: balance = anında bakiye, case = bedava kasa (otomatik açılır),
+ *  percent = sonraki yatırmaya ek % bonus */
+export type CouponKind = "balance" | "case" | "percent";
+
+export interface Coupon {
+  id: string;
+  /** kullanıcı girişi — büyük harfe çevrilir */
+  code: string;
+  kind: CouponKind;
+  /** balance oranı / percent oranı — case için 0 */
+  value: number;
+  /** kind=case ise kasa id */
+  caseId?: string;
+  maxUses: number;
+  usedCount: number;
+  /** opsiyonel bitiş zamanı */
+  expiresAt?: number;
+  active: boolean;
+  ts: number;
+  by: string;
+}
+
+/** Kupon yönetim ayarları — en yeni ts kazanır (id listesi değil, tam liste) */
+export interface CouponSettings {
+  ts: number;
+  by: string;
+  coupons: Coupon[];
+}
+
+/* ---------------- ÖZEL KASALAR (admin oluşturur) ---------------- */
+
+/** Admin'in oluşturduğu sınırlı kasa — mağazada satılır */
+export interface CustomCase {
+  id: string;
+  name: string;
+  img: string;
+  /** satış fiyatı (çarpana tabi taban) */
+  price: number;
+  accent: string;
+  tagline: string;
+  /** yükleme anındaki beklenen değer — fiyat ölçeği için */
+  origValue: number;
+  contents: Partial<Record<RarityKey, string[]>>;
+  /** kalan adet (satışta azalır) */
+  stock: number;
+  origStock: number;
+  ts: number;
+  by: string;
+  /** satıştan kaldırıldı mı */
+  active: boolean;
 }
 
 /** Varsayılan paketler — büyük paket daha avantajlı */
@@ -529,6 +587,10 @@ export interface DB {
   priceSnaps?: PriceSnap[];
   /** yatırma paketleri (bonuslu) — en yeni ts kazanır */
   depositPacks?: DepositPackSettings | null;
+  /** kupon listesi — en yeni ts kazanır */
+  coupons?: CouponSettings | null;
+  /** admin özel kasaları — id birleşimi */
+  customCases?: CustomCase[];
 }
 
 const LS_KEY = "skyline:v1";
@@ -560,6 +622,8 @@ export function emptyDB(): DB {
     economyConfig: null,
     priceSnaps: [],
     depositPacks: null,
+    coupons: null,
+    customCases: [],
   };
 }
 
@@ -601,6 +665,8 @@ export function loadDB(): DB {
       economyConfig: parsed.economyConfig ?? null,
       priceSnaps: Array.isArray(parsed.priceSnaps) ? [...parsed.priceSnaps] : [],
       depositPacks: parsed.depositPacks ?? null,
+      coupons: parsed.coupons ?? null,
+      customCases: Array.isArray(parsed.customCases) ? [...parsed.customCases] : [],
     };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.

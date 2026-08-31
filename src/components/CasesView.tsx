@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { Flame, Package, PackageOpen, TrendingUp, Users } from "lucide-react";
-import { CASES, casePrice, type CaseDef } from "../data/cases";
+import { CASES, casePrice, toCaseDef, type CaseDef } from "../data/cases";
 import { fmtMoney, SKINS } from "../data/skins";
 import { click, hoverPop } from "../lib/audio";
 import { BRAND, CURRENCY } from "../config";
@@ -15,6 +15,7 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
   const price = casePrice(def, caseSale, priceSettings);
   const saleOn = price < def.price;
   const waveOn = price > def.price;
+  const limited = def.limited || typeof def.stock === "number";
   return (
     <button
       onClick={() => {
@@ -30,6 +31,11 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
       {def.hot && (
         <span className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full bg-lose/90 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-lg">
           <Flame className="h-3 w-3" /> Popüler
+        </span>
+      )}
+      {limited && (
+        <span className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full bg-amber-500/95 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-ink-950 shadow-lg">
+          <Package className="h-3 w-3" /> Sınırlı · {def.stock} kaldı
         </span>
       )}
       {saleOn && (
@@ -88,7 +94,7 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
 
 export function CasesView() {
   const [selected, setSelected] = useState<CaseDef | null>(null);
-  const { userName } = useGame();
+  const { userName, customCases } = useGame();
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 md:px-6">
@@ -157,6 +163,12 @@ export function CasesView() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {customCases
+          .filter((c) => c.active && c.stock > 0)
+          .map((c) => {
+            const def = toCaseDef(c);
+            return <CaseCard key={c.id} def={def} onSelect={() => setSelected(def)} />;
+          })}
         {CASES.map((c) => (
           <CaseCard key={c.id} def={c} onSelect={() => setSelected(c)} />
         ))}

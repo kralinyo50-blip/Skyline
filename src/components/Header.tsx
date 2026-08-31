@@ -78,7 +78,7 @@ export function Header() {
     level, levelTitleStr, levelProgress, xpCurrent, xpNeeded,
     lastDaily, claimDaily, isAdmin, userName, logout,
     requestDeposit, requestWithdraw, heldBalance, myDeposits, pendingDepositList, pendingUserList,
-    depositPacks,
+    depositPacks, redeemCoupon, couponBonus,
     syncCode, setSyncCode, syncStatus,
     vipUntil, vipPlan, vipActive, buyVip,
   } = useGame();
@@ -100,6 +100,7 @@ export function Header() {
 
   const [depositOpen, setDepositOpen] = useState(false);
   const [amount, setAmount] = useState("10000");
+  const [couponCode, setCouponCode] = useState("");
   const [method, setMethod] = useState(METHODS[0]);
   const [sent, setSent] = useState(false);
   const [dailyOpen, setDailyOpen] = useState(false);
@@ -618,6 +619,40 @@ export function Header() {
                       <div className="mb-3 flex items-center gap-2 rounded-lg border border-brand-500/30 bg-brand-500/5 px-3 py-2 text-[11px] text-brand-200">
                         <Clock className="h-3.5 w-3.5 shrink-0" />
                         {money(heldBalance)} onay bekleyen çekimde bloke
+                      </div>
+                    )}
+
+                    {mode === "deposit" && (
+                      <div className="mb-4 rounded-xl border border-dashed border-brand-500/35 bg-brand-500/5 p-3">
+                        <div className="mb-1.5 text-[11px] font-bold uppercase tracking-widest text-white/40">
+                          Kupon / Promosyon kodu
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            value={couponCode}
+                            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                            placeholder="SKY20"
+                            maxLength={24}
+                            className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-ink-900 px-3 font-mono text-sm font-bold tracking-widest text-white placeholder:text-white/20 focus:border-brand-500/60 focus:outline-none"
+                          />
+                          <button
+                            onClick={() => {
+                              const res = redeemCoupon(couponCode);
+                              if (res.ok) {
+                                setCouponCode("");
+                                click();
+                              } else pushToast({ kind: "lose", title: "Kupon geçersiz", sub: res.error });
+                            }}
+                            className="h-10 shrink-0 rounded-lg bg-gradient-to-b from-brand-400 to-brand-600 px-4 font-display text-sm font-bold text-ink-950 transition hover:brightness-110"
+                          >
+                            Kullan
+                          </button>
+                        </div>
+                        {couponBonus && couponBonus.until > Date.now() && (
+                          <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1.5 text-[10px] font-bold text-emerald-300">
+                            🎟️ Aktif: Sonraki yatırmana +%{couponBonus.pct} bonus (~{Math.ceil((couponBonus.until - Date.now()) / 3600000)} saat kaldı)
+                          </div>
+                        )}
                       </div>
                     )}
 
