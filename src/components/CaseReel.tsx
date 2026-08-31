@@ -149,8 +149,15 @@ interface BatchHit {
 }
 
 export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void }) {
-  const { balance, credit, addItem, pushToast, openCase, caseSale, priceSettings, priceVersion } = useGame();
+  const { balance, credit, addItem, pushToast, openCase, caseSale, priceSettings, priceVersion, customCases } = useGame();
   const price = casePrice(def, caseSale, priceSettings);
+  /* özel/sınırlı kasa: stok kadar toplu açılabilir (×10 bile olsa) */
+  const limitedStock =
+    def.limited || def.id.startsWith("custom-")
+      ? (customCases?.find((c) => c.id === def.id)?.stock ?? 0)
+      : 10;
+  const batchCount = Math.max(0, Math.min(10, limitedStock));
+  const batchPrice = price * batchCount;
   const saleOn = price < def.price;
   const waveOn = price > def.price;
   const [phase, setPhase] = useState<Phase>("info");
@@ -245,7 +252,9 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
       });
       return;
     }
-    const { skin: w, seed, nonce, forced } = openCase(def);
+    const res = openCase(def);
+    if (!res.ok) return; /* stok bitti / kasa yayından kalktı — toast openCase'te */
+    const { skin: w, seed, nonce, forced } = res;
     setLastRoll({ seed, nonce });
     const items: Skin[] = Array.from({ length: REEL_COUNT }, () => rollCase(def));
     items[WIN_AT] = w;
@@ -330,7 +339,9 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
   const batchRoll = (count: number): BatchHit[] => {
     const hits: BatchHit[] = [];
     for (let i = 0; i < count; i++) {
-      const { skin: w, seed, nonce, forced } = openCase(def);
+      const res = openCase(def);
+      if (!res.ok) break; /* stok bitti — fazladan ücretsiz açılış yok */
+      const { skin: w, seed, nonce, forced } = res;
       if (!w) break;
       const f = w.sticker ? 0 : rollFloat();
       const chance = def.stickered ? 0.85 : STICKERED_DROP_CHANCE;
@@ -352,13 +363,29 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
 
   const startBatch = () => {
     if (phase === "spinning") return;
-    const cost = price * 10;
-    if (balance < cost) {
-      if (PREF_SHAKE) setShake((s) => s + 1);
-      pushToast({ kind: "lose", title: "Yetersiz bakiye", sub: `×10 için ${fmtMoney(cost)} gerekli` });
+    const count = batchCount;
+    if (count <= 0) {
+      pushToast({ kind: "lose", title: "Bu özel kasa tükendi", sub: "Stok bitene kadar bekleyebilirsin" });
       return;
     }
-    const hits = batchRoll(10);
+    const cost = price * count;
+    if (balance < cost) {
+      if (PREF_SHAKE) setShake((s) => s + 1);
+      pushToast({ kind: "lose", title: "Yetersiz bakiye", sub: `×${count} için ${fmtMoney(cost)} gerekli` });
+      return;
+    }
+    const hits = batchRoll(count);
+    if (!hits.length) {
+      if (PREF_SHAKE) setShake((s) => s + 1);
+      return;
+    }
+    if (hits.length < count) {
+      pushToast({
+        kind: "info",
+        title: "Stok bitti",
+        sub: `${hits.length} kasa açıldı — kalan stok tükendi`,
+      });
+    }
     setBatch(hits);
     setBatchHandled(false);
     setPhase("reveal");
@@ -504,15 +531,19 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                 {/* ×10 toplu açılış */}
                 <button
                   onClick={startBatch}
-                  disabled={balance < price * 10}
+                  disabled={batchCount <= 0 || balance < batchPrice}
                   className="flex h-[52px] items-center gap-2 rounded-xl border border-rar-classified/50 bg-rar-classified/10 px-5 font-display text-base font-bold tracking-wide text-rar-classified transition hover:bg-rar-classified/20 disabled:cursor-not-allowed disabled:opacity-35"
-                  title="Aynı anda 10 kasa aç — sonuçları tek ekranda gör"
+                  title={
+                    batchCount <= 0
+                      ? "Bu özel kasada stok kalmadı"
+                      : `Aynı anda ${batchCount} kasa aç — sonuçları tek ekranda gör`
+                  }
                 >
                   <span className="flex items-center gap-1 rounded-md bg-black/25 px-2 py-1 text-sm">
-                    <Coins className="h-4 w-4" /> ×10
+                    <Coins className="h-4 w-4" /> ×{batchCount}
                   </span>
-                  Toplu Aç
-                  <span className="text-xs font-semibold text-white/45">{fmtMoney(price * 10)}</span>
+                  {batchCount <= 0 ? "Tükendi" : "Toplu Aç"}
+                  <span className="text-xs font-semibold text-white/45">{fmtMoney(batchPrice)}</span>
                 </button>
               </div>
               {!afford && (

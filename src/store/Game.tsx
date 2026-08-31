@@ -355,7 +355,7 @@ interface GameState {
 
   /* kasa geçmişi + provably fair */
   rollLogs: RollLog[];
-  openCase: (def: CaseDef) => { skin: import("../data/skins").Skin; seed: string; nonce: number; forced: boolean };
+  openCase: (def: CaseDef) => { skin: import("../data/skins").Skin; seed: string; nonce: number; forced: boolean; ok: boolean };
   verifyRoll: (seed: string, nonce: number, def: CaseDef) => import("../data/skins").Skin;
 
   /* başarımlar */
@@ -1863,7 +1863,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   /* ---------------- KASA AÇILIŞI (Pity + Provably Fair) ---------------- */
   const openCase = useCallback(
-    (def: CaseDef): { skin: import("../data/skins").Skin; seed: string; nonce: number; forced: boolean } => {
+    (def: CaseDef): { skin: import("../data/skins").Skin; seed: string; nonce: number; forced: boolean; ok: boolean } => {
       const fresh = loadDB();
       const me = currentUser(fresh);
       const price = casePrice(def, fresh.caseSale ?? null, fresh.priceSettings ?? null);
@@ -1873,18 +1873,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           title: "Yetersiz bakiye",
           sub: "Para Yatır butonundan yetkili onaylı talep oluşturabilirsin",
         });
-        return { skin: rollCaseSeeded(def, "0", 0), seed: "0", nonce: 0, forced: false };
+        return { skin: rollCaseSeeded(def, "0", 0), seed: "0", nonce: 0, forced: false, ok: false };
       }
       /* admin özel kasası: sınırlı stok — açılışta bir adet düşer */
       if (def.limited || def.id.startsWith("custom-")) {
         const cc = fresh.customCases?.find((x) => x.id === def.id);
         if (!cc || !cc.active) {
           pushToastSafe.current({ kind: "lose", title: "Kasa yayından kalkmış", sub: def.name });
-          return { skin: rollCaseSeeded(def, "0", 0), seed: "0", nonce: 0, forced: false };
+          return { skin: rollCaseSeeded(def, "0", 0), seed: "0", nonce: 0, forced: false, ok: false };
         }
         if (cc.stock <= 0) {
           pushToastSafe.current({ kind: "lose", title: "Bu özel kasa tükendi", sub: "Stok bitene kadar bekleyebilirsin" });
-          return { skin: rollCaseSeeded(def, "0", 0), seed: "0", nonce: 0, forced: false };
+          return { skin: rollCaseSeeded(def, "0", 0), seed: "0", nonce: 0, forced: false, ok: false };
         }
         fresh.customCases = (fresh.customCases ?? []).map((x) =>
           x.id === def.id ? { ...x, stock: x.stock - 1, ts: Date.now() } : x
@@ -1935,7 +1935,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           sub: `${PITY_GUARANTEE} açılıştır nadir çıkmıyordu — bu sefer yüksek kademe garantili`,
         });
       checkAchievements();
-      return { skin, seed, nonce, forced };
+      return { skin, seed, nonce, forced, ok: true };
     },
     [checkAchievements]
   );
