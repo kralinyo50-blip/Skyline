@@ -159,7 +159,7 @@ export function CasesView() {
         <h2 className="font-display text-xl font-bold uppercase tracking-widest text-white/85">
           Tüm Kasalar
         </h2>
-        <span className="text-xs text-white/35">{CASES.length} kasa • demo mod</span>
+        <span className="text-xs text-white/35">v1.0 · {CASES.length} kasa</span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
