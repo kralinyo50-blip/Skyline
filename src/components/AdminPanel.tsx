@@ -267,7 +267,37 @@ export function AdminPanel() {
   const [ccContents, setCcContents] = useState<Partial<Record<string, string[]>>>({});
   const [ccTpl, setCcTpl] = useState<string | null>(null);
   const [ccEdit, setCcEdit] = useState(false);
+  const [ccSearch, setCcSearch] = useState("");
   const ccTotal = Object.values(ccContents).reduce((a, ids) => a + (ids?.length ?? 0), 0);
+  /* 'Biz Yapalım' modu: arama sonuçları */
+  const ccAllSkins = useMemo(() => Object.values(SKIN_MAP), []);
+  const ccResults = useMemo(() => {
+    const q = ccSearch.trim().toLowerCase();
+    const pool = ccAllSkins.filter((x) => !x.st && !x.sv);
+    if (!q) return [...pool].sort((a, b) => b.price - a.price).slice(0, 12);
+    return pool
+      .filter((x) => (x.weapon + " " + x.name).toLowerCase().includes(q))
+      .sort((a, b) => b.price - a.price)
+      .slice(0, 12);
+  }, [ccSearch, ccAllSkins]);
+  const ccAddSkin = (id: string) => {
+    const sk = SKIN_MAP[id];
+    if (!sk) return;
+    setCcContents((prev) => {
+      if (Object.values(prev).flat().includes(id)) return prev;
+      return { ...prev, [sk.rarity]: [...(prev[sk.rarity] ?? []), id] };
+    });
+    setCcTpl("custom");
+    setCcEdit(false);
+    click();
+  };
+  const ccRemoveSkin = (id: string) => {
+    setCcContents((prev) => {
+      const next: Partial<Record<string, string[]>> = {};
+      for (const [t, ids] of Object.entries(prev)) next[t] = (ids ?? []).filter((x) => x !== id);
+      return next;
+    });
+  };
 
   const [urlInput, setUrlInput] = useState(syncUrl ?? "");
   const [codeInput, setCodeInput] = useState(syncCode ?? "");
@@ -2692,6 +2722,119 @@ export function AdminPanel() {
                   <div className="mt-0.5 text-[9px] leading-relaxed text-white/40">4 gizli · 25k · stok 10</div>
                 </button>
               </div>
+              <button
+                onClick={() => {
+                  setCcTpl("custom");
+                  setCcEdit(false);
+                  click();
+                }}
+                className={cn(
+                  "mt-2 flex w-full items-center justify-center gap-1.5 rounded-xl border p-3 text-left transition",
+                  ccTpl === "custom"
+                    ? "border-sky-400 bg-sky-500/15"
+                    : "border-dashed border-line bg-ink-900/50 hover:bg-ink-800"
+                )}
+              >
+                <span className="text-lg">🛠️</span>
+                <span className="text-xs font-bold text-white/85">Biz Yapalım</span>
+                <span className="ml-auto text-[9px] text-white/40">
+                  {ccTpl === "custom" ? "Seçili · aşağıdan skin ekle" : "İçine ne koyacağımızı kendim seçeyim"}
+                </span>
+              </button>
+
+              {ccTpl === "custom" && (
+                <div className="mt-3 rounded-xl border border-sky-500/25 bg-ink-900/60 p-3">
+                  <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                    İçine ne koyacağız? — ara, tıkla, ekle
+                  </div>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+                    <input
+                      value={ccSearch}
+                      onChange={(e) => setCcSearch(e.target.value)}
+                      placeholder="Skin ara… (örn. AWP, Karambit, AK-47, Dragon)"
+                      className="h-11 w-full rounded-xl border border-line bg-ink-950 pl-9 pr-3 text-sm font-bold text-white placeholder:text-white/25 focus:border-sky-500/60 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* sonuçlar */}
+                  <div className="mt-2 max-h-40 space-y-1 overflow-y-auto pr-1">
+                    {ccResults.map((sk) => {
+                      const added = Object.values(ccContents).flat().includes(sk.id);
+                      return (
+                        <button
+                          key={sk.id}
+                          onClick={() => (added ? ccRemoveSkin(sk.id) : ccAddSkin(sk.id))}
+                          className={cn(
+                            "flex w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition",
+                            added
+                              ? "border-emerald-500/40 bg-emerald-500/10"
+                              : "border-line bg-ink-900 hover:bg-ink-800"
+                          )}
+                        >
+                          <span
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ background: RARITY[sk.rarity].color }}
+                          />
+                          <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-white/75">
+                            {sk.weapon} | {sk.name}
+                          </span>
+                          <span className="shrink-0 text-[10px] font-bold text-white/35">{money(sk.price)}</span>
+                          <span
+                            className={cn(
+                              "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black",
+                              added ? "bg-emerald-500 text-ink-950" : "bg-sky-500/15 text-sky-300"
+                            )}
+                          >
+                            {added ? "✓" : "+"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                    {ccResults.length === 0 && (
+                      <div className="rounded-lg border border-line bg-ink-900 px-3 py-3 text-center text-[10px] text-white/35">
+                        "{ccSearch}" için sonuç yok — başka bir şey ara
+                      </div>
+                    )}
+                  </div>
+
+                  {/* seçilenler */}
+                  {ccTotal > 0 && (
+                    <div className="mt-2 border-t border-line pt-2">
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-white/45">Seçilen: {ccTotal} skin</span>
+                        <button
+                          onClick={() => {
+                            setCcContents({});
+                            click();
+                          }}
+                          className="rounded bg-lose/10 px-2 py-1 text-[9px] font-bold text-lose hover:bg-lose/20"
+                        >
+                          Tümünü kaldır
+                        </button>
+                      </div>
+                      <div className="flex max-h-28 flex-wrap gap-1 overflow-y-auto pr-1">
+                        {Object.entries(ccContents).flatMap(([, ids]) =>
+                          (ids ?? []).map((id) => (
+                            <span
+                              key={id}
+                              className="flex items-center gap-1 rounded bg-ink-700 px-1.5 py-0.5 text-[9px] font-bold text-white/60"
+                            >
+                              {SKIN_MAP[id]?.weapon} | {SKIN_MAP[id]?.name}
+                              <button
+                                onClick={() => ccRemoveSkin(id)}
+                                className="text-white/30 hover:text-lose"
+                              >
+                                <X className="h-2.5 w-2.5" />
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* 2 · AD */}
