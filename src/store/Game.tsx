@@ -107,7 +107,7 @@ import {
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
 import { rollCaseSeeded, rollCasePity, casePrice, type CaseDef } from "../data/cases";
-import { applyPriceOverrides, skinBasePrice, currentPriceRev, waveTierFactor } from "../data/skins";
+import { applyPriceOverrides, skinBasePrice, currentPriceRev, waveTierFactor, waveFadeEnd } from "../data/skins";
 import {
   startSync,
   stopSync,
@@ -453,11 +453,13 @@ interface GameState {
     rareBoost: number,
     minutes: number,
     direction?: "up" | "down",
-    permanent?: boolean
+    permanent?: boolean,
+    fadeInMin?: number,
+    fadeOutMin?: number
   ) => { ok: boolean; error?: string };
   cancelEconomyWave: () => void;
   setEconomyConfig: (
-    p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin" | "direction" | "after">>
+    p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin" | "direction" | "after" | "fadeMin">>
   ) => { ok: boolean; error?: string };
 
   /* haftanın oyuncusu */
@@ -2322,6 +2324,21 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   /* dalga bitişi/cancel sonrası fiyatları normale döndürme takibi */
   const pricingStateRef = useRef<{ waveId: string; ended: boolean }>({ waveId: "", ended: false });
 
+  /* yumuşak geçiş: dalga çıkış/iniş evresindeyken fiyatları periyodik tazele */
+  useEffect(() => {
+    const iv = window.setInterval(() => {
+      const w = dbRef.current.economyWave;
+      if (!w || w.cancelled) return;
+      const now = Date.now();
+      const fadeInEnd = (w.ts ?? 0) + Math.max(0, w.fadeInMin ?? 0) * 60000;
+      const fadeOutEnd = waveFadeEnd(w);
+      const rampingIn = now > (w.ts ?? 0) && now < fadeInEnd;
+      const rampingOut = !w.permanent && now > (w.endsAt ?? 0) && now < fadeOutEnd;
+      if (rampingIn || rampingOut) applyPricing();
+    }, 4000);
+    return () => clearInterval(iv);
+  }, [applyPricing]);
+
   useEffect(() => {
     const w = db.economyWave ?? null;
     /* YALNIZCA yeni dalga id'si geldiğinde gözlemi yeniden başlat.
@@ -2355,7 +2372,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const iv = window.setInterval(() => {
       const st = pricingStateRef.current;
       const w = dbRef.current.economyWave;
-      const active = !!w && !w.cancelled && w.endsAt > Date.now();
+      const active = !!w && !w.cancelled && Date.now() < waveFadeEnd(w);
       if (st.waveId && !st.ended && !active) {
         st.ended = true; /* dalga bitti — bir kez işle */
         const ended = dbRef.current.economyWave;
@@ -2373,13 +2390,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       rareBoost: number,
       minutes: number,
       direction: "up" | "down" = "up",
-      permanent = false
+      permanent = false,
+      fadeInMin?: number,
+      fadeOutMin?: number
     ): { ok: boolean; error?: string } => {
       const me = dbRef.current.users[dbRef.current.session ?? ""];
       if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
       const surgeV = Math.max(5, Math.min(2000, Math.round(surge)));
       const rareV = Math.max(0, Math.min(1000, Math.round(rareBoost)));
       const m = Math.max(1, Math.min(1440, Math.round(minutes)));
+      const fin = Math.min(Math.max(0, Math.round(fadeInMin ?? 0)), m);
+      const fout = Math.max(0, Math.round(fadeOutMin ?? fin));
       mutate((draft) => {
         draft.economyWave = {
           id: uid(),
@@ -2390,12 +2411,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           endsAt: Date.now() + m * 60000,
           direction,
           permanent,
+          fadeInMin: fin,
+          fadeOutMin: fout,
         };
       });
       pushToast({
         kind: "money",
         title: direction === "up" ? "Ekonomik dalga başladı" : "Piyasa çöküşü başladı",
-        sub: `${direction === "up" ? "+" : "-"}%${surgeV} · ${m} dk${permanent ? " · kalıcı" : ""}`,
+        sub:
+          `${direction === "up" ? "+" : "-"}%${surgeV} · ${m} dk` +
+          (fin > 0 ? ` · ${fin} dk'da tepe` : "") +
+          (permanent ? " · kalıcı" : fout > 0 ? ` · ${fout} dk'da normale` : ""),
       });
       coinDing();
       return { ok: true };
@@ -2418,7 +2444,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   }, [mutate, pushToast, foldWaveIntoPrices]);
 
   const setEconomyConfig = useCallback(
-    (p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin" | "direction" | "after">>): { ok: boolean; error?: string } => {
+    (p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin" | "direction" | "after" | "fadeMin">>): { ok: boolean; error?: string } => {
       const me = dbRef.current.users[dbRef.current.session ?? ""];
       if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
       const clean = (v: number, min: number, max: number, def: number) =>
@@ -2435,6 +2461,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           durationMin: p.durationMin !== undefined ? clean(p.durationMin, 1, 1440, 30) : cur?.durationMin ?? 30,
           direction: p.direction ?? cur?.direction ?? "up",
           after: p.after ?? cur?.after ?? "temp",
+          fadeMin: p.fadeMin !== undefined ? Math.max(0, Math.min(120, Math.round(p.fadeMin))) : cur?.fadeMin ?? 0,
           lastAt: cur?.lastAt,
         };
       });
@@ -2464,6 +2491,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           : "up";
       mutate((draft) => {
         if (!draft.economyConfig) return;
+        const fade = Math.max(0, Math.min(draft.economyConfig.durationMin, draft.economyConfig.fadeMin ?? 0));
         draft.economyWave = {
           id: uid(),
           ts: now,
@@ -2472,6 +2500,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           rareBoost: draft.economyConfig.rareBoost,
           endsAt: now + draft.economyConfig.durationMin * 60000,
           direction: dir,
+          fadeInMin: fade,
+          fadeOutMin: fade,
         };
         draft.economyConfig = { ...draft.economyConfig, ts: Date.now(), lastAt: now };
       });

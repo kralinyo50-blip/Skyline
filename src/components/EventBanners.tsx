@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { BadgePercent, Gift, Megaphone, Ticket, Waves } from "lucide-react";
 import { money } from "../config";
+import { waveFadeEnd } from "../data/skins";
 import { SKIN_MAP } from "../data/skins";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
@@ -28,7 +29,7 @@ export function EventBanners() {
   const now = useNow();
   const active = raffle && !raffle.drawn && !raffle.cancelled && now < raffle.endsAt;
   const saleActive = !!caseSale && !caseSale.cancelled && now < caseSale.endsAt;
-  const waveActive = !!economyWave && !economyWave.cancelled && now < economyWave.endsAt;
+  const waveActive = !!economyWave && !economyWave.cancelled && now < waveFadeEnd(economyWave) && now >= (economyWave.ts ?? 0) - 1000;
 
   return (
     <div className="relative z-10 space-y-2 px-4 pt-3 md:px-6 xl:px-[292px]">

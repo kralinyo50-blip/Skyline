@@ -333,6 +333,10 @@ export interface EconomyWaveLike {
   endsAt?: number;
   cancelled?: boolean;
   direction?: "up" | "down";
+  fadeInMin?: number;
+  fadeOutMin?: number;
+  permanent?: boolean;
+  ts?: number;
 }
 
 /** Kademe bazlı dalga duyarlılığı: zor çıkanlar daha çok yükselir */
@@ -365,11 +369,48 @@ export function waveTierFactor(
   return 1 + (Math.max(0, surge) / 100) * f;
 }
 
-/** Aktif dalga için kademe çarpanı (zaman kontrolü ile) */
+/** Dalganın tamamen bittiği an (fade-out dahil). Kalıcı dalgada tepe biter. */
+export function waveFadeEnd(wave?: EconomyWaveLike | null): number {
+  if (!wave) return 0;
+  const end = wave.endsAt ?? 0;
+  if (wave.permanent || wave.cancelled) return end;
+  return end + Math.max(0, wave.fadeOutMin ?? 0) * 60000;
+}
+
+/* yumuşak geçiş eğrisi (smoothstep) */
+function easeRamp(p: number): number {
+  if (p <= 0) return 0;
+  if (p >= 1) return 1;
+  return p * p * (3 - 2 * p);
+}
+
+/** Aktif dalga için kademe çarpanı — zaman kontrolü + yumuşak artış/düşüş.
+ *  fadeInMin: tepeye yavaş yavaş çıkar; fadeOutMin: bitişten sonra yavaşça iner. */
 export function waveMultiplier(rarity: RarityKey, wave?: EconomyWaveLike | null): number {
-  if (!wave || wave.cancelled || (wave.endsAt ?? Infinity) <= Date.now() || (wave.surge ?? 0) <= 0)
-    return 1;
-  return waveTierFactor(rarity, wave.surge ?? 0, wave.rareBoost ?? 0, wave.direction ?? "up");
+  if (!wave || wave.cancelled || (wave.surge ?? 0) <= 0) return 1;
+  const now = Date.now();
+  const start = wave.ts ?? 0;
+  const peak = waveTierFactor(rarity, wave.surge ?? 0, wave.rareBoost ?? 0, wave.direction ?? "up");
+  const end = wave.endsAt ?? start;
+  if (now <= start) return 1;
+
+  const fadeIn = Math.max(0, wave.fadeInMin ?? 0) * 60000;
+  if (now < start + fadeIn) {
+    /* tepeye yumuşak çıkış */
+    return 1 + (peak - 1) * easeRamp((now - start) / fadeIn);
+  }
+  if (now <= end) return peak;
+
+  /* kalıcı dalga: fold anına kadar tepe korunur (fade-out yok) */
+  if (wave.permanent) return peak;
+
+  const fadeOut = Math.max(0, wave.fadeOutMin ?? 0) * 60000;
+  const outEnd = end + fadeOut;
+  if (now < outEnd) {
+    /* normale yumuşak iniş */
+    return 1 + (peak - 1) * (1 - easeRamp((now - end) / fadeOut));
+  }
+  return 1;
 }
 
 /** Hiçbir şeyi değiştirmeden varsayımsal fiyatı hesapla (admin önizlemesi).

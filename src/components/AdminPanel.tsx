@@ -269,12 +269,19 @@ export function AdminPanel() {
   const ECO_FREQS = [15, 30, 60, 180, 360, 720, 1440];
   const ecoFmt = (m: number) => (m < 60 ? `${m} dk` : m % 60 === 0 ? `${m / 60} saat` : `${m} dk`);
   const ecoDirLabel = (d: "up" | "down") => (d === "up" ? "Yükseliş" : "Çöküş");
+  const ECO_FADES: Record<string, { label: string; note: string; min: number }> = {
+    instant: { label: "Anında", note: "0 dk", min: 0 },
+    fast: { label: "2 dk", note: "Yavaşça", min: 2 },
+    medium: { label: "10 dk", note: "Orta", min: 10 },
+    slow: { label: "30 dk", note: "Çok yavaş", min: 30 },
+  };
 
   const [ecoDir, setEcoDirState] = useState<"up" | "down">("up");
   const [ecoStrong, setEcoStrongState] = useState("medium");
   const [ecoRareLvl, setEcoRareLvlState] = useState("mid");
   const [ecoDur, setEcoDurState] = useState(30);
   const [ecoAfter, setEcoAfterState] = useState<"temp" | "perm">("temp");
+  const [ecoFade, setEcoFadeState] = useState("medium");
   const [ecoAuto, setEcoAutoState] = useState(false);
   const [ecoFreq, setEcoFreqState] = useState(60);
   const [ecoAutoDir, setEcoAutoDirState] = useState<"up" | "down" | "mix">("up");
@@ -287,6 +294,7 @@ export function AdminPanel() {
     auto: false,
     freq: 60,
     autoDir: "up" as "up" | "down" | "mix",
+    fade: "medium",
   });
 
   /* her değişiklikte otomatik kaydet — ayrı "Kaydet" butonu yok */
@@ -300,6 +308,7 @@ export function AdminPanel() {
       auto: boolean;
       freq: number;
       autoDir: "up" | "down" | "mix";
+      fade: string;
     }>
   ) => {
     const next = { ...ecoRef.current, ...patch };
@@ -309,6 +318,7 @@ export function AdminPanel() {
     setEcoRareLvlState(next.rareLvl);
     setEcoDurState(next.dur);
     setEcoAfterState(next.after);
+    setEcoFadeState(next.fade);
     setEcoAutoState(next.auto);
     setEcoFreqState(next.freq);
     setEcoAutoDirState(next.autoDir);
@@ -323,6 +333,7 @@ export function AdminPanel() {
       /* otomatik açıksa otomatik yönü, kapalıysa manuel yönü sakla */
       direction: next.auto ? next.autoDir : next.dir,
       after: next.after,
+      fadeMin: (ECO_FADES[next.fade] ?? ECO_FADES.medium).min,
     });
   };
 
@@ -347,6 +358,10 @@ export function AdminPanel() {
       rareLvl: bestRare,
       dur: economyConfig.durationMin,
       after: (economyConfig.after === "perm" ? "perm" : "temp") as "temp" | "perm",
+      fade:
+        Object.entries(ECO_FADES).sort(
+          (a, b) => Math.abs(a[1].min - (economyConfig.fadeMin ?? 0)) - Math.abs(b[1].min - (economyConfig.fadeMin ?? 0))
+        )[0]?.[0] ?? "medium",
       auto: economyConfig.enabled,
       freq: economyConfig.intervalMin > 0 ? economyConfig.intervalMin : 60,
       autoDir: (economyConfig.direction === "mix" ? "mix" : economyConfig.direction === "down" ? "down" : "up") as "up" | "down" | "mix",
@@ -357,6 +372,7 @@ export function AdminPanel() {
     setEcoRareLvlState(next.rareLvl);
     setEcoDurState(next.dur);
     setEcoAfterState(next.after);
+    setEcoFadeState(next.fade);
     setEcoAutoState(next.auto);
     setEcoFreqState(next.freq);
     setEcoAutoDirState(next.autoDir);
@@ -1023,9 +1039,42 @@ export function AdminPanel() {
               </div>
             </div>
 
-            {/* 5. bitince */}
+            {/* 5. geçiş hızı */}
             <div className="mt-3">
-              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">5 · Dalga bitince ne olsun?</div>
+              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                5 · Fiyatlar nasıl değişsin?
+              </div>
+              <div className="grid grid-cols-4 gap-1.5">
+                {Object.entries(ECO_FADES).map(([key, f]) => (
+                  <button
+                    key={key}
+                    onClick={() => {
+                      saveEco({ fade: key });
+                      pushToast({ kind: "info", title: f.min === 0 ? "Anında değişecek" : `Fiyatlar ${f.label} içinde yavaşça ${f.min} dk'da · ${f.note}` });
+                      click();
+                    }}
+                    className={cn(
+                      "rounded-xl border px-1 py-2.5 text-center transition",
+                      ecoFade === key
+                        ? "border-sky-400/70 bg-sky-400/15"
+                        : "border-line bg-ink-800 hover:border-sky-400/40"
+                    )}
+                  >
+                    <div className={cn("font-display text-xs font-black", ecoFade === key ? "text-sky-300" : "text-white/70")}>
+                      {f.label}
+                    </div>
+                    <div className="text-[9px] font-bold text-white/35">{f.note}</div>
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1 text-[9px] text-white/30">
+                {ecoFade === "instant" ? "Fiyatlar tek seferde değişir" : "Dalga başlayınca fiyatlar adım adım yükselir/iner, yine adım adım normale döner"}
+              </p>
+            </div>
+
+            {/* 6. bitince */}
+            <div className="mt-3">
+              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">6 · Dalga bitince ne olsun?</div>
               <div className="grid grid-cols-2 gap-1.5">
                 <button
                   onClick={() => {
@@ -1065,7 +1114,7 @@ export function AdminPanel() {
                   <span className={cn("absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all", ecoAuto ? "left-[22px]" : "left-0.5")} />
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[11px] font-bold text-white/80">6 · Kendiliğinden tekrarlasın mı?</span>
+                  <span className="block text-[11px] font-bold text-white/80">7 · Kendiliğinden tekrarlasın mı?</span>
                   <span className="block text-[9px] text-white/35">
                     {ecoAuto ? `Her ${ecoFmt(ecoFreq)} bir dalga otomatik başlar` : "Kapalıysa sadece aşağıdaki butonla başlatırsın"}
                   </span>
@@ -1161,12 +1210,16 @@ export function AdminPanel() {
                   const r = ecoRef.current;
                   const c = ECO_STRENGTHS[r.strong] ?? ECO_STRENGTHS.medium;
                   const rv = ECO_RARES[r.rareLvl] ?? ECO_RARES.mid;
-                  const res = startEconomyWave(c.surge, rv.boost, r.dur, r.dir, r.after === "perm");
+                  const fadeMin = (ECO_FADES[r.fade] ?? ECO_FADES.medium).min;
+                  const res = startEconomyWave(c.surge, rv.boost, r.dur, r.dir, r.after === "perm", fadeMin, fadeMin);
                   if (res.ok) {
                     pushToast({
                       kind: "money",
                       title: r.dir === "up" ? "Ekonomik dalga başladı" : "Piyasa çöküşü başladı",
-                      sub: `${r.dir === "up" ? "+" : "-"}%${c.surge} · ${ecoFmt(r.dur)}${r.after === "perm" ? " · kalıcı" : ""}`,
+                      sub:
+                        `${r.dir === "up" ? "+" : "-"}%${c.surge} · ${ecoFmt(r.dur)}` +
+                        (fadeMin > 0 ? ` · ${ecoFmt(fadeMin)}'da tepe` : "") +
+                        (r.after === "perm" ? " · kalıcı" : fadeMin > 0 ? ` · ${ecoFmt(fadeMin)}'da normale` : ""),
                     });
                     coinDing();
                   } else pushToast({ kind: "lose", title: "Başlatılamadı", sub: res.error });
