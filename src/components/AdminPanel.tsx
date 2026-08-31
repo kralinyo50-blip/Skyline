@@ -1028,7 +1028,11 @@ export function AdminPanel() {
               <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">5 · Dalga bitince ne olsun?</div>
               <div className="grid grid-cols-2 gap-1.5">
                 <button
-                  onClick={() => saveEco({ after: "temp" })}
+                  onClick={() => {
+                    saveEco({ after: "temp" });
+                    pushToast({ kind: "info", title: "Dalga bitince normale dönecek" });
+                    coinDing();
+                  }}
                   className={cn(
                     "rounded-xl border px-3 py-2.5 text-center transition",
                     ecoAfter === "temp" ? "border-sky-400/70 bg-sky-400/15" : "border-line bg-ink-800 hover:border-sky-400/40"
@@ -1038,7 +1042,11 @@ export function AdminPanel() {
                   <div className="text-[9px] font-bold text-white/35">Eski fiyatlara döner</div>
                 </button>
                 <button
-                  onClick={() => saveEco({ after: "perm" })}
+                  onClick={() => {
+                    saveEco({ after: "perm" });
+                    pushToast({ kind: "money", title: "Yeni seviye kalıcı olacak", sub: "Dalga bitince fiyatlar bu seviyede kalır" });
+                    coinDing();
+                  }}
                   className={cn(
                     "rounded-xl border px-3 py-2.5 text-center transition",
                     ecoAfter === "perm" ? "border-amber-400/70 bg-amber-400/15" : "border-line bg-ink-800 hover:border-amber-400/40"
@@ -1129,7 +1137,8 @@ export function AdminPanel() {
                   </span>
                   <span className="text-[9px] text-white/35">
                     {ecoRareLvl === "off" ? "Pahalılar normal etkilenir" : `Pahalılar ${ecoRare.note}`}
-                    {ecoAfter === "perm" && " · kalıcı"}
+                    {" · "}
+                    {ecoAfter === "perm" ? "dalga bitince bu seviye KALIR" : "dalga bitince normale döner"}
                   </span>
                 </div>
               </div>
@@ -1148,12 +1157,16 @@ export function AdminPanel() {
             ) : (
               <button
                 onClick={() => {
-                  const res = startEconomyWave(ecoConf.surge, ecoRare.boost, ecoDur, ecoDir, ecoAfter === "perm");
+                  /* her zaman GÜNCEL ref'i kullan — state henüz render edilmemiş olsa bile */
+                  const r = ecoRef.current;
+                  const c = ECO_STRENGTHS[r.strong] ?? ECO_STRENGTHS.medium;
+                  const rv = ECO_RARES[r.rareLvl] ?? ECO_RARES.mid;
+                  const res = startEconomyWave(c.surge, rv.boost, r.dur, r.dir, r.after === "perm");
                   if (res.ok) {
                     pushToast({
                       kind: "money",
-                      title: ecoDir === "up" ? "Ekonomik dalga başladı" : "Piyasa çöküşü başladı",
-                      sub: `${ecoSign}%${ecoConf.surge} · ${ecoFmt(ecoDur)}${ecoAfter === "perm" ? " · kalıcı" : ""}`,
+                      title: r.dir === "up" ? "Ekonomik dalga başladı" : "Piyasa çöküşü başladı",
+                      sub: `${r.dir === "up" ? "+" : "-"}%${c.surge} · ${ecoFmt(r.dur)}${r.after === "perm" ? " · kalıcı" : ""}`,
                     });
                     coinDing();
                   } else pushToast({ kind: "lose", title: "Başlatılamadı", sub: res.error });

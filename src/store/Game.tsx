@@ -2324,7 +2324,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const w = db.economyWave ?? null;
-    pricingStateRef.current = { waveId: w?.id ?? "", ended: false };
+    /* YALNIZCA yeni dalga id'si geldiğinde gözlemi yeniden başlat.
+       Aynı id'li güncellemeler (kalıcı işleme / iptal) "ended" bayrağını
+       korumalı — aksi halde gözlemci 10 sn'de bir tekrar fold eder. */
+    if (pricingStateRef.current.waveId !== (w?.id ?? "")) {
+      pricingStateRef.current = { waveId: w?.id ?? "", ended: false };
+    }
     applyPricing();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db.economyWave, db.priceSettings, applyPricing]);
@@ -2341,7 +2346,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         byRarity[r] = Math.max(10, Math.min(1000, Math.round(cur * f)));
       });
       draft.priceSettings = { ts: Date.now(), by: wave.by, global: ps.global ?? 100, byRarity, bySkin: { ...(ps.bySkin ?? {}) } };
-      draft.economyWave = { ...draft.economyWave, cancelled: true, ts: Date.now() };
+      /* permanent:false → işlendi bayrağı; gözlemci bir daha fold etmez */
+      draft.economyWave = { ...draft.economyWave, cancelled: true, permanent: false, ts: Date.now() };
     });
   }, [mutate]);
 
@@ -2353,7 +2359,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       if (st.waveId && !st.ended && !active) {
         st.ended = true; /* dalga bitti — bir kez işle */
         const ended = dbRef.current.economyWave;
-        if (ended?.permanent) foldWaveIntoPrices(ended);
+        if (ended?.permanent && ended.id === st.waveId) foldWaveIntoPrices(ended);
         else applyPricing();
       }
     }, 10000);
