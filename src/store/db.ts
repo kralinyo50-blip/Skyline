@@ -2,6 +2,7 @@ import { ADMIN_NAME } from "../config";
 import { isStickerItem, type InvItem } from "../data/items";
 import { rollFloat } from "../data/wear";
 import { hydrateCustomStickers } from "../data/custom";
+import type { RarityKey } from "../data/skins";
 import type { Sticker } from "../data/stickers";
 
 export type { InvItem };
@@ -29,6 +30,8 @@ export interface PubProfile {
   vip?: boolean;
   /** profil vitrini — seçili eşyaların skin id'leri */
   showcase?: string[];
+  /** haftalık istatistik (haftanın başından beri) — haftanın oyuncusu için */
+  week?: { key: string; spent: number; opened: number };
   ts: number;
 }
 
@@ -159,6 +162,8 @@ export interface Account {
   showcase?: string[];
   /** jackpot kazançlarının ödendiği tur numaraları (çift ödeme koruması) */
   jpPaid?: number[];
+  /** haftalık istatistik tabanı — hafta değişince sıfırlanır */
+  weekBase?: { key: string; spent: number; opened: number };
 }
 
 export type ReqStatus = "pending" | "approved" | "rejected";
@@ -218,6 +223,57 @@ export interface MoneyReset {
   ts: number;
   by: string;
   reason: string;
+}
+
+/* ---------------- GLOBAL SOHBET ---------------- */
+
+export interface ChatMsg {
+  id: string;
+  user: string;
+  key: string;
+  text: string;
+  level: number;
+  ts: number;
+  admin?: boolean;
+}
+
+/** Sohbet temizleme damgası — daha eski mesajlar hiçbir cihazda gösterilmez */
+export interface ChatReset {
+  ts: number;
+  by: string;
+}
+
+/* ---------------- KASA İNDİRİMİ ETKİNLİĞİ ---------------- */
+
+export interface CaseSale {
+  id: string;
+  caseIds: string[];
+  /** yüzde indirim: 50 = %50 indirim */
+  discount: number;
+  endsAt: number;
+  startedBy: string;
+  ts: number;
+  cancelled?: boolean;
+}
+
+/* ---------------- SKİN FİYAT YÖNETİMİ ---------------- */
+
+/** Yüzde çarpanı: 100 = normal, 150 = +%50 zam, 50 = %50 indirim */
+export interface PriceSettings {
+  ts: number;
+  by: string;
+  global?: number;
+  byRarity?: Partial<Record<RarityKey, number>>;
+  bySkin?: Record<string, number>;
+}
+
+/* ---------------- HAFTANIN OYUNCUSU (admin override) ---------------- */
+
+export interface WeekPin {
+  key: string;
+  name: string;
+  ts: number;
+  by: string;
 }
 
 export interface FirstLoginEvent {
@@ -351,6 +407,16 @@ export interface DB {
   jackpot?: JackpotState | null;
   /** toplu bakiye sıfırlama olayı — en yeni ts kazanır */
   moneyReset?: MoneyReset | null;
+  /** global sohbet — tüm cihazlara yayılır */
+  chat?: ChatMsg[];
+  /** sohbet temizleme damgası */
+  chatReset?: ChatReset | null;
+  /** kasa indirimi etkinliği */
+  caseSale?: CaseSale | null;
+  /** skin fiyat çarpanı ayarları */
+  priceSettings?: PriceSettings | null;
+  /** admin'in haftanın oyuncusunu sabitlemesi (override) */
+  weekPin?: WeekPin | null;
 }
 
 const LS_KEY = "skyline:v1";
@@ -373,6 +439,11 @@ export function emptyDB(): DB {
     celebration: null,
     jackpot: null,
     moneyReset: null,
+    chat: [],
+    chatReset: null,
+    caseSale: null,
+    priceSettings: null,
+    weekPin: null,
   };
 }
 
@@ -405,6 +476,11 @@ export function loadDB(): DB {
       celebration: parsed.celebration ?? null,
       jackpot: parsed.jackpot ?? null,
       moneyReset: parsed.moneyReset ?? null,
+      chat: Array.isArray(parsed.chat) ? parsed.chat : [],
+      chatReset: parsed.chatReset ?? null,
+      caseSale: parsed.caseSale ?? null,
+      priceSettings: parsed.priceSettings ?? null,
+      weekPin: parsed.weekPin ?? null,
     };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.

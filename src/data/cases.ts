@@ -1,4 +1,5 @@
 import { SKIN_MAP, BASE_SKINS, RARITY, type Skin, type RarityKey, TIER_ORDER } from "./skins";
+import type { CaseSale } from "../store/db";
 import { EXTRA_SKINS } from "./extraSkins";
 import { LEGEND_SKINS, LEGEND_IDS } from "./legends";
 import { WEAPON_CAT } from "./weaponCats";
@@ -874,6 +875,21 @@ export const CASES: CaseDef[] = [
 export const CASE_MAP: Record<string, CaseDef> = Object.fromEntries(
   CASES.map((c) => [c.id, c])
 );
+
+/** Kasa fiyatı — aktif indirim etkinliği varsa indirimli değer */
+export function casePrice(def: CaseDef, sale?: CaseSale | null): number {
+  if (
+    sale &&
+    !sale.cancelled &&
+    sale.endsAt > Date.now() &&
+    sale.discount > 0 &&
+    sale.caseIds.includes(def.id)
+  ) {
+    const d = Math.min(90, Math.max(5, sale.discount));
+    return Math.max(0.01, Math.round(def.price * (1 - d / 100) * 100) / 100);
+  }
+  return def.price;
+}
 
 /* Kasada tüketici/endüstriyel kademe varsa oranları ona göre dağıt */
 function weightsFor(caseDef: CaseDef): Partial<Record<RarityKey, number>> {

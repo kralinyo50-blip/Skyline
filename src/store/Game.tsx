@@ -96,10 +96,15 @@ import {
   type JackpotWinner,
   type JackpotSettledRound,
   type JackpotHistoryEntry,
+  type ChatMsg,
+  type CaseSale,
+  type PriceSettings,
+  type WeekPin,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
-import { rollCaseSeeded, rollCasePity, type CaseDef } from "../data/cases";
+import { rollCaseSeeded, rollCasePity, casePrice, type CaseDef } from "../data/cases";
+import { applyPriceOverrides, skinBasePrice } from "../data/skins";
 import {
   startSync,
   stopSync,
@@ -201,6 +206,25 @@ export function levelFromSpent(spent: number): number {
   let lvl = 1;
   while (xpCum(lvl + 1) <= spent && lvl < 999) lvl++;
   return lvl;
+}
+
+/** Hafta anahtarı — Pazartesi 00:00 yerel saat (haftanın oyuncusu için) */
+export function weekKey(ts: number = Date.now()): string {
+  const d = new Date(ts);
+  const day = (d.getDay() + 6) % 7; // Pazartesi=0
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - day);
+  return `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, "0")}-${String(monday.getDate()).padStart(2, "0")}`;
+}
+
+/** Haftalık harcama/açılış — hafta tabanından beri */
+export function weeklyStats(u: Account): { key: string; spent: number; opened: number } {
+  const key = weekKey();
+  const base = u.weekBase && u.weekBase.key === key ? u.weekBase : { key, spent: u.stats.spent, opened: u.stats.opened };
+  return {
+    key,
+    spent: Math.max(0, u.stats.spent - base.spent),
+    opened: Math.max(0, u.stats.opened - base.opened),
+  };
 }
 
 export function levelTitle(level: number): string {
@@ -400,6 +424,36 @@ interface GameState {
     skinId: string,
     opts?: { float?: number; stickers?: string[] }
   ) => { ok: boolean; error?: string };
+
+  /* global sohbet */
+  chat: ChatMsg[];
+  sendChat: (text: string) => { ok: boolean; error?: string };
+  clearChat: () => void;
+
+  /* kasa indirimi */
+  caseSale: CaseSale | null;
+  startCaseSale: (caseIds: string[], discount: number, minutes: number) => { ok: boolean; error?: string };
+  cancelCaseSale: () => void;
+
+  /* skin fiyat yönetimi */
+  priceSettings: PriceSettings | null;
+  setPriceSettings: (p: Partial<PriceSettings>) => { ok: boolean; error?: string };
+  skinBasePrice: (id: string) => number;
+
+  /* haftanın oyuncusu */
+  weekWinner: { key: string; name: string; spent: number; opened: number } | null;
+  weekPin: WeekPin | null;
+  pinWeekWinner: (key: string) => { ok: boolean; error?: string };
+  clearWeekPin: () => void;
+
+  /* yetkili pazar ilanı */
+  adminListings: MarketListing[];
+  adminCreateListing: (
+    skinId: string,
+    unitPrice: number,
+    qty: number
+  ) => { ok: boolean; error?: string };
+  adminCancelListing: (listingId: string) => { ok: boolean; error?: string };
 
   syncUrl: string | null;
   syncStatus: SyncStatus;
@@ -1737,7 +1791,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     (def: CaseDef): { skin: import("../data/skins").Skin; seed: string; nonce: number; forced: boolean } => {
       const fresh = loadDB();
       const me = currentUser(fresh);
-      if (!me || me.balance < def.price) {
+      const price = casePrice(def, fresh.caseSale ?? null);
+      if (!me || me.balance < price) {
         pushToastSafe.current({
           kind: "lose",
           title: "Yetersiz bakiye",
@@ -1745,7 +1800,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         });
         return { skin: rollCaseSeeded(def, "0", 0), seed: "0", nonce: 0, forced: false };
       }
-      me.balance = Math.round(me.balance - def.price);
+      me.balance = Math.round(me.balance - price);
       me.nonce++;
       const nonce = me.nonce;
       const seed = randHex(64);
@@ -1757,9 +1812,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       pity[def.id] = forced || skin.rarity === "covert" || skin.rarity === "rare" ? 0 : since + 1;
       me.pity = pity;
       me.stats.opened++;
-      me.stats.spent = Math.round(me.stats.spent + def.price);
+      me.stats.spent = Math.round(me.stats.spent + price);
       bumpMission(me, "cases");
-      bumpMission(me, "wagered", def.price);
+      bumpMission(me, "wagered", price);
       checkLevelUp(me.stats.spent, me);
       if (skin.rarity === "covert" || skin.rarity === "rare") {
         if (skin.price > me.stats.bestDrop) me.stats.bestDrop = skin.price;
@@ -1862,6 +1917,72 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [mutate, pushToast]
   );
 
+  /* ---------------- ADMIN: YETKİLİ PAZAR İLANI ---------------- */
+  const adminCreateListing = useCallback(
+    (skinId: string, unitPrice: number, qty: number): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const skin = SKIN_MAP[skinId];
+      if (!skin || skin.sticker) return { ok: false, error: "Geçersiz skin" };
+      const price = Math.max(1, Math.round(unitPrice));
+      const count = Math.max(1, Math.min(10, Math.round(qty)));
+      mutate((draft) => {
+        draft.marketListings = [
+          {
+            id: uid(),
+            sellerKey: me.key,
+            sellerName: `${ADMIN_NAME} · Yönetim`,
+            skinId: skin.id,
+            unitPrice: price,
+            qty: count,
+            copies: Array.from({ length: count }, () => ({})),
+            baseValue: skin.price,
+            ts: Date.now(),
+          },
+          ...(draft.marketListings ?? []),
+        ].slice(0, 300);
+        draft.adminLog = [
+          {
+            id: uid(),
+            actor: me.name,
+            targetKey: "*",
+            targetName: "PAZAR",
+            amount: price * count,
+            reason: `Yetkili ilan: ${skin.weapon} | ${skin.name} ×${count} — ${money(price)}/adet`,
+            ts: Date.now(),
+          },
+          ...(draft.adminLog ?? []),
+        ].slice(0, 300);
+      });
+      pushToast({
+        kind: "money",
+        title: "Yetkili ilan yayınlandı",
+        sub: `${skin.weapon} | ${skin.name} ×${count} — ${money(price)}/adet`,
+      });
+      coinDing();
+      return { ok: true };
+    },
+    [mutate, pushToast]
+  );
+
+  const adminCancelListing = useCallback(
+    (listingId: string): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      mutate((draft) => {
+        const l = (draft.marketListings ?? []).find((x) => x.id === listingId);
+        if (!l) return;
+        l.removed = true;
+        l.qty = 0;
+        l.copies = [];
+        l.ts = Date.now();
+      });
+      pushToast({ kind: "info", title: "Yetkili ilan kaldırıldı", sub: "Pazardan çekildi" });
+      return { ok: true };
+    },
+    [mutate, pushToast]
+  );
+
   /* ---------------- DUYURU ---------------- */
   const setAnnouncement = useCallback(
     (text: string) => {
@@ -1881,6 +2002,42 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   );
 
   const clearAnnouncement = useCallback(() => setAnnouncement(""), [setAnnouncement]);
+
+  /* ---------------- GLOBAL SOHBET (tüm cihazlara yayılır) ---------------- */
+  const lastChatAt = useRef(0);
+  const sendChat = useCallback(
+    (text: string): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || me.status !== "approved") return { ok: false, error: "Önce onaylı bir hesapla giriş yap" };
+      const t = text.trim().slice(0, 160);
+      if (!t) return { ok: false, error: "Boş mesaj gönderilemez" };
+      if (Date.now() - lastChatAt.current < 2500) return { ok: false, error: "Çok hızlı — 2.5 sn bekle" };
+      const msg: ChatMsg = {
+        id: uid(),
+        user: me.name,
+        key: me.key,
+        text: t,
+        level: levelFromSpent(me.stats.spent),
+        ts: Date.now(),
+        admin: me.isAdmin,
+      };
+      lastChatAt.current = msg.ts;
+      mutate((draft) => {
+        draft.chat = [...(draft.chat ?? []), msg].slice(-200);
+      });
+      return { ok: true };
+    },
+    [mutate]
+  );
+
+  const clearChat = useCallback(() => {
+    const me = dbRef.current.users[dbRef.current.session ?? ""];
+    if (!me || !me.isAdmin) return;
+    mutate((draft) => {
+      draft.chatReset = { ts: Date.now(), by: me.name };
+      draft.chat = [];
+    });
+  }, [mutate]);
 
   /* ---------------- OTOMATİK ÇEKİLİŞ ---------------- */
   const raffleRef = useRef<RaffleState | null>(null);
@@ -2069,6 +2226,102 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       draft.firstLogin = { ...draft.firstLogin, active: false, ts: Date.now() };
     });
     pushToast({ kind: "info", title: "İlk giriş etkinliği kapatıldı" });
+  }, [mutate, pushToast]);
+
+  /* ---------------- KASA İNDİRİMİ ETKİNLİĞİ ---------------- */
+  const startCaseSale = useCallback(
+    (caseIds: string[], discount: number, minutes: number): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const ids = (caseIds ?? []).filter(Boolean);
+      if (!ids.length) return { ok: false, error: "En az bir kasa seç" };
+      const d = Math.max(5, Math.min(90, Math.round(discount)));
+      if (!Number.isFinite(d)) return { ok: false, error: "Geçersiz indirim" };
+      const m = Math.max(1, minutes);
+      mutate((draft) => {
+        draft.caseSale = {
+          id: uid(),
+          caseIds: ids,
+          discount: d,
+          endsAt: Date.now() + m * 60000,
+          startedBy: ADMIN_NAME,
+          ts: Date.now(),
+        };
+      });
+      pushToast({
+        kind: "money",
+        title: "Kasa indirimi başlatıldı",
+        sub: `%${d} indirim · ${ids.length} kasa · ${m} dk`,
+      });
+      coinDing();
+      return { ok: true };
+    },
+    [mutate, pushToast]
+  );
+
+  const cancelCaseSale = useCallback(() => {
+    mutate((draft) => {
+      if (!draft.caseSale) return;
+      draft.caseSale = { ...draft.caseSale, cancelled: true, ts: Date.now(), endsAt: Date.now() };
+    });
+    pushToast({ kind: "info", title: "Kasa indirimi kapatıldı", sub: "Kasalar normal fiyata döndü" });
+  }, [mutate, pushToast]);
+
+  /* ---------------- SKİN FİYAT YÖNETİMİ ---------------- */
+  const setPriceSettings = useCallback(
+    (p: Partial<PriceSettings>): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const clean = (v: number): number | undefined =>
+        Number.isFinite(v) ? Math.max(10, Math.min(1000, Math.round(v))) : undefined;
+      const patch: Partial<PriceSettings> = {};
+      if (p.global !== undefined) patch.global = clean(p.global);
+      if (p.byRarity) patch.byRarity = { ...(p.byRarity ?? {}) };
+      if (p.bySkin) patch.bySkin = { ...(p.bySkin ?? {}) };
+      mutate((draft) => {
+        draft.priceSettings = {
+          ts: Date.now(),
+          by: me.name,
+          global: patch.global ?? draft.priceSettings?.global ?? 100,
+          byRarity: patch.byRarity ?? draft.priceSettings?.byRarity ?? {},
+          bySkin: patch.bySkin ?? draft.priceSettings?.bySkin ?? {},
+        };
+      });
+      return { ok: true };
+    },
+    [mutate]
+  );
+
+  /* buluttan gelen fiyat ayarlarını uygula */
+  useEffect(() => {
+    applyPriceOverrides(db.priceSettings ?? null);
+  }, [db.priceSettings]);
+
+  /* ---------------- HAFTANIN OYUNCUSU — admin sabitleme ---------------- */
+  const pinWeekWinner = useCallback(
+    (key: string): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const target = dbRef.current.users[key];
+      if (!target || target.isAdmin || target.status !== "approved")
+        return { ok: false, error: "Geçersiz oyuncu" };
+      mutate((draft) => {
+        draft.weekPin = { key: target.key, name: target.name, ts: Date.now(), by: me.name };
+      });
+      pushToast({ kind: "money", title: "Haftanın oyuncusu sabitlendi", sub: target.name });
+      coinDing();
+      return { ok: true };
+    },
+    [mutate, pushToast]
+  );
+
+  const clearWeekPin = useCallback(() => {
+    const me = dbRef.current.users[dbRef.current.session ?? ""];
+    if (!me || !me.isAdmin) return;
+    mutate((draft) => {
+      draft.weekPin = { key: "", name: "", ts: Date.now(), by: me.name };
+    });
+    pushToast({ kind: "info", title: "Sabitleme kaldırıldı", sub: "Haftanın oyuncusu otomatik hesaplanıyor" });
   }, [mutate, pushToast]);
 
   /* ---------------- ADMIN: OTOMATİK KABUL AYARLARI ---------------- */
@@ -2880,6 +3133,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     if (!syncUrl || !user || user.status !== "approved") return;
     const iv = window.setInterval(() => {
       updateMe((me) => {
+        const wk = weekKey();
+        if (me.weekBase?.key !== wk) {
+          me.weekBase = { key: wk, spent: me.stats.spent, opened: me.stats.opened };
+        }
         me.pub = {
           balance: me.balance,
           opened: me.stats.opened,
@@ -2891,6 +3148,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             .filter((i): i is InvItem => !!i)
             .slice(0, 3)
             .map((i) => i.skinId),
+          week: {
+            key: wk,
+            spent: Math.max(0, me.stats.spent - me.weekBase.spent),
+            opened: Math.max(0, me.stats.opened - me.weekBase.opened),
+          },
           ts: Date.now(),
         };
       });
@@ -3101,6 +3363,37 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [db.deposits, user]
   );
 
+  /* ---------------- HAFTANIN OYUNCUSU ---------------- */
+  const weekWinner = useMemo(() => {
+    const wk = weekKey();
+    let best: { key: string; name: string; spent: number; opened: number } | null = null;
+    Object.values(db.users).forEach((u) => {
+      if (u.isAdmin || u.status !== "approved") return;
+      const w = u.pub?.week?.key === wk ? u.pub.week : undefined;
+      const spent = w?.spent ?? weeklyStats(u).spent;
+      const opened = w?.opened ?? weeklyStats(u).opened;
+      if (spent <= 0 && opened <= 0) return;
+      if (
+        !best ||
+        spent > best.spent ||
+        (spent === best.spent && opened > best.opened)
+      ) {
+        best = { key: u.key, name: u.name, spent, opened };
+      }
+    });
+    /* admin sabitlemesi varsa önce o */
+    if (db.weekPin?.key) {
+      const pinned = db.users[db.weekPin.key];
+      if (pinned && !pinned.isAdmin && pinned.status === "approved") {
+        const w = pinned.pub?.week?.key === wk ? pinned.pub.week : undefined;
+        const spent = w?.spent ?? weeklyStats(pinned).spent;
+        const opened = w?.opened ?? weeklyStats(pinned).opened;
+        return { key: pinned.key, name: pinned.name, spent, opened };
+      }
+    }
+    return best;
+  }, [db.users, db.weekPin]);
+
   const value: GameState = {
     db,
     user,
@@ -3270,6 +3563,34 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     moneyReset: db.moneyReset ?? null,
     resetAllMoney,
     startSkinRaffle,
+
+    /* global sohbet */
+    chat: db.chat ?? [],
+    sendChat,
+    clearChat,
+
+    /* kasa indirimi */
+    caseSale: db.caseSale ?? null,
+    startCaseSale,
+    cancelCaseSale,
+
+    /* skin fiyat yönetimi */
+    priceSettings: db.priceSettings ?? null,
+    setPriceSettings,
+    skinBasePrice,
+
+    /* haftanın oyuncusu */
+    weekWinner,
+    weekPin: db.weekPin?.key ? db.weekPin : null,
+    pinWeekWinner,
+    clearWeekPin,
+
+    /* yetkili pazar ilanı */
+    adminListings: (db.marketListings ?? []).filter(
+      (l) => !l.removed && l.sellerKey === (user?.key ?? "") && l.sellerName.includes("Yönetim")
+    ),
+    adminCreateListing,
+    adminCancelListing,
 
     syncUrl,
     syncStatus,

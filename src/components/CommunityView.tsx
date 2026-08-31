@@ -3,6 +3,7 @@ import {
   Crown,
   Gift,
   Megaphone,
+  Medal,
   PartyPopper,
   Sparkles,
   Ticket,
@@ -44,6 +45,7 @@ export function CommunityView() {
     enterRaffle,
     firstLoginEvent,
     allUsers,
+    weekWinner,
   } = useGame();
   const now = useNow();
 
@@ -62,6 +64,8 @@ export function CommunityView() {
         .slice(0, 10),
     [allUsers]
   );
+
+  const isWeekWinner = (key: string) => !!weekWinner && weekWinner.key === key;
 
   const raffleOpen = raffle && !raffle.drawn && !raffle.cancelled && now < raffle.endsAt;
   const raffleDone = raffle && raffle.drawn && !raffle.cancelled;
@@ -272,6 +276,41 @@ export function CommunityView() {
         </p>
       </div>
 
+      {/* ---------- HAFTANIN OYUNCUSU ---------- */}
+      <div className="mt-4 overflow-hidden rounded-2xl border border-amber-400/30 bg-gradient-to-b from-amber-400/10 to-ink-900/70">
+        <div className="flex flex-wrap items-center gap-3 border-b border-amber-400/20 px-5 py-4">
+          <Medal className="h-5 w-5 text-amber-300" />
+          <div className="min-w-0 flex-1">
+            <div className="font-display text-sm font-black uppercase tracking-widest text-amber-300">
+              Haftanın Oyuncusu
+            </div>
+            <div className="text-[10px] text-white/40">Bu hafta en çok harcayan oyuncu — Pazartesi 00:00'da yenilenir</div>
+          </div>
+        </div>
+        {weekWinner ? (
+          <div className="flex flex-wrap items-center gap-3 px-5 py-4">
+            <img src={mcHead(weekWinner.name, 96)} alt={weekWinner.name} className="h-14 w-14 shrink-0 rounded-xl" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-display text-xl font-black text-white">{weekWinner.name}</span>
+                <Crown className="h-4 w-4 shrink-0 text-amber-300" fill="currentColor" strokeWidth={0} />
+              </div>
+              <div className="mt-0.5 text-[11px] text-white/45">
+                Bu hafta <span className="font-bold text-amber-300">{money(weekWinner.spent)}</span> harcadı ·{" "}
+                {weekWinner.opened} kasa açtı
+              </div>
+            </div>
+            <span className="rounded-xl border border-amber-400/40 bg-amber-400/15 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-amber-300">
+              Altın Rozet
+            </span>
+          </div>
+        ) : (
+          <p className="px-5 py-8 text-center text-xs text-white/35">
+            Bu hafta henüz harcama yapan yok — ilk kasanı açan şampiyon olabilir!
+          </p>
+        )}
+      </div>
+
       {/* ---------- LİDERLİK ---------- */}
       <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-ink-900/70">
         <div className="flex items-center gap-2 border-b border-line px-5 py-4">
@@ -306,6 +345,11 @@ export function CommunityView() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
                     <span className="truncate font-display text-sm font-bold text-white">{u.name}</span>
+                    {isWeekWinner(u.key) && (
+                      <span className="flex shrink-0 items-center gap-1 rounded bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-black uppercase text-amber-300">
+                        <Medal className="h-3 w-3" /> Haftanın Oyuncusu
+                      </span>
+                    )}
                     {u.pub?.vip && (
                       <Crown className="h-3.5 w-3.5 shrink-0 text-rar-rare" fill="currentColor" strokeWidth={0} />
                     )}

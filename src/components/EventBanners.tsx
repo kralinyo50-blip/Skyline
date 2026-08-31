@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Gift, Megaphone, Ticket } from "lucide-react";
+import { BadgePercent, Gift, Megaphone, Ticket } from "lucide-react";
 import { money } from "../config";
 import { SKIN_MAP } from "../data/skins";
 import { useGame } from "../store/Game";
@@ -24,9 +24,10 @@ function cd(ms: number): string {
 }
 
 export function EventBanners() {
-  const { announcement, raffle, raffleEntered, enterRaffle, setTab } = useGame();
+  const { announcement, raffle, raffleEntered, enterRaffle, setTab, caseSale } = useGame();
   const now = useNow();
   const active = raffle && !raffle.drawn && !raffle.cancelled && now < raffle.endsAt;
+  const saleActive = !!caseSale && !caseSale.cancelled && now < caseSale.endsAt;
 
   return (
     <div className="relative z-10 space-y-2 px-4 pt-3 md:px-6 xl:px-[292px]">
@@ -41,6 +42,27 @@ export function EventBanners() {
             <div className="truncate text-xs text-white/75">{announcement.text}</div>
           </div>
           <span className="mt-1 text-[9px] font-bold text-white/30">Topluluk →</span>
+        </button>
+      )}
+
+      {saleActive && (
+        <button
+          onClick={() => setTab("cases")}
+          className="flex w-full items-center gap-3 rounded-xl border border-emerald-500/40 bg-gradient-to-r from-emerald-500/12 to-ink-900/60 px-4 py-2.5 text-left transition hover:border-emerald-500/70"
+        >
+          <BadgePercent className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] font-black uppercase tracking-widest text-emerald-400">
+              Kasa indirimi — %{caseSale.discount} ucuz
+            </div>
+            <div className="truncate text-xs text-white/75">
+              {caseSale.caseIds.length} kasa indirimli · bitişe{" "}
+              <span className="font-bold tabular-nums text-white">{cd(caseSale.endsAt - now)}</span>
+            </div>
+          </div>
+          <span className="shrink-0 rounded-lg bg-emerald-500/15 px-2.5 py-1.5 text-[10px] font-black uppercase text-emerald-300">
+            Kasalara Git →
+          </span>
         </button>
       )}
 

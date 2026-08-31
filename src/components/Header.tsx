@@ -14,6 +14,7 @@ import {
   Handshake,
   LogOut,
   Plus,
+  Settings,
   ShieldCheck,
   Sparkles,
   Store,
@@ -31,6 +32,7 @@ import {
 import { useGame, DAILY_COOLDOWN, type TabKey } from "../store/Game";
 import { ADMIN_NAME, BRAND, CURRENCY, SCALE, VIP_PLANS, mcHead, money } from "../config";
 import { click, coinDing } from "../lib/audio";
+import { loadPrefs, savePrefs, type Prefs } from "../lib/prefs";
 import { cn } from "../utils/cn";
 import { ReferralModal } from "./ReferralModal";
 
@@ -82,6 +84,15 @@ export function Header() {
 
   const [connectOpen, setConnectOpen] = useState(false);
   const [codeDraft, setCodeDraft] = useState("");
+  const [optsOpen, setOptsOpen] = useState(false);
+  const [prefs, setPrefsState] = useState<Prefs>(() => loadPrefs());
+
+  function updatePref(p: Partial<Prefs>) {
+    const next = { ...prefs, ...p };
+    setPrefsState(next);
+    savePrefs(next);
+    click();
+  }
 
   const [depositOpen, setDepositOpen] = useState(false);
   const [amount, setAmount] = useState("10000");
@@ -254,14 +265,115 @@ export function Header() {
               <UserPlus className="h-4 w-4" />
             </button>
 
-            {/* mute */}
-            <button
-              onClick={toggleMute}
-              className="hidden h-9 w-9 items-center justify-center rounded-lg border border-line bg-ink-800 text-white/50 transition hover:text-white sm:flex"
-              title={muted ? "Sesi aç" : "Sesi kapat"}
-            >
-              {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-            </button>
+            {/* ayarlar merkezi */}
+            <div className="relative hidden sm:block">
+              <button
+                onClick={() => {
+                  setOptsOpen((o) => !o);
+                  click();
+                }}
+                className={cn(
+                  "flex h-9 w-9 items-center justify-center rounded-lg border transition",
+                  optsOpen
+                    ? "border-brand-500/60 bg-brand-500/15 text-brand-300"
+                    : "border-line bg-ink-800 text-white/50 hover:text-white"
+                )}
+                title="Ayarlar Merkezi"
+              >
+                <Settings className="h-4 w-4" />
+                {prefs.sfx <= 0 || muted ? (
+                  <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-lose" />
+                ) : null}
+              </button>
+              <AnimatePresence>
+                {optsOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-11 z-50 w-72 rounded-2xl border border-line bg-ink-950/95 p-4 shadow-2xl backdrop-blur-xl"
+                  >
+                    <div className="mb-3 flex items-center gap-2">
+                      <Settings className="h-4 w-4 text-brand-300" />
+                      <span className="font-display text-sm font-black uppercase tracking-widest text-white/85">
+                        Ayarlar Merkezi
+                      </span>
+                      <button
+                        onClick={() => setOptsOpen(false)}
+                        className="ml-auto flex h-6 w-6 items-center justify-center rounded-lg text-white/40 transition hover:text-white"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    {/* ses */}
+                    <div className="rounded-xl border border-line bg-ink-900/70 p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Ses</span>
+                        <span className="font-display text-xs font-black text-brand-300">
+                          {muted ? "Kapalı" : `%${Math.round(prefs.sfx)}`}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(prefs.sfx)}
+                        onChange={(e) => updatePref({ sfx: Number(e.target.value) })}
+                        disabled={muted}
+                        className="mt-2 w-full accent-brand-500 disabled:opacity-40"
+                      />
+                      <button
+                        onClick={toggleMute}
+                        className={cn(
+                          "mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border text-[11px] font-bold transition",
+                          muted
+                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                            : "border-lose/40 bg-lose/10 text-lose hover:bg-lose/20"
+                        )}
+                      >
+                        {muted ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                        {muted ? "Sesi Aç" : "Sesi Kapat"}
+                      </button>
+                    </div>
+
+                    {/* tercihler */}
+                    <div className="mt-3 space-y-2">
+                      {(
+                        [
+                          { key: "effects", label: "Görsel Efektler", desc: "Kazanç parlamaları ve ışık patlamaları" },
+                          { key: "shake", label: "Ekran Sarsıntısı", desc: "Yetersiz bakiye uyarısında sarsıntı" },
+                          { key: "fastReels", label: "Hızlı Makara", desc: "Kasa açılışını hızlandır (kısa animasyon)" },
+                        ] as { key: keyof Prefs; label: string; desc: string }[]
+                      ).map((t) => (
+                        <div key={t.key} className="flex items-center gap-3 rounded-xl border border-line bg-ink-900/70 px-3 py-2.5">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[11px] font-bold text-white/80">{t.label}</div>
+                            <div className="text-[9px] text-white/35">{t.desc}</div>
+                          </div>
+                          <button
+                            onClick={() => updatePref({ [t.key]: !prefs[t.key] } as Partial<Prefs>)}
+                            className={cn(
+                              "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+                              prefs[t.key] ? "bg-emerald-500" : "bg-ink-600"
+                            )}
+                            aria-pressed={Boolean(prefs[t.key])}
+                          >
+                            <span
+                              className={cn(
+                                "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all",
+                                prefs[t.key] ? "left-[22px]" : "left-0.5"
+                              )}
+                            />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* bakiye */}
             <div className="flex items-stretch overflow-hidden rounded-lg border border-line bg-ink-800">

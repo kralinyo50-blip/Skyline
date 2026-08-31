@@ -12,7 +12,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { rollCase, caseContentsDetailed, type CaseDef } from "../data/cases";
+import { rollCase, caseContentsDetailed, casePrice, type CaseDef } from "../data/cases";
 import { QUICK_SELL_RATE } from "../config";
 import { rollFloat, wearFromFloat, WEARS } from "../data/wear";
 import { FloatBar, WearBadge } from "./WearUi";
@@ -22,6 +22,7 @@ import { STICKERED_DROP_CHANCE } from "../data/items";
 const STICKER_IDS = STICKERS.map((s) => s.id);
 import { RARITY, fmtMoney, type Skin } from "../data/skins";
 import { goldWin, loseSound, reelStart, tick, winSound } from "../lib/audio";
+import { loadPrefs, PREFS_EVENT } from "../lib/prefs";
 import { clamp, easeOutQuint } from "../lib/rng";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
@@ -34,6 +35,22 @@ const REEL_COUNT = 76;
 const PREVIEW_LIMIT = 48;
 const WIN_AT = 68;
 const SPIN_MS = 6800;
+const FAST_SPIN_MS = 3600;
+let PREF_FAST = false;
+let PREF_SHAKE = true;
+let PREF_EFFECTS = true;
+function loadCasePrefs() {
+  try {
+    const p = loadPrefs();
+    PREF_FAST = p.fastReels;
+    PREF_SHAKE = p.shake;
+    PREF_EFFECTS = p.effects;
+  } catch {
+    /* varsayılan */
+  }
+}
+loadCasePrefs();
+if (typeof window !== "undefined") window.addEventListener(PREFS_EVENT, loadCasePrefs);
 
 type Phase = "info" | "spinning" | "landed" | "reveal";
 
@@ -132,7 +149,9 @@ interface BatchHit {
 }
 
 export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void }) {
-  const { balance, credit, addItem, pushToast, openCase } = useGame();
+  const { balance, credit, addItem, pushToast, openCase, caseSale } = useGame();
+  const price = casePrice(def, caseSale);
+  const saleOn = price < def.price;
   const [phase, setPhase] = useState<Phase>("info");
   const [winner, setWinner] = useState<Skin | null>(null);
   const [reel, setReel] = useState<Skin[]>([]);
@@ -168,7 +187,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
   phaseRef.current = phase;
 
   const { items: contentItems, odds } = useMemo(() => caseContentsDetailed(def), [def]);
-  const afford = balance >= def.price;
+  const afford = balance >= price;
 
   const animateX = (from: number, to: number, dur: number, done: () => void) => {
     const c = containerRef.current;
@@ -216,8 +235,8 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
 
   const startOpen = () => {
     if (phase === "spinning") return;
-    if (balance < def.price) {
-      setShake((s) => s + 1);
+    if (balance < price) {
+      if (PREF_SHAKE) setShake((s) => s + 1);
       pushToast({
         kind: "lose",
         title: "Yetersiz bakiye",
@@ -233,7 +252,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
     setReel(items);
     setHandled(false);
     setPhase("spinning");
-    if (forced) setShake((s) => s + 1);
+    if (forced && PREF_SHAKE) setShake((s) => s + 1);
     reelStart();
 
     requestAnimationFrame(() => {
@@ -244,7 +263,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
       const x0 = center - 4 * STRIDE;
       const xf = center - (WIN_AT * STRIDE + ITEM_W / 2) - jitter;
       if (trackRef.current) trackRef.current.style.transform = `translate3d(${x0}px,0,0)`;
-      animateX(x0, xf, SPIN_MS, finishSpin);
+      animateX(x0, xf, PREF_FAST ? FAST_SPIN_MS : SPIN_MS, finishSpin);
     });
   };
 
@@ -332,9 +351,9 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
 
   const startBatch = () => {
     if (phase === "spinning") return;
-    const cost = def.price * 10;
+    const cost = price * 10;
     if (balance < cost) {
-      setShake((s) => s + 1);
+      if (PREF_SHAKE) setShake((s) => s + 1);
       pushToast({ kind: "lose", title: "Yetersiz bakiye", sub: `×10 için ${fmtMoney(cost)} gerekli` });
       return;
     }
@@ -344,7 +363,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
     setPhase("reveal");
     const big = hits.filter((h) => h.skin.rarity === "covert" || h.skin.rarity === "rare");
     if (big.length) {
-      setBigFlash((f) => f + 1);
+      if (PREF_EFFECTS) setBigFlash((f) => f + 1);
       goldWin();
     } else {
       winSound(false);
@@ -441,13 +460,20 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
               </div>
 
               <div className="flex flex-wrap items-center justify-center gap-3">
+                {saleOn && !phase.includes("landed") && (
+                  <span className="flex h-9 items-center gap-1.5 rounded-xl border border-emerald-500/50 bg-emerald-500/15 px-3 text-[11px] font-black uppercase tracking-wider text-emerald-400">
+                    🔥 %{Math.round((1 - price / def.price) * 100)} İndirimli
+                  </span>
+                )}
                 <motion.button
                   key={shake}
                   onClick={startOpen}
                   className={cn(
                     "group flex h-13 items-center gap-3 rounded-xl px-8 font-display text-lg font-bold tracking-wide transition",
                     afford
-                      ? "bg-gradient-to-b from-brand-400 to-brand-600 text-ink-950 hover:brightness-110 hover:shadow-[0_10px_36px_-8px_rgba(249,142,29,0.7)]"
+                      ? saleOn
+                        ? "bg-gradient-to-b from-emerald-400 to-emerald-600 text-ink-950 hover:brightness-110 hover:shadow-[0_10px_36px_-8px_rgba(47,214,115,0.7)]"
+                        : "bg-gradient-to-b from-brand-400 to-brand-600 text-ink-950 hover:brightness-110 hover:shadow-[0_10px_36px_-8px_rgba(249,142,29,0.7)]"
                       : "cursor-not-allowed border border-lose/40 bg-lose/10 text-lose",
                     shake > 0 && !afford && "animate-shake"
                   )}
@@ -458,12 +484,13 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                       Kasayı Aç
                       <span className="flex items-center gap-1 rounded-lg bg-black/25 px-2.5 py-1 text-base">
                         <Coins className="h-4 w-4" />
-                        {fmtMoney(def.price)}
+                        {fmtMoney(price)}
+                        {saleOn && <s className="text-xs text-white/50 line-through">{fmtMoney(def.price)}</s>}
                       </span>
                     </>
                   ) : (
                     <>
-                      <AlertTriangle className="h-5 w-5" /> Yetersiz Bakiye — {fmtMoney(def.price)}
+                      <AlertTriangle className="h-5 w-5" /> Yetersiz Bakiye — {fmtMoney(price)}
                     </>
                   )}
                 </motion.button>
@@ -471,7 +498,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                 {/* ×10 toplu açılış */}
                 <button
                   onClick={startBatch}
-                  disabled={balance < def.price * 10}
+                  disabled={balance < price * 10}
                   className="flex h-[52px] items-center gap-2 rounded-xl border border-rar-classified/50 bg-rar-classified/10 px-5 font-display text-base font-bold tracking-wide text-rar-classified transition hover:bg-rar-classified/20 disabled:cursor-not-allowed disabled:opacity-35"
                   title="Aynı anda 10 kasa aç — sonuçları tek ekranda gör"
                 >
@@ -479,7 +506,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                     <Coins className="h-4 w-4" /> ×10
                   </span>
                   Toplu Aç
-                  <span className="text-xs font-semibold text-white/45">{fmtMoney(def.price * 10)}</span>
+                  <span className="text-xs font-semibold text-white/45">{fmtMoney(price * 10)}</span>
                 </button>
               </div>
               {!afford && (
@@ -788,7 +815,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                           /* kasayı anında yeniden aç */
                           requestAnimationFrame(() => startOpen());
                         }}
-                        disabled={balance < def.price}
+                        disabled={balance < price}
                         className="flex h-11 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 font-display text-sm font-bold text-ink-950 transition hover:brightness-110 disabled:opacity-40"
                       >
                         <RotateCcw className="h-4 w-4" strokeWidth={2.6} /> Tekrar Aç

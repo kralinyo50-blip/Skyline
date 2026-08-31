@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
   BadgeCheck,
+  BadgePercent,
   Banknote,
   Check,
   ChevronLeft,
@@ -11,18 +12,24 @@ import {
   CloudUpload,
   Clock,
   Coins,
+  Crown,
   Dices,
   Gift,
+  Medal,
   Megaphone,
   Minus,
   Package,
   PartyPopper,
+  Play,
   Plus,
   RefreshCcw,
+  RotateCcw,
   Search,
   Settings,
   ShieldCheck,
   Sparkles,
+  Store,
+  Tag,
   Unplug,
   UserRoundCheck,
   Users,
@@ -40,8 +47,9 @@ import {
   money,
 } from "../config";
 import { click, coinDing } from "../lib/audio";
-import { useGame, levelFromSpent } from "../store/Game";
+import { useGame, levelFromSpent, weeklyStats } from "../store/Game";
 import { SKIN_MAP, RARITY, type Skin } from "../data/skins";
+import { CASES } from "../data/cases";
 import { MAX_STICKERS, STICKERS } from "../data/stickers";
 import { WEARS, rollFloat, type WearKey } from "../data/wear";
 import { FloatBar } from "./WearUi";
@@ -150,6 +158,20 @@ export function AdminPanel() {
     moneyReset,
     resetAllMoney,
     startSkinRaffle,
+    /* yeni özellikler */
+    caseSale,
+    startCaseSale,
+    cancelCaseSale,
+    priceSettings,
+    setPriceSettings,
+    skinBasePrice,
+    weekWinner,
+    weekPin,
+    pinWeekWinner,
+    clearWeekPin,
+    adminListings,
+    adminCreateListing,
+    adminCancelListing,
   } = useGame();
 
   const [urlInput, setUrlInput] = useState(syncUrl ?? "");
@@ -206,6 +228,24 @@ export function AdminPanel() {
   const [resetReason, setResetReason] = useState("");
   const [resetTyped, setResetTyped] = useState("");
 
+  /* kasa indirimi etkinliği */
+  const [saleCaseSel, setSaleCaseSel] = useState<string[]>([]);
+  const [saleDiscount, setSaleDiscount] = useState("50");
+  const [saleMins, setSaleMins] = useState("60");
+  const [saleAll, setSaleAll] = useState(true);
+  /* skin fiyat yönetimi */
+  const [priceGlobal, setPriceGlobal] = useState(() => String((priceSettings?.global ?? 100) / 100 * 100));
+  const [priceRar, setPriceRar] = useState<Record<string, string>>({});
+  const [priceSkinId, setPriceSkinId] = useState("");
+  const [priceSkinVal, setPriceSkinVal] = useState("100");
+  /* admin pazar ilanı */
+  const [listSkinId, setListSkinId] = useState("");
+  const [listPrice, setListPrice] = useState("100");
+  const [listQty, setListQty] = useState("1");
+  const [listQuery, setListQuery] = useState("");
+  /* haftanın oyuncusu pin */
+  const [pinQuery, setPinQuery] = useState("");
+
   const skinResults = useMemo(() => {
     const qq = skinQuery.trim().toLowerCase();
     return Object.values(SKIN_MAP)
@@ -228,6 +268,38 @@ export function AdminPanel() {
     () => skinResults.slice(skinPage * SKIN_PAGE, (skinPage + 1) * SKIN_PAGE),
     [skinResults, skinPage]
   );
+
+  const saleActiveNow = !!caseSale && !caseSale.cancelled && caseSale.endsAt > Date.now();
+
+  /* fiyat yönetimi — uygulanmış %'ler */
+  const rarKeys = Object.keys(RARITY) as (keyof typeof RARITY)[];
+  const eff = (v: string) => Math.max(10, Math.min(1000, Math.round(Number(v.replace(/[^\d]/g, "")) || 100)));
+
+  /* admin ilan skin adayları */
+  const listingSkins = useMemo(() => {
+    const qq = listQuery.trim().toLowerCase();
+    return Object.values(SKIN_MAP)
+      .filter((s) => !s.sticker)
+      .filter((s) => !qq || s.name.toLowerCase().includes(qq) || s.weapon.toLowerCase().includes(qq) || s.id.includes(qq))
+      .sort((a, b) => RARITY[b.rarity].order - RARITY[a.rarity].order || a.name.localeCompare(b.name))
+      .slice(0, 12);
+  }, [listQuery]);
+
+  /* haftanın oyuncusu adayları */
+  const pinCandidates = useMemo(() => {
+    const qq = pinQuery.trim().toLowerCase();
+    return Object.values(allUsers)
+      .filter((u) => u.status === "approved" && !u.isAdmin)
+      .filter((u) => !qq || u.name.toLowerCase().includes(qq))
+      .map((u) => {
+        const w = weeklyStats(u);
+        const pub = u.pub?.week;
+        return { u, spent: pub?.spent ?? w.spent, opened: pub?.opened ?? w.opened };
+      })
+      .filter((x) => x.spent > 0 || x.opened > 0)
+      .sort((a, b) => b.spent - a.spent || b.opened - a.opened)
+      .slice(0, 12);
+  }, [allUsers, pinQuery]);
 
   /** onay modalını aç — doğrudan işlem yapılmaz */
   function requestAdjustment(key: string, name: string, direction: 1 | -1) {
@@ -577,6 +649,209 @@ export function AdminPanel() {
       {/* ---------------- ETKİNLİKLER ---------------- */}
       {sec === "events" && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {/* ============ KASA İNDİRİMİ ETKİNLİĞİ ============ */}
+          <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-b from-emerald-500/8 to-ink-900/70 p-5">
+            <div className="flex items-center gap-2">
+              <BadgePercent className="h-4 w-4 text-emerald-400" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Kasa İndirimi Etkinliği
+              </span>
+              {saleActiveNow ? (
+                <span className="ml-auto rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-400">
+                  Aktif
+                </span>
+              ) : (
+                <span className="ml-auto rounded-full bg-ink-600 px-2.5 py-1 text-[10px] font-black uppercase text-white/35">
+                  Kapalı
+                </span>
+              )}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+              Seçilen kasaların açılış fiyatı tüm sitenin <span className="font-bold text-emerald-400">etkinlik süresi boyunca düşer</span>.
+            </p>
+
+            {caseSale && !caseSale.cancelled && (
+              <div className="mt-3 rounded-xl border border-emerald-500/30 bg-ink-900/70 px-4 py-2.5 text-[11px] text-white/60">
+                <div className="font-bold text-emerald-400">
+                  %{caseSale.discount} indirim · {caseSale.caseIds.length} kasa ·{" "}
+                  {Math.max(0, Math.round((caseSale.endsAt - Date.now()) / 60000))} dk kaldı
+                </div>
+                <div className="mt-0.5 text-white/40">{caseSale.caseIds.slice(0, 6).join(", ")}...</div>
+              </div>
+            )}
+
+            {!saleActiveNow ? (
+              <>
+                <label className="mt-4 flex cursor-pointer items-center gap-2 text-[11px] font-bold text-white/60">
+                  <input
+                    type="checkbox"
+                    checked={saleAll}
+                    onChange={(e) => setSaleAll(e.target.checked)}
+                    className="h-4 w-4 accent-emerald-500"
+                  />
+                  Tüm kasalar
+                </label>
+                {!saleAll && (
+                  <div className="mt-2 flex max-h-36 flex-wrap gap-1.5 overflow-y-auto">
+                    {Object.values(CASES).map((c) => {
+                      const on = saleCaseSel.includes(c.id);
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() =>
+                            setSaleCaseSel((prev) => (on ? prev.filter((x) => x !== c.id) : [...prev, c.id]))
+                          }
+                          className={cn(
+                            "rounded-lg border px-2.5 py-1.5 text-[10px] font-bold transition",
+                            on
+                              ? "border-emerald-500/60 bg-emerald-500/15 text-emerald-300"
+                              : "border-line bg-ink-800 text-white/45 hover:text-white/70"
+                          )}
+                        >
+                          {c.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                      İndirim (%)
+                    </span>
+                    <input
+                      value={saleDiscount}
+                      onChange={(e) => setSaleDiscount(e.target.value.replace(/\D/g, ""))}
+                      inputMode="numeric"
+                      className="h-11 w-full rounded-xl border border-line bg-ink-900 px-3 font-display text-base font-bold text-white focus:border-emerald-500/60 focus:outline-none"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                      Süre (dakika)
+                    </span>
+                    <input
+                      value={saleMins}
+                      onChange={(e) => setSaleMins(e.target.value.replace(/\D/g, ""))}
+                      inputMode="numeric"
+                      className="h-11 w-full rounded-xl border border-line bg-ink-900 px-3 font-display text-base font-bold text-white focus:border-emerald-500/60 focus:outline-none"
+                    />
+                  </label>
+                </div>
+                <button
+                  onClick={() => {
+                    const ids = saleAll
+                      ? Object.keys(CASES)
+                      : saleCaseSel;
+                    const disc = Math.round(Number(saleDiscount) || 0);
+                    const mins = Math.round(Number(saleMins) || 0);
+                    if (!ids.length || disc < 5 || disc > 90 || mins < 1) {
+                      pushToast({ kind: "lose", title: "Geçersiz indirim", sub: "En az 1 kasa, %5–90 indirim, 1+ dakika" });
+                      return;
+                    }
+                    const res = startCaseSale(ids, disc, mins);
+                    if (res.ok) {
+                      pushToast({ kind: "money", title: "Kasa indirimi başladı", sub: `%${disc} · ${ids.length} kasa · ${mins} dk` });
+                      coinDing();
+                    } else pushToast({ kind: "lose", title: "İndirim başlatılamadı", sub: res.error });
+                  }}
+                  className="mt-3 flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110"
+                >
+                  <Play className="h-4 w-4" /> İndirimi Başlat
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => {
+                  if (window.confirm("Kasa indirimi şimdi sona ersin mi? Tüm cihazlara yayılır.")) cancelCaseSale();
+                }}
+                className="mt-3 flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-lose/40 bg-lose/10 font-display text-sm font-bold text-lose transition hover:bg-lose/20"
+              >
+                <X className="h-4 w-4" /> Etkinliği Şimdi Bitir
+              </button>
+            )}
+          </div>
+
+          {/* ============ HAFTANIN OYUNCUSU ============ */}
+          <div className="rounded-2xl border border-amber-400/30 bg-gradient-to-b from-amber-400/8 to-ink-900/70 p-5">
+            <div className="flex items-center gap-2">
+              <Medal className="h-4 w-4 text-amber-300" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Haftanın Oyuncusu
+              </span>
+              {weekPin && (
+                <span className="ml-auto rounded-full bg-amber-400/15 px-2.5 py-1 text-[10px] font-black uppercase text-amber-300">
+                  Sabitlendi
+                </span>
+              )}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+              Her Pazartesi otomatik yenilenir. İstatistiğe göre en çok harcayan oyuncu kazanır — admin istediğini sabitleyebilir.
+            </p>
+
+            <div className="mt-4 rounded-xl border border-amber-400/30 bg-ink-900/70 px-4 py-3">
+              {weekWinner ? (
+                <div className="flex items-center gap-3">
+                  <Head name={weekWinner.name} size={36} />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-display text-base font-black text-amber-300">{weekWinner.name}</div>
+                    <div className="text-[10px] text-white/40">
+                      {money(weekWinner.spent)} harcama · {weekWinner.opened} kasa
+                    </div>
+                  </div>
+                  <Crown className="h-5 w-5 shrink-0 text-amber-300" fill="currentColor" strokeWidth={0} />
+                </div>
+              ) : (
+                <div className="py-3 text-center text-[11px] text-white/35">Bu hafta henüz kazanan yok</div>
+              )}
+            </div>
+
+            <div className="mt-3">
+              <input
+                value={pinQuery}
+                onChange={(e) => setPinQuery(e.target.value)}
+                placeholder="Oyuncu ara ve sabitle…"
+                className="h-10 w-full rounded-xl border border-line bg-ink-900 px-3 text-xs text-white placeholder:text-white/25 focus:border-amber-400/60 focus:outline-none"
+              />
+              <div className="mt-2 flex max-h-36 flex-col gap-1.5 overflow-y-auto">
+                {pinCandidates.map(({ u, spent, opened }) => (
+                  <button
+                    key={u.key}
+                    onClick={() => {
+                      const res = pinWeekWinner(u.key);
+                      if (res.ok) coinDing();
+                      else pushToast({ kind: "lose", title: "Sabitlenemedi", sub: res.error });
+                    }}
+                    className={cn(
+                      "flex items-center gap-2.5 rounded-xl border px-3 py-2 text-left transition",
+                      weekPin?.key === u.key
+                        ? "border-amber-400/60 bg-amber-400/15"
+                        : "border-line bg-ink-800 hover:border-amber-400/40"
+                    )}
+                  >
+                    <Head name={u.name} size={28} />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-bold text-white/80">{u.name}</div>
+                      <div className="text-[9px] text-white/35">{money(spent)} · {opened} kasa</div>
+                    </div>
+                    {weekPin?.key === u.key && <Check className="h-4 w-4 shrink-0 text-amber-300" />}
+                  </button>
+                ))}
+                {pinCandidates.length === 0 && (
+                  <div className="py-3 text-center text-[10px] text-white/30">Eşleşen oyuncu yok</div>
+                )}
+              </div>
+              {weekPin && (
+                <button
+                  onClick={() => clearWeekPin()}
+                  className="mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-400/5 text-[11px] font-bold text-amber-300 transition hover:bg-amber-400/15"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Sabitlemeyi Kaldır (otomatik)
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* ============ OTOMATİK ÇEKİLİŞ ============ */}
           <div className="rounded-2xl border border-brand-500/30 bg-gradient-to-b from-brand-500/8 to-ink-900/70 p-5">
             <div className="flex items-center gap-2">
@@ -1044,6 +1319,281 @@ export function AdminPanel() {
       {/* ---------------- AYARLAR ---------------- */}
       {sec === "settings" && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {/* ============ SKİN FİYAT YÖNETİMİ ============ */}
+          <div className="rounded-2xl border border-brand-500/30 bg-gradient-to-b from-brand-500/8 to-ink-900/70 p-5 lg:col-span-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Tag className="h-4 w-4 text-brand-400" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Skin Fiyatları (Global Zam / İndirim)
+              </span>
+              <span className="ml-auto rounded-full bg-brand-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-brand-300">
+                {priceSettings ? `Son değişim: ${priceSettings.by}` : "Varsayılan (%100)"}
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+              %100 = normal. %150 = %50 zam, %50 = yarı fiyat. Çarpanlar{" "}
+              <span className="font-bold text-white/75">kasa değerleri, pazar ve envanter değerine anında yansır</span>, tüm cihazlara yayılır.
+            </p>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {/* global */}
+              <label className="block">
+                <span className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Global <span className="text-brand-300">%{eff(priceGlobal)}</span>
+                </span>
+                <input
+                  type="range"
+                  min={10}
+                  max={1000}
+                  value={eff(priceGlobal)}
+                  onChange={(e) => setPriceGlobal(e.target.value)}
+                  className="w-full accent-brand-500"
+                />
+                <div className="mt-1 flex items-center gap-1.5">
+                  <input
+                    value={priceGlobal}
+                    onChange={(e) => setPriceGlobal(e.target.value.replace(/\D/g, ""))}
+                    inputMode="numeric"
+                    className="h-9 w-full rounded-lg border border-line bg-ink-900 px-2.5 text-xs font-bold text-white focus:border-brand-500/60 focus:outline-none"
+                  />
+                  <button
+                    onClick={() => {
+                      const res = setPriceSettings({ global: eff(priceGlobal) });
+                      if (res.ok) {
+                        pushToast({ kind: "money", title: "Global fiyat güncellendi", sub: `%${eff(priceGlobal)}` });
+                        coinDing();
+                      } else pushToast({ kind: "lose", title: "Güncellenemedi", sub: res.error });
+                    }}
+                    className="flex h-9 shrink-0 items-center gap-1 rounded-lg bg-gradient-to-b from-brand-400 to-brand-600 px-3 text-[10px] font-black uppercase text-ink-950 transition hover:brightness-110"
+                  >
+                    <Check className="h-3.5 w-3.5" /> Uygula
+                  </button>
+                </div>
+              </label>
+
+              {/* rarity */}
+              <div className="rounded-xl border border-line bg-ink-900/70 p-3">
+                <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Nadirliğe Göre
+                </span>
+                <div className="grid grid-cols-1 gap-2">
+                  {rarKeys.map((r) => {
+                    const cur = String(priceSettings?.byRarity?.[r] ?? 100);
+                    const val = priceRar[r] ?? cur;
+                    return (
+                      <div key={r} className="flex items-center gap-2">
+                        <span className="w-20 truncate text-[10px] font-bold" style={{ color: RARITY[r].color }}>
+                          {RARITY[r].tr}
+                        </span>
+                        <input
+                          value={val}
+                          onChange={(e) => setPriceRar((p) => ({ ...p, [r]: e.target.value.replace(/\D/g, "") }))}
+                          inputMode="numeric"
+                          className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-ink-800 px-2 text-xs font-bold text-white focus:border-brand-500/60 focus:outline-none"
+                        />
+                        <button
+                          onClick={() => {
+                            const v = eff(val);
+                            const res = setPriceSettings({
+                              byRarity: { ...(priceSettings?.byRarity ?? {}), [r]: v },
+                            });
+                            if (res.ok) {
+                              pushToast({ kind: "money", title: `${RARITY[r].tr} fiyatı güncellendi`, sub: `%${v}` });
+                              coinDing();
+                            } else pushToast({ kind: "lose", title: "Güncellenemedi", sub: res.error });
+                          }}
+                          className="h-8 shrink-0 rounded-lg bg-brand-500/15 px-2 text-[9px] font-black uppercase text-brand-300 transition hover:bg-brand-500/30"
+                        >
+                          Set
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* skin bazlı */}
+              <div className="rounded-xl border border-line bg-ink-900/70 p-3">
+                <span className="mb-2 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Skin Bazlı
+                </span>
+                <select
+                  value={priceSkinId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setPriceSkinId(id);
+                    setPriceSkinVal(String(priceSettings?.bySkin?.[id] ?? 100));
+                  }}
+                  className="h-9 w-full rounded-lg border border-line bg-ink-900 px-2 text-xs font-bold text-white focus:border-brand-500/60 focus:outline-none"
+                >
+                  <option value="">Skin seç…</option>
+                  {Object.values(SKIN_MAP)
+                    .filter((s) => !s.sticker)
+                    .sort((a, b) => b.price - a.price || a.name.localeCompare(b.name))
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.weapon} | {s.name} — {money(skinBasePrice(s.id))}
+                      </option>
+                    ))}
+                </select>
+                {priceSkinId && (
+                  <>
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <input
+                        value={priceSkinVal}
+                        onChange={(e) => setPriceSkinVal(e.target.value.replace(/\D/g, ""))}
+                        inputMode="numeric"
+                        className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-ink-800 px-2.5 text-xs font-bold text-white focus:border-brand-500/60 focus:outline-none"
+                      />
+                      <button
+                        onClick={() => {
+                          const v = eff(priceSkinVal);
+                          const res = setPriceSettings({
+                            bySkin: { ...(priceSettings?.bySkin ?? {}), [priceSkinId]: v },
+                          });
+                          if (res.ok) {
+                            pushToast({ kind: "money", title: "Skin fiyatı güncellendi", sub: `%${v}` });
+                            coinDing();
+                          } else pushToast({ kind: "lose", title: "Güncellenemedi", sub: res.error });
+                        }}
+                        className="h-9 shrink-0 rounded-lg bg-brand-500/15 px-2.5 text-[9px] font-black uppercase text-brand-300 transition hover:bg-brand-500/30"
+                      >
+                        Set
+                      </button>
+                    </div>
+                    <div className="mt-2 text-[9px] text-white/35">
+                      Taban: {money(skinBasePrice(priceSkinId))} → Etkin:{" "}
+                      <span className="font-bold text-emerald-400">{money(skinBasePrice(priceSkinId))}</span>
+                    </div>
+                  </>
+                )}
+                <button
+                  onClick={() => {
+                    const res = setPriceSettings({ global: 100, byRarity: {}, bySkin: {} });
+                    if (res.ok) {
+                      setPriceGlobal("100");
+                      setPriceRar({});
+                      setPriceSkinVal("100");
+                      setPriceSkinId("");
+                      pushToast({ kind: "info", title: "Fiyatlar sıfırlandı", sub: "Tüm çarpanlar %100" });
+                      coinDing();
+                    }
+                  }}
+                  className="mt-3 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-line bg-ink-800 text-[10px] font-bold text-white/60 transition hover:bg-ink-700"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Tümünü Sıfırla
+                </button>
+              </div>
+
+              {/* admin ilanı */}
+              <div className="rounded-xl border border-line bg-ink-900/70 p-3">
+                <span className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  <Store className="h-3.5 w-3.5 text-brand-300" /> Admin Pazar İlanı
+                </span>
+                <input
+                  value={listQuery}
+                  onChange={(e) => setListQuery(e.target.value)}
+                  placeholder="Skin ara…"
+                  className="h-9 w-full rounded-lg border border-line bg-ink-900 px-2.5 text-xs text-white placeholder:text-white/25 focus:border-brand-500/60 focus:outline-none"
+                />
+                <div className="mt-2 flex max-h-28 flex-col gap-1 overflow-y-auto">
+                  {listingSkins.map((s) => (
+                    <button
+                      key={s.id}
+                      onClick={() => {
+                        setListSkinId(s.id);
+                        setListPrice(String(Math.max(1, Math.round(s.price))));
+                      }}
+                      className={cn(
+                        "flex items-center gap-2 rounded-lg border px-2 py-1.5 text-left transition",
+                        listSkinId === s.id
+                          ? "border-brand-500/60 bg-brand-500/15"
+                          : "border-line bg-ink-800 hover:border-brand-500/40"
+                      )}
+                    >
+                      <PickImg s={s} className="h-6 w-8 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-[10px] font-bold text-white/80">
+                          {s.weapon} | {s.name}
+                        </div>
+                        <div className="text-[8px] text-white/35">{money(s.price)}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {listSkinId && (
+                  <>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="mb-1 block text-[9px] font-bold uppercase text-white/35">Birim fiyat</span>
+                        <input
+                          value={listPrice}
+                          onChange={(e) => setListPrice(e.target.value.replace(/\D/g, ""))}
+                          inputMode="numeric"
+                          className="h-9 w-full rounded-lg border border-line bg-ink-800 px-2 text-xs font-bold text-white focus:border-brand-500/60 focus:outline-none"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="mb-1 block text-[9px] font-bold uppercase text-white/35">Adet (1–10)</span>
+                        <input
+                          value={listQty}
+                          onChange={(e) => setListQty(e.target.value.replace(/\D/g, ""))}
+                          inputMode="numeric"
+                          className="h-9 w-full rounded-lg border border-line bg-ink-800 px-2 text-xs font-bold text-white focus:border-brand-500/60 focus:outline-none"
+                        />
+                      </label>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const price = Math.max(1, Math.round(Number(listPrice) || 0));
+                        const qty = Math.max(1, Math.min(10, Math.round(Number(listQty) || 1)));
+                        const res = adminCreateListing(listSkinId, price, qty);
+                        if (res.ok) {
+                          pushToast({ kind: "money", title: "İlan yayınlandı", sub: `×${qty} — ${money(price)}/adet` });
+                          coinDing();
+                          setListSkinId("");
+                          setListQuery("");
+                        } else pushToast({ kind: "lose", title: "İlan oluşturulamadı", sub: res.error });
+                      }}
+                      className="mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-400 to-brand-600 text-[10px] font-black uppercase text-ink-950 transition hover:brightness-110"
+                    >
+                      <Store className="h-3.5 w-3.5" /> İlanı Yayınla
+                    </button>
+                  </>
+                )}
+                {adminListings.length > 0 && (
+                  <div className="mt-2 flex max-h-24 flex-col gap-1 overflow-y-auto">
+                    {adminListings.slice(0, 5).map((l) => {
+                      const s = SKIN_MAP[l.skinId];
+                      return (
+                        <div key={l.id} className="flex items-center gap-2 rounded-lg border border-line bg-ink-800 px-2 py-1.5">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-[9px] font-bold text-white/70">
+                              {s ? `${s.weapon} | ${s.name}` : l.skinId} ×{l.qty}
+                            </div>
+                            <div className="text-[8px] text-emerald-400">{money(l.unitPrice)}/adet</div>
+                          </div>
+                          {l.qty > 0 && (
+                            <button
+                              onClick={() => {
+                                const r = adminCancelListing(l.id);
+                                if (r.ok) pushToast({ kind: "info", title: "İlan kaldırıldı" });
+                              }}
+                              className="rounded-lg bg-lose/10 px-2 py-1 text-[8px] font-black uppercase text-lose transition hover:bg-lose/20"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ============ OTOMATİK KABUL ============ */}
           {(
             [
               {

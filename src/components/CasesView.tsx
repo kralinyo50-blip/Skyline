@@ -1,15 +1,19 @@
 import { useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { Flame, Package, PackageOpen, TrendingUp, Users } from "lucide-react";
-import { CASES, type CaseDef } from "../data/cases";
+import { CASES, casePrice, type CaseDef } from "../data/cases";
 import { fmtMoney, SKINS } from "../data/skins";
 import { click, hoverPop } from "../lib/audio";
 import { BRAND, CURRENCY } from "../config";
 import { useGame } from "../store/Game";
+import { cn } from "../utils/cn";
 import { CaseModal } from "./CaseReel";
 import { MissionsPanel } from "./MissionsPanel";
 
 function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
+  const { caseSale } = useGame();
+  const price = casePrice(def, caseSale);
+  const saleOn = price < def.price;
   return (
     <button
       onClick={() => {
@@ -25,6 +29,11 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
       {def.hot && (
         <span className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full bg-lose/90 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-lg">
           <Flame className="h-3 w-3" /> Popüler
+        </span>
+      )}
+      {saleOn && (
+        <span className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-ink-950 shadow-lg">
+          %{Math.round((1 - price / def.price) * 100)} İndirim
         </span>
       )}
       <span
@@ -56,8 +65,11 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 font-display text-lg font-black text-emerald-400">
-          {fmtMoney(def.price)}
+        <div className="flex items-center gap-1.5">
+          <span className={cn("font-display text-lg font-black", saleOn ? "text-emerald-400" : "text-brand-300")}>
+            {fmtMoney(price)}
+          </span>
+          {saleOn && <s className="text-xs font-bold text-white/35">{fmtMoney(def.price)}</s>}
         </div>
         <span className="flex items-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-400 to-brand-600 px-3.5 py-1.5 font-display text-sm font-bold text-ink-950 transition group-hover:brightness-110 group-hover:shadow-[0_6px_20px_-6px_rgba(249,142,29,0.8)]">
           <PackageOpen className="h-4 w-4" strokeWidth={2.4} />

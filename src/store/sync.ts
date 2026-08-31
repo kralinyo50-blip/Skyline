@@ -47,6 +47,15 @@ export interface CloudDoc {
   jackpot?: JackpotState | null;
   /** toplu bakiye sıfırlama — en yeni ts kazanır */
   moneyReset?: DB["moneyReset"];
+  /** global sohbet */
+  chat?: DB["chat"];
+  chatReset?: DB["chatReset"];
+  /** kasa indirimi — en yeni ts kazanır */
+  caseSale?: DB["caseSale"];
+  /** fiyat ayarları — en yeni ts kazanır */
+  priceSettings?: DB["priceSettings"];
+  /** haftanın oyuncusu admin sabitlemesi — en yeni ts kazanır */
+  weekPin?: DB["weekPin"];
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -80,6 +89,11 @@ export function toCloudDoc(db: DB): CloudDoc {
     /* jackpot: yerel görünüm bayrakları (me) kaldırılır — userId esas alınır */
     jackpot: db.jackpot ? jackpotToCloud(db.jackpot) : null,
     moneyReset: db.moneyReset ?? undefined,
+    chat: (db.chat ?? []).slice(-200),
+    chatReset: db.chatReset ?? undefined,
+    caseSale: db.caseSale ?? undefined,
+    priceSettings: db.priceSettings ?? undefined,
+    weekPin: db.weekPin ?? undefined,
   };
 }
 
@@ -128,6 +142,11 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     claimedMarket: local.claimedMarket ?? {},
     /* jackpot yerel tur durumu — bulut yalnızca meta paylaşır (durum korunur) */
     jackpot: local.jackpot,
+    chat: [...(local.chat ?? [])].slice(-200),
+    chatReset: local.chatReset,
+    caseSale: local.caseSale,
+    priceSettings: local.priceSettings,
+    weekPin: local.weekPin,
   };
 
   /* kullanıcılar */
@@ -218,6 +237,34 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
   if (cloud.moneyReset && (!out.moneyReset || cloud.moneyReset.ts > out.moneyReset.ts))
     out.moneyReset = cloud.moneyReset;
   else if (!cloud.moneyReset && !out.moneyReset) out.moneyReset = undefined;
+
+  /* global sohbet — id birleşimi + temizleme damgası */
+  if (cloud.chatReset && (!out.chatReset || cloud.chatReset.ts > out.chatReset.ts))
+    out.chatReset = cloud.chatReset;
+  else if (!cloud.chatReset && !out.chatReset) out.chatReset = undefined;
+  const since = out.chatReset?.ts ?? 0;
+  const cmap = new Map<string, NonNullable<DB["chat"]>[number]>();
+  [...(local.chat ?? []), ...(cloud.chat ?? [])]
+    .filter((m) => m && m.ts > since)
+    .forEach((m) => {
+      if (!cmap.has(m.id)) cmap.set(m.id, m);
+    });
+  out.chat = [...cmap.values()].sort((a, b) => a.ts - b.ts).slice(-200);
+
+  /* kasa indirimi — en yeni ts kazanır (iptal de taşınır) */
+  if (cloud.caseSale && (!out.caseSale || cloud.caseSale.ts > out.caseSale.ts))
+    out.caseSale = cloud.caseSale;
+  else if (!cloud.caseSale && !out.caseSale) out.caseSale = undefined;
+
+  /* fiyat ayarları — en yeni ts kazanır */
+  if (cloud.priceSettings && (!out.priceSettings || cloud.priceSettings.ts > out.priceSettings.ts))
+    out.priceSettings = cloud.priceSettings;
+  else if (!cloud.priceSettings && !out.priceSettings) out.priceSettings = undefined;
+
+  /* haftanın oyuncusu sabitlemesi — en yeni ts kazanır */
+  if (cloud.weekPin && (!out.weekPin || cloud.weekPin.ts > out.weekPin.ts))
+    out.weekPin = cloud.weekPin;
+  else if (!cloud.weekPin && !out.weekPin) out.weekPin = undefined;
 
   /* jackpot — herkese aynı pot, eksik senkron korumalı birleşim */
   out.jackpot = mergeJackpot(local.jackpot ?? null, cloud.jackpot ?? null, local.session);

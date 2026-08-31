@@ -304,3 +304,32 @@ export const SKIN_MAP: Record<string, Skin> = Object.fromEntries(
 );
 
 export const fmtMoney = money;
+
+/* ---------------- SKİN FİYAT YÖNETİMİ (admin) ---------------- */
+
+/* orijinal (çarpansız) fiyatlar — uygulama ilk kez çalıştığında kaydedilir */
+const ORIG_PRICES = new Map<string, number>();
+
+export interface PriceSettingsLike {
+  global?: number;
+  byRarity?: Partial<Record<RarityKey, number>>;
+  bySkin?: Record<string, number>;
+}
+
+/** Fiyat çarpanlarını SKIN_MAP'e uygula (100 = normal, 150 = +%50, 50 = yarı).
+ *  Herbir SKINS öğesi SKIN_MAP ile aynı referans olduğundan tüm ekranlar etkilenir. */
+export function applyPriceOverrides(ps?: PriceSettingsLike | null): void {
+  for (const id of Object.keys(SKIN_MAP)) {
+    const s = SKIN_MAP[id];
+    if (!ORIG_PRICES.has(id)) ORIG_PRICES.set(id, s.price);
+    const g = (ps?.global ?? 100) / 100;
+    const r = (ps?.byRarity?.[s.rarity] ?? 100) / 100;
+    const k = (ps?.bySkin?.[id] ?? 100) / 100;
+    s.price = Math.max(1200, Math.round((ORIG_PRICES.get(id) ?? s.price) * g * r * k));
+  }
+}
+
+/** Çarpansız taban fiyatı (admin panelinde referans gösterimi) */
+export function skinBasePrice(id: string): number {
+  return ORIG_PRICES.get(id) ?? SKIN_MAP[id]?.price ?? 0;
+}

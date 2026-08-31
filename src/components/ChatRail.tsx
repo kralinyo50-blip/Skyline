@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Crown, Medal, MessageSquare, Send, Trophy, Users } from "lucide-react";
+import { Crown, Medal, MessageSquare, Send, Trophy, Users, X } from "lucide-react";
 import { ADMIRATION_LINES, CELEBRITY_LINES, CELEBRITY_USERS, CHAT_LINES, COMMUNITY_USERS } from "../data/fakers";
 import { mcHead } from "../config";
 import { fmtMoney } from "../data/skins";
 import { pick, randInt, uid } from "../lib/rng";
 import { useGame } from "../store/Game";
+import { normKey } from "../store/db";
 import { cn } from "../utils/cn";
 
 interface ChatMsg {
@@ -15,6 +16,7 @@ interface ChatMsg {
   text: string;
   ts: number;
   me?: boolean;
+  admin?: boolean;
 }
 
 const AV_COLORS = ["#f98e1d", "#4b69ff", "#d32ce6", "#2fd673", "#53c8ff", "#eb4b4b", "#8847ff"];
@@ -62,7 +64,7 @@ interface LBRow {
 }
 
 export function ChatRail() {
-  const { userName, level, inventoryValue } = useGame();
+  const { userName, inventoryValue, chat, sendChat, isAdmin, clearChat } = useGame();
   const [mode, setMode] = useState<"chat" | "top">("chat");
   const [msgs, setMsgs] = useState<ChatMsg[]>(() =>
     Array.from({ length: 14 }, (_, i) => ({
@@ -119,16 +121,15 @@ export function ChatRail() {
   useEffect(() => {
     const el = scrollRef.current;
     if (el && mode === "chat") el.scrollTop = el.scrollHeight;
-  }, [msgs, mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msgs, chat, mode]);
 
   function send() {
     const text = input.trim();
     if (!text) return;
+    const res = sendChat(text);
+    if (!res.ok) return;
     setInput("");
-    setMsgs((prev) => [
-      ...prev.slice(-28),
-      { id: uid(), user: userName, level, text, ts: Date.now(), me: true },
-    ]);
     /* herkes hayran oldu — birkaç bot kısa aralıklarla yazsın */
     const fanCount = randInt(3, 6);
     for (let i = 0; i < fanCount; i++) {
@@ -144,6 +145,20 @@ export function ChatRail() {
       );
     }
   }
+
+  /* global (tüm cihazlar) + yerel bot mesajlarını birleştir */
+  const merged = useMemo(() => {
+    const global: ChatMsg[] = (chat ?? []).map((m) => ({
+      id: m.id,
+      user: m.user,
+      level: m.level,
+      text: m.text,
+      ts: m.ts,
+      admin: m.admin,
+      me: normKey(m.key) === normKey(userName),
+    }));
+    return [...msgs, ...global].sort((a, b) => a.ts - b.ts).slice(-60);
+  }, [msgs, chat, userName]);
 
   const myRank = useMemo(() => 187 + ((userName.length * 7) % 60), [userName]);
 
@@ -180,7 +195,7 @@ export function ChatRail() {
           </div>
 
           <div ref={scrollRef} className="tiny-scroll flex-1 space-y-2.5 overflow-y-auto p-2.5">
-            {msgs.map((m) => (
+            {merged.map((m) => (
               <div key={m.id} className={cn("flex gap-2", m.me && "flex-row-reverse")}>
                 <Avatar name={m.user} />
                 <div className={cn("min-w-0 flex-1", m.me && "text-right")}>
@@ -191,6 +206,11 @@ export function ChatRail() {
                     <span className="shrink-0 rounded bg-ink-600 px-1 text-[9px] font-bold text-white/40">
                       {m.level}
                     </span>
+                    {m.admin && (
+                      <span className="shrink-0 rounded bg-brand-500/25 px-1 text-[8px] font-black uppercase text-brand-300">
+                        Admin
+                      </span>
+                    )}
                   </div>
                   <p
                     className={cn(
@@ -206,6 +226,12 @@ export function ChatRail() {
           </div>
 
           <div className="flex items-center gap-1.5 border-t border-line p-2">
+            {(chat?.length ?? 0) > 0 && (
+              <span className="hidden shrink-0 items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-1 text-[8px] font-black uppercase text-emerald-400 sm:flex">
+                <span className="live-dot h-1 w-1 rounded-full bg-emerald-400" />
+                Global
+              </span>
+            )}
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -220,6 +246,17 @@ export function ChatRail() {
             >
               <Send className="h-4 w-4" />
             </button>
+            {isAdmin && (chat?.length ?? 0) > 0 && (
+              <button
+                onClick={() => {
+                  if (window.confirm("Tüm sohbeti temizle? Bu işlem tüm cihazlara yayılır.")) clearChat();
+                }}
+                title="Sohbeti temizle (admin)"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-lose/40 bg-lose/10 text-lose transition hover:bg-lose/20"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </>
       ) : (
