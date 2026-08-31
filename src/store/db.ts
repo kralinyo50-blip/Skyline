@@ -307,6 +307,8 @@ export interface EconomyConfig {
   durationMin: number;
   /** otomatik dalga yönü: up / down / mix (karışık) */
   direction?: "up" | "down" | "mix";
+  /** bitince: temp = normale dön, perm = yeni seviye kalıcı kalsın */
+  after?: "temp" | "perm";
   /** son otomatik dalga zamanı */
   lastAt?: number;
   ts: number;

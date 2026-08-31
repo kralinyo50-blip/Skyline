@@ -322,6 +322,7 @@ export function AdminPanel() {
       durationMin: next.dur,
       /* otomatik açıksa otomatik yönü, kapalıysa manuel yönü sakla */
       direction: next.auto ? next.autoDir : next.dir,
+      after: next.after,
     });
   };
 
@@ -345,7 +346,7 @@ export function AdminPanel() {
       strong: bestStrong,
       rareLvl: bestRare,
       dur: economyConfig.durationMin,
-      after: "temp" as "temp" | "perm",
+      after: (economyConfig.after === "perm" ? "perm" : "temp") as "temp" | "perm",
       auto: economyConfig.enabled,
       freq: economyConfig.intervalMin > 0 ? economyConfig.intervalMin : 60,
       autoDir: (economyConfig.direction === "mix" ? "mix" : economyConfig.direction === "down" ? "down" : "up") as "up" | "down" | "mix",

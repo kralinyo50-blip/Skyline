@@ -457,7 +457,7 @@ interface GameState {
   ) => { ok: boolean; error?: string };
   cancelEconomyWave: () => void;
   setEconomyConfig: (
-    p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin" | "direction">>
+    p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin" | "direction" | "after">>
   ) => { ok: boolean; error?: string };
 
   /* haftanın oyuncusu */
@@ -2412,7 +2412,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   }, [mutate, pushToast, foldWaveIntoPrices]);
 
   const setEconomyConfig = useCallback(
-    (p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin" | "direction">>): { ok: boolean; error?: string } => {
+    (p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin" | "direction" | "after">>): { ok: boolean; error?: string } => {
       const me = dbRef.current.users[dbRef.current.session ?? ""];
       if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
       const clean = (v: number, min: number, max: number, def: number) =>
@@ -2428,6 +2428,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           rareBoost: p.rareBoost !== undefined ? clean(p.rareBoost, 0, 1000, 150) : cur?.rareBoost ?? 150,
           durationMin: p.durationMin !== undefined ? clean(p.durationMin, 1, 1440, 30) : cur?.durationMin ?? 30,
           direction: p.direction ?? cur?.direction ?? "up",
+          after: p.after ?? cur?.after ?? "temp",
           lastAt: cur?.lastAt,
         };
       });
