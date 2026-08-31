@@ -149,8 +149,8 @@ interface BatchHit {
 }
 
 export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void }) {
-  const { balance, credit, addItem, pushToast, openCase, caseSale, priceSettings, priceVersion, customCases, vipSpent } = useGame();
-  const price = applyVipCaseDisc(casePrice(def, caseSale, priceSettings), vipSpent);
+  const { balance, credit, addItem, pushToast, openCase, caseSale, priceSettings, priceVersion, customCases, vipLevel } = useGame();
+  const price = applyVipCaseDisc(casePrice(def, caseSale, priceSettings), vipLevel);
   /* özel/sınırlı kasa: stok kadar toplu açılabilir (×10 bile olsa) */
   const limitedStock =
     def.limited || def.id.startsWith("custom-")

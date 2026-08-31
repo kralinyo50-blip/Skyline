@@ -34,6 +34,7 @@ import {
   money,
   ADMIN_NAME,
   QUICK_SELL_RATE,
+  MARKET_FEE,
   REFERRAL_LEVEL,
   REFERRAL_BONUS,
   PITY_GUARANTEE,
@@ -42,9 +43,11 @@ import {
   RAFFLE_PRIZE,
   ADMIN_ADJUST_MAX,
   ADMIN_ADJUST_DAILY,
-  vipNextTier,
-  vipTierOf,
+  vipLevelEntry,
+  vipNextLevel,
+  vipTierOfLevel,
   applyVipCaseDisc,
+  type VipLevel,
   type VipTier,
   JACKPOT_ROUND_MS,
   JACKPOT_MAX_ENTRIES,
@@ -401,12 +404,13 @@ interface GameState {
   autoSettings: AutoSettings;
   setAutoApproval: (p: Partial<Pick<AutoSettings, "autoApproveUsers" | "autoApproveDeposits">>) => void;
 
-  /* VIP SINIFLARI — harcamaya göre (Bakır → Netherite) */
+  /* VIP SINIFLARI — para ile satın alınır (Bakır I → Netherite IV) */
+  vipLevel: number;
   vipTier: VipTier;
-  vipNext: VipTier | null;
-  vipSpent: number;
+  vipNext: VipLevel | null;
   vipActive: boolean;
-  /** kayıp bahis üzerinden cashback döndürür (sınıf yoksa 0) */
+  buyVipLevel: (level: number) => { ok: boolean; error?: string };
+  /** kayıp bahis üzerinden cashback döndürür (VIP yoksa 0) */
   vipCashback: (lostAmount: number) => number;
 
   /* profil vitrini */
@@ -1348,9 +1352,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         l.copies = l.copies ? l.copies.slice(buyQty) : [];
       }
       l.ts = Date.now();
-      /* pazar komisyonu — satıcının VIP sınıfına göre */
+      /* pazar komisyonu — satıcının VIP kademesine göre */
       const sellerAcc = fresh.users[l.sellerKey];
-      const net = Math.round(total * (1 - vipTierOf(sellerAcc?.stats.spent ?? 0).fee));
+      const sellerFee = vipLevelEntry(sellerAcc?.vipLevel ?? 0)?.fee ?? MARKET_FEE;
+      const net = Math.round(total * (1 - sellerFee));
       const pay: MarketPayment = {
         id: uid(),
         listingId: l.id,
@@ -1867,7 +1872,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     (def: CaseDef): { skin: import("../data/skins").Skin; seed: string; nonce: number; forced: boolean; ok: boolean } => {
       const fresh = loadDB();
       const me = currentUser(fresh);
-      const price = applyVipCaseDisc(casePrice(def, fresh.caseSale ?? null, fresh.priceSettings ?? null), me?.stats.spent ?? 0);
+      const price = applyVipCaseDisc(casePrice(def, fresh.caseSale ?? null, fresh.priceSettings ?? null), me?.vipLevel ?? 0);
       if (!me || me.balance < price) {
         pushToastSafe.current({
           kind: "lose",
@@ -2818,7 +2823,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const qt = Math.max(1, l.qty ?? 1);
         /* botlar paketi bazen komple, bazen parça parça alır */
         const buyQty = qt > 1 && Math.random() < 0.4 ? qt : 1;
-        const net = Math.round(bulkTotal(l.price, buyQty) * (1 - vipTierOf(me.stats.spent ?? 0).fee));
+        const sellerFee = vipLevelEntry(me.vipLevel ?? 0)?.fee ?? MARKET_FEE;
+        const net = Math.round(bulkTotal(l.price, buyQty) * (1 - sellerFee));
         me.balance = Math.round(me.balance + net);
         sold.push({ skin: SKIN_MAP[l.skinId] ?? null, net, qty: buyQty });
         /* aynı ilanın dükkandaki kopyası da güncellensin */
@@ -2908,9 +2914,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     if (user?.lastDaily && nowTs - user.lastDaily < DAILY_COOLDOWN) return null;
     const r = Math.random();
     let amount = Math.round((4 + r * r * 14) * SCALE);
-    /* VIP sınıfı çarpanı — harcamaya göre belirlenir, süresi yok */
-    const tier = vipTierOf(user?.stats.spent ?? 0);
-    if (tier.id !== "none") amount = Math.round(amount * tier.dailyMult);
+    /* VIP kademe çarpanı — satın alınan seviyeye göre */
+    const lv = vipLevelEntry(user?.vipLevel ?? 0);
+    if (lv) amount = Math.round(amount * lv.dailyMult);
     updateMe((me) => {
       me.lastDaily = nowTs;
       me.balance = Math.round(me.balance + amount);
@@ -2918,13 +2924,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     pushToast({
       kind: "money",
       title: `Günlük ödül: ${money(amount)}`,
-      sub: tier.id !== "none"
-        ? `${tier.icon} ${tier.label} çarpanı ×${tier.dailyMult} uygulandı`
+      sub: lv
+        ? `${lv.label} çarpanı ×${lv.dailyMult} uygulandı`
         : "Yarın yeni ödül seni bekliyor",
     });
     coinDing();
     return amount;
-  }, [user?.lastDaily, user?.stats.spent, updateMe, pushToast]);
+  }, [user?.lastDaily, user?.vipLevel, updateMe, pushToast]);
 
   /* ---------------- VIP SINIFLARI & CASHBACK ---------------- */
 
@@ -2949,32 +2955,45 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* harcama arttıkça sınıf atlamayı kutla (tek seferlik toast) */
-  const lastVipTierRef = useRef<string | null>(null);
-  useEffect(() => {
-    const tier = vipTierOf(user?.stats.spent ?? 0);
-    const prev = lastVipTierRef.current;
-    lastVipTierRef.current = tier.id;
-    if (prev && tier.id !== "none" && prev !== tier.id) {
-      pushToastSafe.current({
-        kind: "win",
-        title: `VIP sınıfı yükseldi: ${tier.icon} ${tier.label}`,
-        sub: `${money(tier.minSpent)} harcamaya ulaştın — yeni avantajlar aktif`,
-      });
+  /** VIP kademesi satın al — sıralı: önceki kademeye sahip olmak gerekir */
+  const buyVipLevel = useCallback(
+    (level: number): { ok: boolean; error?: string } => {
+      const want = vipLevelEntry(level);
+      if (!want) return { ok: false, error: "Geçersiz VIP kademesi" };
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me) return { ok: false, error: "Oturum bulunamadı" };
+      const owned = me.vipLevel ?? 0;
+      if (level <= owned) return { ok: false, error: "Bu kademe zaten sende — sıradakini al" };
+      if (level !== owned + 1) return { ok: false, error: `Önce ${vipLevelEntry(level - 1)?.label ?? ""} almalısın` };
+      if (me.balance < want.price) {
+        return { ok: false, error: `Yetersiz bakiye — ${money(want.price)} gerekli` };
+      }
+      me.balance = Math.round(me.balance - want.price);
+      me.vipLevel = level;
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
       coinDing();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.stats.spent]);
+      pushToast({
+        kind: "win",
+        title: `VIP: ${want.label} alındı! 🎉`,
+        sub: `Günlük ×${want.dailyMult} · cashback %${Math.round(want.cashback * 100)} · kasa %${want.caseDisc} indirim`,
+      });
+      return { ok: true };
+    },
+    [pushToast]
+  );
 
-  /** Kaybedilen bahis üzerinden VIP sınıfı cashback döndürür */
+  /** Kaybedilen bahis üzerinden VIP cashback döndürür */
   const vipCashback = useCallback(
     (lostAmount: number): number => {
       if (lostAmount <= 0) return 0;
       const fresh = loadDB();
       const me = currentUser(fresh);
       if (!me) return 0;
-      const tier = vipTierOf(me.stats.spent ?? 0);
-      const back = Math.round(lostAmount * tier.cashback);
+      const lv = vipLevelEntry(me.vipLevel ?? 0);
+      const back = Math.round(lostAmount * (lv?.cashback ?? 0));
       if (back <= 0) return 0;
       me.balance = Math.round(me.balance + back);
       saveDB(fresh);
@@ -2983,7 +3002,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       pushToast({
         kind: "money",
         title: `Cashback: +${money(back)} 💸`,
-        sub: `${tier.icon} ${tier.label} — kaybedilen ${money(lostAmount)} bahsinin %${Math.round(tier.cashback * 100)}'i iade edildi`,
+        sub: `${lv?.label ?? "VIP"} — kaybedilen ${money(lostAmount)} bahsinin %${Math.round((lv?.cashback ?? 0) * 100)}'i iade edildi`,
       });
       return back;
     },
@@ -3796,7 +3815,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           opened: me.stats.opened,
           invCount: me.inventory.length,
           level: levelFromSpent(me.stats.spent),
-          vip: vipTierOf(me.stats.spent ?? 0).id !== "none",
+          vip: (me.vipLevel ?? 0) > 0,
+          vipLevel: me.vipLevel ?? 0,
           showcase: (me.showcase ?? [])
             .map((u) => me.inventory.find((i) => i.uid === u))
             .filter((i): i is InvItem => !!i)
@@ -4289,10 +4309,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setAutoApproval,
 
     /* VIP SINIFLARI */
-    vipSpent: user?.stats.spent ?? 0,
-    vipTier: vipTierOf(user?.stats.spent ?? 0),
-    vipNext: vipNextTier(user?.stats.spent ?? 0),
-    vipActive: vipTierOf(user?.stats.spent ?? 0).id !== "none",
+    vipLevel: user?.vipLevel ?? 0,
+    vipTier: vipTierOfLevel(user?.vipLevel ?? 0),
+    vipNext: vipNextLevel(user?.vipLevel ?? 0),
+    vipActive: (user?.vipLevel ?? 0) > 0,
+    buyVipLevel,
     vipCashback,
 
     /* profil vitrini */

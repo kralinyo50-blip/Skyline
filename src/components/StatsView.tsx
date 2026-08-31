@@ -8,7 +8,7 @@ import {
   Trophy,
   X,
 } from "lucide-react";
-import { money } from "../config";
+import { money, vipLevelEntry } from "../config";
 import { CASE_MAP } from "../data/cases";
 import { itemValue } from "../data/items";
 import { RARITY, SKIN_MAP } from "../data/skins";
@@ -130,7 +130,7 @@ function VerifyModal({
 
 /* ---------------- PROFİL / İSTATİSTİK ---------------- */
 export function StatsView() {
-  const { rollLogs, achievements, unlockedAch, showcase, toggleShowcase, vipActive, vipTier } = useGame();
+  const { rollLogs, achievements, unlockedAch, showcase, toggleShowcase, vipActive, vipTier, vipLevel } = useGame();
   const [verify, setVerify] = useState<{ seed: string; nonce: number; caseId: string; result: string } | null>(null);
   const [showAll, setShowAll] = useState(false);
 
@@ -186,7 +186,7 @@ export function StatsView() {
                 className="ml-1 rounded-full px-2 py-0.5 font-black uppercase"
                 style={{ background: `${vipTier.color}22`, color: vipTier.color }}
               >
-                {vipTier.icon} {vipTier.label}
+                {vipTier.icon} {vipTier.label} {vipLevelEntry(vipLevel)?.roman ?? ""}
               </span>
             )}
           </span>

@@ -28,6 +28,8 @@ export interface PubProfile {
   bestDrop?: number;
   /** VIP rozeti */
   vip?: boolean;
+  /** VIP seviyesi (0-24) — topluluk rozeti için */
+  vipLevel?: number;
   /** profil vitrini — seçili eşyaların skin id'leri */
   showcase?: string[];
   /** haftalık istatistik (haftanın başından beri) — haftanın oyuncusu için */
@@ -154,10 +156,12 @@ export interface Account {
   pity?: Record<string, number>;
   /** kazanılan başarım id'leri */
   ach?: string[];
-  /** VIP üyeliği — bitiş zamanı */
+  /** VIP üyeliği — bitiş zamanı (eski sistem — sıfırlanır) */
   vipUntil?: number;
-  /** VIP paket id'si (sadece görüntü) */
+  /** VIP paket id'si (eski sistem — sıfırlanır) */
   vipPlan?: string;
+  /** VIP seviyesi (0-24) — para ile satın alınan kademe */
+  vipLevel?: number;
   /** profil vitrini — seçilen envanter uid'leri (en fazla 3) */
   showcase?: string[];
   /** jackpot kazançlarının ödendiği tur numaraları (çift ödeme koruması) */

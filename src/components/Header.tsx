@@ -30,7 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { useGame, DAILY_COOLDOWN, type TabKey } from "../store/Game";
-import { ADMIN_NAME, BRAND, CURRENCY, SCALE, VIP_TIERS, mcHead, money } from "../config";
+import { ADMIN_NAME, BRAND, CURRENCY, SCALE, VIP_LEVELS, VIP_TIERS, vipLevelEntry, mcHead, money } from "../config";
 import { DEFAULT_DEPOSIT_PACKS } from "../store/db";
 import { CASES } from "../data/cases";
 import { SKIN_MAP } from "../data/skins";
@@ -80,7 +80,7 @@ export function Header() {
     requestDeposit, requestWithdraw, heldBalance, myDeposits, pendingDepositList, pendingUserList,
     depositPacks, redeemCoupon, couponBonus, respondDepositOffer,
     syncCode, setSyncCode, syncStatus,
-    vipTier, vipNext, vipSpent, vipActive,
+    vipLevel, vipTier, vipNext, vipActive, buyVipLevel,
   } = useGame();
 
   const [mode, setMode] = useState<"deposit" | "withdraw">("deposit");
@@ -107,10 +107,6 @@ export function Header() {
   const [claimed, setClaimed] = useState<number | null>(null);
   const [referralOpen, setReferralOpen] = useState(false);
   const [vipOpen, setVipOpen] = useState(false);
-
-  const vipProgress = vipNext
-    ? Math.min(100, Math.round((vipSpent / vipNext.minSpent) * 100))
-    : 100;
 
   const dailyReady = !lastDaily || Date.now() - lastDaily >= DAILY_COOLDOWN;
   const dailyLeftMs = lastDaily ? Math.max(0, lastDaily + DAILY_COOLDOWN - Date.now()) : 0;
@@ -265,10 +261,10 @@ export function Header() {
                   ? "border-rar-rare/60 bg-gradient-to-b from-rar-rare/25 to-brand-600/20 text-rar-rare shadow-[0_0_16px_-4px_rgba(228,174,57,0.5)]"
                   : "border-line bg-ink-800 text-white/40 hover:text-rar-rare"
               )}
-              title={vipActive ? `VIP sınıfı: ${vipTier.label}` : "Harcadıkça VIP sınıfı yükselir"}
+              title={vipActive ? `VIP seviyen ${vipLevel}/24 — ${vipTier.label}` : "VIP kademelerini satın al"}
             >
               <Crown className="h-4 w-4" />
-              <span className="hidden sm:inline">{vipActive ? vipTier.label : "VIP"}</span>
+              <span className="hidden sm:inline">{vipActive ? `${vipTier.label} ${vipLevelEntry(vipLevel)?.roman ?? ""}` : "VIP"}</span>
               {vipActive && (
                 <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-ping rounded-full" style={{ background: vipTier.color }} />
               )}
@@ -1134,7 +1130,7 @@ export function Header() {
               </div>
 
               <div className="p-5">
-                {/* aktif sınıf */}
+                {/* aktif seviye */}
                 <div
                   className="mb-4 flex items-center gap-3 rounded-xl border px-4 py-3"
                   style={{ borderColor: `${vipTier.color}55`, background: `${vipTier.color}0d` }}
@@ -1147,88 +1143,154 @@ export function Header() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="font-display text-sm font-black" style={{ color: vipTier.color }}>
-                      {vipActive ? `VIP Sınıfın: ${vipTier.label}` : "Henüz VIP sınıfın yok"}
+                      {vipActive
+                        ? `VIP Seviyen ${vipLevel}/24 · ${vipTier.label} ${vipLevelEntry(vipLevel)?.roman ?? ""}`
+                        : "Henüz VIP seviyen yok"}
                     </div>
                     <div className="text-[11px] text-white/45">
-                      Toplam harcama: <span className="font-bold text-white/70">{money(vipSpent)}</span>
                       {vipNext ? (
                         <>
-                          {" "}· bir sonraki sınıf <span className="font-bold text-white/70">{vipNext.label}</span> için{" "}
-                          <span className="font-bold text-white/70">{money(vipNext.minSpent)}</span> gerek
+                          Sıradaki kademe: <span className="font-bold text-white/70">{vipNext.label}</span> —{" "}
+                          <span className="font-bold text-white/70">{money(vipNext.price)}</span>{" "}
+                          <button
+                            onClick={() => {
+                              const r = buyVipLevel(vipLevel + 1);
+                              if (!r.ok && r.error)
+                                pushToast({ kind: "lose", title: "VIP", sub: r.error });
+                            }}
+                            className="ml-1 rounded bg-rar-rare px-1.5 py-0.5 text-[9px] font-black uppercase text-ink-950 transition hover:brightness-110"
+                          >
+                            Al
+                          </button>
                         </>
                       ) : (
-                        " · en üst sınıftasın 👑"
+                        "Tüm kademelere sahipsin 👑"
                       )}
                     </div>
                   </div>
                 </div>
 
                 {/* ilerleme */}
-                {vipNext && (
-                  <div className="mb-4">
-                    <div className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-white/40">
-                      <span>{vipTier.icon} {vipTier.label}</span>
-                      <span>{vipNext.icon} {vipNext.label} · %{vipProgress}</span>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-ink-600">
-                      <div
-                        className="h-full rounded-full transition-all"
-                        style={{ width: `${vipProgress}%`, background: `linear-gradient(90deg, ${vipTier.color}, ${vipNext.color})` }}
-                      />
-                    </div>
+                <div className="mb-4">
+                  <div className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-white/40">
+                    <span>{vipTier.icon} Kademe {vipLevel}/24</span>
+                    <span>{vipNext ? `sıradaki: ${vipNext.label}` : "maksimum 🏆"}</span>
                   </div>
-                )}
+                  <div className="h-2 overflow-hidden rounded-full bg-ink-600">
+                    <motion.div
+                      className="h-full rounded-full"
+                      animate={{ width: `${Math.min(100, (vipLevel / VIP_LEVELS.length) * 100)}%` }}
+                      transition={{ type: "spring", stiffness: 120, damping: 20 }}
+                      style={{
+                        background: `linear-gradient(90deg, ${vipTier.color}, ${VIP_TIERS.find((t) => t.id === vipNext?.tier)?.color ?? vipTier.color})`,
+                      }}
+                    />
+                  </div>
+                </div>
 
-                {/* sınıflar */}
-                <div className="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
-                  {VIP_TIERS.filter((t) => t.id !== "none").map((t) => {
-                    const reached = vipSpent >= t.minSpent;
-                    const isCurrent = vipTier.id === t.id;
+                {/* sınıf bölümleri — her sınıfta 4 kademe */}
+                <div className="space-y-3">
+                  {VIP_TIERS.filter((t) => t.id !== "none").map((tier) => {
+                    const levels = VIP_LEVELS.filter((l) => l.tier === tier.id);
+                    const firstIdx = VIP_LEVELS.indexOf(levels[0]);
+                    const tierOwned = vipLevel >= firstIdx + 4;
                     return (
                       <div
-                        key={t.id}
+                        key={tier.id}
                         className={cn(
-                          "relative flex flex-col rounded-xl border p-3.5 transition",
-                          isCurrent
-                            ? "border-rar-rare/70 bg-rar-rare/10"
-                            : reached
-                              ? "border-emerald-500/40 bg-emerald-500/5"
-                              : "border-line bg-ink-900 hover:border-white/20"
+                          "overflow-hidden rounded-xl border",
+                          tierOwned ? "border-rar-rare/50 bg-ink-900" : "border-line bg-ink-900"
                         )}
                       >
-                        {isCurrent && (
-                          <span className="absolute -top-2 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-rar-rare px-2 py-px text-[9px] font-black uppercase text-ink-950">
-                            Sınıfın
-                          </span>
-                        )}
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl">{t.icon}</span>
+                        <div className="flex items-center gap-2 px-3.5 py-2.5" style={{ background: `${tier.color}14` }}>
+                          <span className="text-xl">{tier.icon}</span>
                           <div className="min-w-0 flex-1">
-                            <div className="font-display text-sm font-black uppercase tracking-wider" style={{ color: t.color }}>
-                              {t.label}
+                            <div className="font-display text-sm font-black uppercase tracking-wider" style={{ color: tier.color }}>
+                              {tier.label}
                             </div>
-                            <div className="text-[9px] font-bold uppercase text-white/35">
-                              {money(t.minSpent)} harcama
-                            </div>
+                            <div className="text-[9px] font-bold uppercase text-white/35">4 kademe · para ile satın alınır</div>
                           </div>
-                          {reached && <span className="text-[9px] font-black uppercase text-emerald-400">✓</span>}
+                          {tierOwned && (
+                            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-400">
+                              Bölüm tamam ✓
+                            </span>
+                          )}
                         </div>
-                        <ul className="mt-2.5 flex flex-col gap-1 text-[10px] text-white/55">
-                          <li>🎁 Günlük ödül ×{t.dailyMult}</li>
-                          <li>💸 Kayıpta %{Math.round(t.cashback * 100)} cashback</li>
-                          <li>🏪 Pazar komisyonu %{Math.round(t.fee * 100)}</li>
-                          <li>🎰 Kasa açılışında %{t.caseDisc} indirim</li>
-                        </ul>
+                        <div className="grid gap-px bg-line/60">
+                          {levels.map((lv, k) => {
+                            const idx = firstIdx + k;
+                            const owned = vipLevel > idx;
+                            const current = vipLevel === idx + 1;
+                            const next = vipLevel === idx;
+                            return (
+                              <div
+                                key={lv.id}
+                                className={cn(
+                                  "flex flex-col gap-2 px-3.5 py-2.5 sm:flex-row sm:items-center",
+                                  current ? "bg-rar-rare/10" : owned ? "bg-emerald-500/[0.04]" : "bg-ink-900"
+                                )}
+                              >
+                                <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                                  <span
+                                    className={cn(
+                                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-black",
+                                      owned
+                                        ? "bg-emerald-500/20 text-emerald-400"
+                                        : current
+                                          ? "bg-rar-rare/25 text-rar-rare"
+                                          : "bg-ink-700 text-white/40"
+                                    )}
+                                  >
+                                    {owned ? "✓" : lv.roman}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <div className={cn("font-display text-xs font-black", owned ? "text-white/80" : current ? "text-rar-rare" : "text-white/70")}>
+                                      {lv.label}
+                                      {current && <span className="ml-1.5 text-[9px] font-black uppercase text-rar-rare">aktif</span>}
+                                    </div>
+                                    <div className="text-[9.5px] text-white/35">
+                                      🎁 ×{lv.dailyMult} · 💸 %{Math.round(lv.cashback * 100)} · 🏪 %{Math.round(lv.fee * 100)} · 🎰 %{lv.caseDisc}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex shrink-0 items-center justify-end gap-2">
+                                  <span className="text-[10px] font-bold text-white/45">{money(lv.price)}</span>
+                                  {owned ? (
+                                    <span className="pointer-events-none rounded-lg border border-emerald-500/30 px-2.5 py-1.5 text-[10px] font-black uppercase text-emerald-400">
+                                      Sahip
+                                    </span>
+                                  ) : next ? (
+                                    <button
+                                      onClick={() => {
+                                        const r = buyVipLevel(idx + 1);
+                                        if (!r.ok && r.error)
+                                          pushToast({ kind: "lose", title: "VIP", sub: r.error });
+                                      }}
+                                      className="rounded-lg bg-gradient-to-b from-rar-rare to-brand-600 px-3 py-1.5 text-[11px] font-black uppercase text-ink-950 transition hover:brightness-110 active:scale-95"
+                                    >
+                                      Satın Al
+                                    </button>
+                                  ) : (
+                                    <span className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-black uppercase text-white/25">
+                                      🔒 Kilitli
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     );
                   })}
                 </div>
 
                 <p className="mt-4 rounded-lg border border-line bg-ink-900 px-3 py-2.5 text-[10px] leading-relaxed text-white/35">
-                  VIP sınıfı <span className="font-bold text-white/60">toplam harcamana</span> göre otomatik
-                  belirlenir — süresi yok, satın alma yok. Harcadıkça yükselirsin:{" "}
-                  {VIP_TIERS.filter((t) => t.id !== "none").map((t) => t.label).join(" → ")}. Cashback,
-                  kaybettiğin her oyun bahsinde anında geri ödenir.
+                  VIP kademeleri <span className="font-bold text-white/60">bakiyenden para düşerek</span> sırayla
+                  satın alınır — önceki kademeye sahip olmadan sonrakini alamazsın. Toplam 6 sınıf × 4 kademe ={" "}
+                  <span className="font-bold text-white/60">24 seviye</span>:{" "}
+                  {VIP_TIERS.filter((t) => t.id !== "none").map((t) => t.label).join(" → ")}. Kademe arttıkça
+                  günlük ödül çarpanı, cashback, pazar komisyonu avantajı ve kasa indirimi artar.
                 </p>
               </div>
             </motion.div>

@@ -11,7 +11,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { ADMIN_NAME, mcHead, money, vipTierOf } from "../config";
+import { ADMIN_NAME, mcHead, money, vipLevelEntry, vipTierOfLevel } from "../config";
 import { click, coinDing } from "../lib/audio";
 import { SKIN_MAP } from "../data/skins";
 import { useGame, levelFromSpent } from "../store/Game";
@@ -353,13 +353,14 @@ export function CommunityView() {
                       </span>
                     )}
                     {(() => {
-                      const t = vipTierOf(u.pub?.spent ?? u.stats.spent);
-                      return t.id !== "none" ? (
+                      const lv = vipLevelEntry(u.pub?.vipLevel ?? 0);
+                      const t = vipTierOfLevel(u.pub?.vipLevel ?? 0);
+                      return lv ? (
                         <span
                           className="flex shrink-0 items-center gap-0.5 rounded px-1 text-[8px] font-black uppercase"
                           style={{ background: `${t.color}22`, color: t.color }}
                         >
-                          {t.icon} {t.label}
+                          {t.icon} {lv.label}
                         </span>
                       ) : null;
                     })()}

@@ -11,8 +11,8 @@ import { CaseModal } from "./CaseReel";
 import { MissionsPanel } from "./MissionsPanel";
 
 function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
-  const { caseSale, priceSettings, vipSpent } = useGame();
-  const price = applyVipCaseDisc(casePrice(def, caseSale, priceSettings), vipSpent);
+  const { caseSale, priceSettings, vipLevel } = useGame();
+  const price = applyVipCaseDisc(casePrice(def, caseSale, priceSettings), vipLevel);
   /* indirim, dalga sırasında da GÖRÜNÜR: rozet fiyat karşılaştırmasına değil
      etkinlik durumuna bakar (dalga güçlüyken indirimli fiyat bazın üstünde kalabilir) */
   const saleActive =
