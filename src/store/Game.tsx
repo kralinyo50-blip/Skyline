@@ -2407,7 +2407,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setBotListings((prev) => rescaleBotListings(prev));
   }, []);
 
-  /* dalga bitişi/cancel sonrası fiyatları normale döndürme takibi */
+  /* dalga bitişi/cancel sonrası seviyeyi kalıcı işleme takibi */
   const pricingStateRef = useRef<{ waveId: string; ended: boolean }>({ waveId: "", ended: false });
 
   /* yumuşak geçiş: dalga çıkış/iniş evresindeyken fiyatları periyodik tazele */
@@ -2417,10 +2417,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       if (!w || w.cancelled) return;
       const now = Date.now();
       const fadeInEnd = (w.ts ?? 0) + Math.max(0, w.fadeInMin ?? 0) * 60000;
-      const fadeOutEnd = waveFadeEnd(w);
       const rampingIn = now > (w.ts ?? 0) && now < fadeInEnd;
-      const rampingOut = !w.permanent && now > (w.endsAt ?? 0) && now < fadeOutEnd;
-      if (rampingIn || rampingOut) applyPricing();
+      if (rampingIn) applyPricing();
     }, 4000);
     return () => clearInterval(iv);
   }, [applyPricing]);
@@ -2446,11 +2444,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       if (!draft.economyWave || draft.economyWave.id !== wave.id) return;
       const ps = draft.priceSettings ?? { ts: Date.now(), by: wave.by, global: 100, byRarity: {}, bySkin: {} };
       const byRarity: NonNullable<PriceSettings["byRarity"]> = { ...(ps.byRarity ?? {}) };
-      const now = Date.now();
+      /* doğal bitişte tepe (endsAt), manuel durdurmada o anki seviye işlenir */
+      const at = Math.min(Date.now(), wave.endsAt ?? Date.now());
       (["consumer", "industrial", "milspec", "restricted", "classified", "covert", "rare"] as const).forEach((r) => {
         const cur = byRarity[r] ?? 100;
-        const f = waveMultiplierAt(r, wave, now);
-        byRarity[r] = Math.max(10, Math.min(1000, Math.round(cur * f)));
+        const f = waveMultiplierAt(r, wave, at);
+        byRarity[r] = Math.max(10, Math.min(1000, Math.round(cur * f * 10) / 10));
       });
       draft.priceSettings = { ts: Date.now(), by: wave.by, global: ps.global ?? 100, byRarity, bySkin: { ...(ps.bySkin ?? {}) } };
       /* permanent:false → işlendi bayrağı; gözlemci bir daha fold etmez */
@@ -2467,7 +2466,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       if (st.waveId && !st.ended && !active) {
         st.ended = true; /* dalga bitti — bir kez işle */
         const ended = dbRef.current.economyWave;
-        if (ended?.permanent && ended.id === st.waveId) foldWaveIntoPrices(ended);
+        /* biten her dalga ulaştığı seviyede kalıcı olur (geri dönüş yok);
+           manuel durdurma zaten fold ettiği için sadece uygulanır */
+        if (ended && !ended.cancelled && ended.id === st.waveId) foldWaveIntoPrices(ended);
         else applyPricing();
       }
     }, 10000);
@@ -2513,7 +2514,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         sub:
           `${direction === "up" ? "+" : "-"}%${surgeV} · ${m} dk` +
           (fin > 0 ? ` · ${fin} dk'da tepe` : "") +
-          (permanent ? " · kalıcı" : fout > 0 ? ` · ${fout} dk'da normale` : ""),
+          " · bitince bu seviye kalır",
       });
       coinDing();
       return { ok: true };

@@ -1103,7 +1103,7 @@ export function AdminPanel() {
               )}
             </div>
             <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
-              Seçtiğin süre boyunca fiyatlar hareket eder, sonra normale döner. Kasa ve pazar da otomatik etkilenir.
+              Seçtiğin süre boyunca fiyatlar hareket eder, bitince ulaştığı seviyede kalır. Kasa ve pazar da otomatik etkilenir.
             </p>
 
             {/* 1. yön */}
@@ -1233,43 +1233,28 @@ export function AdminPanel() {
                 ))}
               </div>
               <p className="mt-1 text-[9px] text-white/30">
-                {ecoFade === "instant" ? "Fiyatlar tek seferde değişir" : "Dalga başlayınca fiyatlar adım adım yükselir/iner, yine adım adım normale döner"}
+                {ecoFade === "instant" ? "Fiyatlar tek seferde değişir" : "Dalga başlayınca fiyatlar adım adım yükselir/iner"}
               </p>
             </div>
 
-            {/* 6. bitince */}
-            <div className="mt-3">
-              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">6 · Dalga bitince ne olsun?</div>
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  onClick={() => {
-                    saveEco({ after: "temp" });
-                    pushToast({ kind: "info", title: "Dalga bitince normale dönecek" });
-                    coinDing();
-                  }}
-                  className={cn(
-                    "rounded-xl border px-3 py-2.5 text-center transition",
-                    ecoAfter === "temp" ? "border-sky-400/70 bg-sky-400/15" : "border-line bg-ink-800 hover:border-sky-400/40"
-                  )}
-                >
-                  <div className={cn("font-display text-xs font-black", ecoAfter === "temp" ? "text-sky-300" : "text-white/70")}>Normal dönsün</div>
-                  <div className="text-[9px] font-bold text-white/35">Eski fiyatlara döner</div>
-                </button>
-                <button
-                  onClick={() => {
-                    saveEco({ after: "perm" });
-                    pushToast({ kind: "money", title: "Yeni seviye kalıcı olacak", sub: "Dalga bitince fiyatlar bu seviyede kalır" });
-                    coinDing();
-                  }}
-                  className={cn(
-                    "rounded-xl border px-3 py-2.5 text-center transition",
-                    ecoAfter === "perm" ? "border-amber-400/70 bg-amber-400/15" : "border-line bg-ink-800 hover:border-amber-400/40"
-                  )}
-                >
-                  <div className={cn("font-display text-xs font-black", ecoAfter === "perm" ? "text-amber-300" : "text-white/70")}>Yeni seviye kalsın</div>
-                  <div className="text-[9px] font-bold text-white/35">Kalıcı ekonomik değişim</div>
-                </button>
+            {/* 6. bitince — sabit seviye (geri dönüş yok) */}
+            <div className="mt-3 rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-3 py-2.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">🔒</span>
+                <span className="font-display text-xs font-black uppercase tracking-widest text-emerald-300">
+                  Fiyatlar sabit kalır
+                </span>
+                {ecoAfter === "perm" && (
+                  <span className="ml-auto rounded-full bg-emerald-500/20 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-400">
+                    ✓
+                  </span>
+                )}
               </div>
+              <p className="mt-1 text-[9px] leading-relaxed text-white/40">
+                Dalga bitince fiyatlar <span className="font-bold text-emerald-300">ulaştığı seviyede kalır</span> —
+                normale dönmez. Tamamen geri almak için aşağıdaki{" "}
+                <span className="font-bold text-white/60">"Ekonomiyi Eski Haline Döndür"</span> butonunu kullan.
+              </p>
             </div>
 
             {/* 6. otomatik */}
@@ -1281,7 +1266,9 @@ export function AdminPanel() {
                 <span className="min-w-0 flex-1">
                   <span className="block text-[11px] font-bold text-white/80">7 · Kendiliğinden tekrarlasın mı?</span>
                   <span className="block text-[9px] text-white/35">
-                    {ecoAuto ? `Her ${ecoFmt(ecoFreq)} bir dalga otomatik başlar` : "Kapalıysa sadece aşağıdaki butonla başlatırsın"}
+                    {ecoAuto
+                        ? `Her ${ecoFmt(ecoFreq)} bir dalga otomatik başlar · her dalga seviyeyi kalıcı yapar (üst üste birikir)`
+                        : "Kapalıysa sadece aşağıdaki butonla başlatırsın"}
                   </span>
                 </span>
               </button>
@@ -1352,7 +1339,7 @@ export function AdminPanel() {
                   <span className="text-[9px] text-white/35">
                     {ecoRareLvl === "off" ? "Pahalılar normal etkilenir" : `Pahalılar ${ecoRare.note}`}
                     {" · "}
-                    {ecoAfter === "perm" ? "dalga bitince bu seviye KALIR" : "dalga bitince normale döner"}
+                    "dalga bitince bu seviye KALIR"
                   </span>
                 </div>
               </div>
@@ -1384,7 +1371,7 @@ export function AdminPanel() {
                       sub:
                         `${r.dir === "up" ? "+" : "-"}%${c.surge} · ${ecoFmt(r.dur)}` +
                         (fadeMin > 0 ? ` · ${ecoFmt(fadeMin)}'da tepe` : "") +
-                        (r.after === "perm" ? " · kalıcı" : fadeMin > 0 ? ` · ${ecoFmt(fadeMin)}'da normale` : ""),
+                        " · bitince kalıcı",
                     });
                     coinDing();
                   } else pushToast({ kind: "lose", title: "Başlatılamadı", sub: res.error });

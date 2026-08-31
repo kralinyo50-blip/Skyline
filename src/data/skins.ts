@@ -369,12 +369,10 @@ export function waveTierFactor(
   return 1 + (Math.max(0, surge) / 100) * f;
 }
 
-/** Dalganın tamamen bittiği an (fade-out dahil). Kalıcı dalgada tepe biter. */
+/** Dalganın aktif olduğu son an — dalga bitince fiyatlar ulaştığı seviyede kalır. */
 export function waveFadeEnd(wave?: EconomyWaveLike | null): number {
   if (!wave) return 0;
-  const end = wave.endsAt ?? 0;
-  if (wave.permanent || wave.cancelled) return end;
-  return end + Math.max(0, wave.fadeOutMin ?? 0) * 60000;
+  return wave.endsAt ?? 0;
 }
 
 /* yumuşak geçiş eğrisi (smoothstep) */
@@ -401,16 +399,9 @@ export function waveMultiplierAt(rarity: RarityKey, wave?: EconomyWaveLike | nul
   }
   if (now <= end) return peak;
 
-  /* kalıcı dalga: fold anına kadar tepe korunur (fade-out yok) */
-  if (wave.permanent) return peak;
-
-  const fadeOut = Math.max(0, wave.fadeOutMin ?? 0) * 60000;
-  const outEnd = end + fadeOut;
-  if (now < outEnd) {
-    /* normale yumuşak iniş */
-    return 1 + (peak - 1) * (1 - easeRamp((now - end) / fadeOut));
-  }
-  return 1;
+  /* dalga bitti — geri dönüş yok: fiyatlar ulaştığı seviyede kalır.
+     (kalıcı işleme, bir sonraki gözlemci adımında priceSettings'e fold edilir) */
+  return peak;
 }
 
 export function waveMultiplier(rarity: RarityKey, wave?: EconomyWaveLike | null): number {

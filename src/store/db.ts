@@ -427,7 +427,7 @@ export interface EconomyWave {
   permanent?: boolean;
   /** yumuşak geçiş: kaç dakikada tepe noktasına ulaşır (0 = anında) */
   fadeInMin?: number;
-  /** bitişten sonra kaç dakikada normale döner (0 = anında) */
+  /** eski geri dönüş süresi — artık kullanılmıyor (dalga bitince seviye kalır) */
   fadeOutMin?: number;
   cancelled?: boolean;
 }
@@ -442,7 +442,7 @@ export interface EconomyConfig {
   durationMin: number;
   /** otomatik dalga yönü: up / down / mix (karışık) */
   direction?: "up" | "down" | "mix";
-  /** bitince: temp = normale dön, perm = yeni seviye kalıcı kalsın */
+  /** eski davranış seçimi — artık fark etmez: dalga bitince seviye kalıcı olur */
   after?: "temp" | "perm";
   /** yumuşak geçiş süresi (dakika): 0 = anında */
   fadeMin?: number;
