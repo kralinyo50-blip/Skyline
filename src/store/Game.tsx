@@ -439,6 +439,10 @@ interface GameState {
   rejectUser: (key: string) => void;
   approveDeposit: (id: string) => void;
   rejectDeposit: (id: string) => void;
+  /** Admin: onay tutarı + komisyon belirle (düşükse karşı teklif gönder) */
+  decideDeposit: (id: string, offered: number, commissionPct: number) => { ok: boolean; error?: string };
+  /** Oyuncu: admin karşı teklifini kabul/reddet */
+  respondDepositOffer: (id: string, accept: boolean) => { ok: boolean; error?: string };
   adminAdjust: (key: string, delta: number, reason?: string) => { ok: boolean; error?: string };
   adminLog: AdminLogEntry[];
   resetAll: () => void;
@@ -3695,10 +3699,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         if (withdraw) {
           if (d.status === "approved") {
             coinDing();
+            const wNet = Math.max(
+              0,
+              Math.round(((d.offered ?? d.amount) * (100 - Math.min(90, Math.max(0, d.commissionPct ?? 0)))) / 100)
+            );
             pushToast({
               kind: "money",
-              title: `Çekim onaylandı: ${money(d.amount)}`,
-              sub: `${d.method} ile ödemen yapılacak — ${d.decidedBy ?? ADMIN_NAME}`,
+              title: `Çekim onaylandı: ${money(wNet)}`,
+              sub: `${d.method} ile ödemen yapılacak${(d.commissionPct ?? 0) > 0 ? ` (%${d.commissionPct} komisyon kesildi)` : ""} — ${d.decidedBy ?? ADMIN_NAME}`,
             });
           } else {
             pushToast({
@@ -3716,8 +3724,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                 : d.skinId
                   ? `Skin hediyesi: ${d.skinName ?? d.skinId}`
                   : d.amount >= 0
-                    ? `${money(d.amount + Math.round((d.amount * Math.max(0, d.bonus ?? 0)) / 100))} hesabına eklendi${
-                        (d.bonus ?? 0) > 0 ? ` (+${money(Math.round((d.amount * d.bonus!) / 100))} bonus)` : ""
+                    ? `${money(
+                        Math.max(
+                          0,
+                          Math.round(((d.offered ?? d.amount) * (100 - Math.min(90, Math.max(0, d.commissionPct ?? 0)))) / 100)
+                        ) + Math.round((d.amount * Math.max(0, d.bonus ?? 0)) / 100)
+                      )} hesabına eklendi${
+                        (d.commissionPct ?? 0) > 0
+                          ? ` (%${d.commissionPct} komisyon)`
+                          : (d.bonus ?? 0) > 0
+                            ? ` (+${money(Math.round((d.amount * d.bonus!) / 100))} bonus)`
+                            : ""
                       }`
                     : `${money(Math.abs(d.amount))} hesabından silindi`,
             sub:
@@ -3822,6 +3839,114 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         d.decidedBy = ADMIN_NAME;
       }),
     [mutate]
+  );
+
+  /** Talep net tutarı: (onaylanan/teklif edilen) × (1 - komisyon) */
+  const depositNet = (d: DepositReq): number => {
+    const base = d.offered ?? d.amount;
+    return Math.max(0, Math.round((base * (100 - Math.min(90, Math.max(0, d.commissionPct ?? 0)))) / 100));
+  };
+
+  /* --------- ADMIN: onay tutarı + komisyon (düşük tutar = karşı teklif) --------- */
+  const decideDeposit = useCallback(
+    (id: string, offered: number, commissionPct: number): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const d = dbRef.current.deposits.find((x) => x.id === id);
+      if (!d || d.status !== "pending") return { ok: false, error: "Talep bulunamadı" };
+      const off = Math.max(1, Math.min(d.amount, Math.round(offered) || d.amount));
+      const comm = Math.round(Math.min(90, Math.max(0, commissionPct)) || 0);
+      const now = Date.now();
+      const isOffer = off < d.amount;
+      mutate((draft) => {
+        const cur = draft.deposits.find((x) => x.id === id);
+        if (!cur || cur.status !== "pending") return;
+        cur.offered = off;
+        cur.commissionPct = comm;
+        cur.offerBy = me.name;
+        cur.offerTs = now;
+        if (!isOffer) {
+          cur.status = "approved";
+          cur.decidedTs = now;
+          cur.decidedBy = ADMIN_NAME;
+        }
+      });
+      const net = Math.max(0, Math.round((off * (100 - comm)) / 100));
+      if (isOffer) {
+        pushToast({
+          kind: "info",
+          title: "Karşı teklif gönderildi",
+          sub: `${money(off)}${comm > 0 ? ` (%${comm} komisyon → ${money(net)})` : ""} — ${ADMIN_NAME} onayı bekleniyor`,
+        });
+      } else {
+        pushToast({
+          kind: "money",
+          title: d.kind === "withdraw" ? "Çekim onaylandı" : "Yatırma onaylandı",
+          sub: `${d.userName} → ${money(net)}${comm > 0 ? ` (%${comm} komisyon)` : ""}`,
+        });
+      }
+      coinDing();
+      return { ok: true };
+    },
+    [mutate, pushToast]
+  );
+
+  /* --------- OYUNCU: karşı teklifi yanıtla --------- */
+  const respondDepositOffer = useCallback(
+    (id: string, accept: boolean): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me) return { ok: false, error: "Giriş yapmalısın" };
+      let res: { ok: boolean; error?: string } = { ok: false, error: "Talep bulunamadı" };
+      mutate((draft) => {
+        const d = draft.deposits.find((x) => x.id === id);
+        if (!d || d.userKey !== me.key || d.status !== "pending" || !d.offerTs) return;
+        if (d.offerRespondedTs) {
+          res = { ok: false, error: "Bu teklif zaten yanıtlandı" };
+          return;
+        }
+        const u = draft.users[me.key];
+        if (!u) return;
+        const now = Date.now();
+        d.offerRespondedTs = now;
+        d.offerAccepted = accept;
+        d.decidedBy = me.name;
+        d.decidedTs = now;
+        if (accept) {
+          d.status = "approved";
+          /* çekimde: fark bloke tutardan iade edilir (kabul edilen tutar ödenir) */
+          if (d.kind === "withdraw" && d.held) {
+            const refund = Math.max(0, d.amount - (d.offered ?? d.amount));
+            u.balance = Math.round(u.balance + refund);
+          }
+        } else {
+          d.status = "rejected";
+          if (d.kind === "withdraw" && d.held) {
+            u.balance = Math.round(u.balance + d.amount); /* tam iade */
+          }
+          d.reason = "Karşı teklif reddedildi";
+        }
+        res = { ok: true };
+      });
+      if (res.ok) {
+        forceSync();
+        pushToast(
+          accept
+            ? {
+                kind: "money",
+                title: "Teklif kabul edildi ✅",
+                sub: `${money(depositNet(dbRef.current.deposits.find((x) => x.id === id)!))}${
+                  (dbRef.current.deposits.find((x) => x.id === id)?.commissionPct ?? 0) > 0
+                    ? " (%komisyon kesintili)"
+                    : ""
+                }`,
+              }
+            : { kind: "info", title: "Teklif reddedildi", sub: "Talebin kapatıldı" }
+        );
+        coinDing();
+      }
+      return res;
+    },
+    [mutate, pushToast]
   );
 
   /* --------- ADMIN KÖTÜYE KULLANIM KORUMASI ---------
@@ -4187,6 +4312,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     rejectUser,
     approveDeposit,
     rejectDeposit,
+    decideDeposit,
+    respondDepositOffer,
     adminAdjust,
     adminLog: db.adminLog ?? [],
     resetAll,

@@ -200,6 +200,16 @@ export interface DepositReq {
   bonus?: number;
   /** talep anında sabitlenen hediyeler (kasa/skin) */
   gifts?: DepositPackGift[];
+  /** admin karşı teklifi: istendiğinden farklı onay tutarı (offered < amount = teklif) */
+  offered?: number;
+  /** admin komisyonu (%) — onaylanan tutardan kesilir */
+  commissionPct?: number;
+  /** karşı teklif zamanı / kim gönderdi */
+  offerTs?: number;
+  offerBy?: string;
+  /** oyuncu teklifi yanıtladı mı */
+  offerAccepted?: boolean;
+  offerRespondedTs?: number;
 }
 
 /* ---------------- YATIRMA PAKETLERİ ---------------- */

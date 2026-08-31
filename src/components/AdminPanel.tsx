@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import {
   ADMIN_NAME,
+  CURRENCY,
   FIRST_LOGIN_REWARD,
   RAFFLE_FREQ_MS,
   RAFFLE_PRIZE,
@@ -51,7 +52,7 @@ import {
 import { click, coinDing } from "../lib/audio";
 import { useGame, levelFromSpent, weeklyStats } from "../store/Game";
 import { SKIN_MAP, RARITY, hypotheticalSkinPrice, type Skin } from "../data/skins";
-import { DEFAULT_DEPOSIT_PACKS } from "../store/db";
+import { DEFAULT_DEPOSIT_PACKS, type DepositReq } from "../store/db";
 import { CASES, previewCasePrice } from "../data/cases";
 import { MAX_STICKERS, STICKERS } from "../data/stickers";
 import { WEARS, rollFloat, type WearKey } from "../data/wear";
@@ -153,10 +154,10 @@ export function AdminPanel() {
     pendingUserList,
     pendingDepositList,
     allUsers,
+    decideDeposit,
     allDeposits,
     approveUser,
     rejectUser,
-    approveDeposit,
     rejectDeposit,
     adminAdjust,
     adminGiveSkin,
@@ -252,6 +253,10 @@ export function AdminPanel() {
     return sk ? `${sk.weapon} | ${sk.name}` : g.id;
   };
 
+  /* para talebi kararı: onay tutarı + komisyon */
+  const [decideReq, setDecideReq] = useState<DepositReq | null>(null);
+  const [reqOfferStr, setReqOfferStr] = useState("");
+  const [reqCommStr, setReqCommStr] = useState("");
   /* kupon oluşturma */
   const [cpCode, setCpCode] = useState("");
   const [cpKind, setCpKind] = useState<"balance" | "case" | "percent">("percent");
@@ -799,24 +804,14 @@ export function AdminPanel() {
                       <div className="flex w-full gap-2 sm:w-auto">
                         <button
                           onClick={() => {
-                            approveDeposit(d.id);
-                            coinDing();
-                            pushToast({
-                              kind: "money",
-                              title: d.kind === "withdraw" ? "Çekim onaylandı" : "Yatırma onaylandı",
-                              sub:
-                                d.kind === "withdraw"
-                                  ? `${d.userName} kişisine ${money(d.amount)} öde${d.payTo ? ` → ${d.payTo}` : ""}`
-                                  : `${d.userName} → ${money(d.amount + Math.round((d.amount * Math.max(0, d.bonus ?? 0)) / 100))}${
-                                      (d.bonus ?? 0) > 0
-                                        ? ` (+${money(Math.round((d.amount * d.bonus!) / 100))} bonus)`
-                                        : ""
-                                    }`,
-                            });
+                            setDecideReq(d);
+                            setReqOfferStr(String(d.amount));
+                            setReqCommStr("0");
+                            click();
                           }}
                           className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 px-5 font-display text-sm font-bold text-ink-950 transition hover:brightness-110 sm:flex-none"
                         >
-                          <Check className="h-4 w-4" strokeWidth={3} /> Onayla
+                          <Check className="h-4 w-4" strokeWidth={3} /> Onayla & Kes…
                         </button>
                         <button
                           onClick={() => {
@@ -3099,6 +3094,173 @@ export function AdminPanel() {
           </div>
         </div>
       )}
+
+      {/* ---------------- PARA TALEBİ KARARI (MODAL) ---------------- */}
+      <AnimatePresence>
+        {decideReq && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[95] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+            onClick={() => setDecideReq(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.94, y: 16, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.96, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md rounded-2xl border border-line bg-ink-800 p-5 shadow-2xl"
+            >
+              <div className="flex items-center gap-2">
+                <Banknote className="h-4 w-4 text-brand-400" />
+                <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                  {decideReq.kind === "withdraw" ? "Çekim Talebi Kararı" : "Yatırma Talebi Kararı"}
+                </span>
+                <button onClick={() => setDecideReq(null)} className="ml-auto rounded-lg p-1.5 text-white/40 hover:text-white">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="mt-3 flex items-center gap-3 rounded-xl border border-line bg-ink-900 p-3">
+                <Head name={decideReq.userName} size={36} />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-bold text-white">{decideReq.userName}</div>
+                  <div className="text-[10px] text-white/40">
+                    {decideReq.kind === "withdraw" ? "Çekmek istiyor" : "Yatırmak istiyor"} · {decideReq.method}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="font-display text-lg font-black text-white">
+                    {money(decideReq.amount)}
+                  </div>
+                  <div className="text-[9px] uppercase tracking-wider text-white/35">
+                    {decideReq.kind === "withdraw" ? "bloke" : "talep"}
+                  </div>
+                </div>
+              </div>
+
+              {/* onay tutarı */}
+              <div className="mt-4">
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Onay tutarı <span className="normal-case font-normal text-white/25">(düşürürsen karşı teklif olur)</span>
+                </div>
+                <div className="flex items-center gap-2 rounded-xl border border-line bg-ink-900 px-3">
+                  <span className="font-display text-lg font-black text-brand-400">{CURRENCY.symbol}</span>
+                  <input
+                    value={reqOfferStr}
+                    onChange={(e) => setReqOfferStr(e.target.value.replace(/[^\d]/g, ""))}
+                    inputMode="numeric"
+                    className="h-11 min-w-0 flex-1 bg-transparent font-display text-lg font-black tabular-nums text-white placeholder:text-white/20 focus:outline-none"
+                  />
+                  <span className="text-[10px] font-bold text-white/30">{CURRENCY.short}</span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {[100, 75, 50, 25].map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setReqOfferStr(String(Math.max(1, Math.round((decideReq.amount * p) / 100))))}
+                      className={cn(
+                        "rounded-lg px-2.5 py-1.5 text-[10px] font-black transition",
+                        Number(reqOfferStr) === Math.round((decideReq.amount * p) / 100)
+                          ? "bg-brand-500 text-ink-950"
+                          : "bg-ink-700 text-white/45 hover:text-white"
+                      )}
+                    >
+                      %{p}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setReqOfferStr(String(decideReq.amount))}
+                    className="rounded-lg bg-emerald-500/15 px-2.5 py-1.5 text-[10px] font-black text-emerald-300 hover:bg-emerald-500/25"
+                  >
+                    Tamamı
+                  </button>
+                </div>
+              </div>
+
+              {/* komisyon */}
+              <div className="mt-3">
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Komisyon kes
+                </div>
+                <div className="flex items-center gap-2 rounded-xl border border-line bg-ink-900 px-3">
+                  <input
+                    value={reqCommStr}
+                    onChange={(e) => setReqCommStr(e.target.value.replace(/[^\d]/g, ""))}
+                    inputMode="numeric"
+                    placeholder="0"
+                    className="h-11 min-w-0 flex-1 bg-transparent font-display text-lg font-black tabular-nums text-white placeholder:text-white/20 focus:outline-none"
+                  />
+                  <span className="text-sm font-black text-lose">%</span>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {[0, 2, 5, 10, 20, 25].map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => setReqCommStr(String(c))}
+                      className={cn(
+                        "rounded-lg px-2.5 py-1.5 text-[10px] font-black transition",
+                        reqCommStr === String(c) ? "bg-lose text-white" : "bg-ink-700 text-white/45 hover:text-white"
+                      )}
+                    >
+                      %{c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* özet */}
+              {(() => {
+                const off = Math.max(0, Number(reqOfferStr) || 0);
+                const comm = Math.min(90, Math.max(0, Number(reqCommStr) || 0));
+                const net = Math.round((off * (100 - comm)) / 100);
+                const isOffer = off > 0 && off < decideReq.amount;
+                return (
+                  <div className="mt-4 rounded-xl border border-brand-500/25 bg-brand-500/5 p-3 text-[11px]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/50">
+                        {isOffer ? "Oyuncuya teklif" : "Oyuncuya yansıyacak"}
+                      </span>
+                      <span className="font-display text-base font-black text-emerald-400">{money(net)}</span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between text-[10px] text-white/35">
+                      <span>{money(off)} onay tutarı · %{comm} komisyon</span>
+                      <span>{isOffer ? "Kabul/red için oyuncuya gider" : "Anında onaylanır"}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={() => {
+                    const off = Math.max(1, Math.min(decideReq.amount, Number(reqOfferStr) || decideReq.amount));
+                    const comm = Math.min(90, Math.max(0, Number(reqCommStr) || 0));
+                    const res = decideDeposit(decideReq.id, off, comm);
+                    if (res.ok) setDecideReq(null);
+                    else pushToast({ kind: "lose", title: "Karar verilemedi", sub: res.error });
+                  }}
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 font-display text-sm font-bold text-ink-950 transition hover:brightness-110"
+                >
+                  <Check className="h-4 w-4" strokeWidth={3} />
+                  {Number(reqOfferStr) >= decideReq.amount ? "Onayla" : "Teklif Gönder"}
+                </button>
+                <button
+                  onClick={() => {
+                    rejectDeposit(decideReq.id);
+                    pushToast({ kind: "lose", title: "Talep reddedildi", sub: decideReq.userName });
+                    setDecideReq(null);
+                  }}
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-lose/40 bg-lose/10 font-display text-sm font-bold text-lose transition hover:bg-lose/20"
+                >
+                  <X className="h-4 w-4" strokeWidth={3} /> Reddet
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ---------------- SENKRON AYARI ---------------- */}
       {sec === "sync" && (

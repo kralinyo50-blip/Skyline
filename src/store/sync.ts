@@ -221,7 +221,10 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     } else if (ld.status === "pending" && cd.status !== "pending") {
       map.set(cd.id, cd);
     } else if (ld.status === "pending" && cd.status === "pending") {
-      /* aynı */
+      /* karşı teklif: bulut daha yeni teklif taşıyorsa yereldeki talebe işle */
+      if (cd.offerTs && (!ld.offerTs || cd.offerTs > ld.offerTs)) {
+        map.set(cd.id, { ...ld, ...cd, status: "pending" });
+      }
     }
   });
   out.deposits = [...map.values()].sort((a, b) => a.ts - b.ts);

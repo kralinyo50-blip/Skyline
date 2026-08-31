@@ -78,7 +78,7 @@ export function Header() {
     level, levelTitleStr, levelProgress, xpCurrent, xpNeeded,
     lastDaily, claimDaily, isAdmin, userName, logout,
     requestDeposit, requestWithdraw, heldBalance, myDeposits, pendingDepositList, pendingUserList,
-    depositPacks, redeemCoupon, couponBonus,
+    depositPacks, redeemCoupon, couponBonus, respondDepositOffer,
     syncCode, setSyncCode, syncStatus,
     vipUntil, vipPlan, vipActive, buyVip,
   } = useGame();
@@ -817,38 +817,87 @@ export function Header() {
                       Taleplerim
                     </div>
                     <div className="tiny-scroll max-h-40 space-y-1.5 overflow-y-auto">
-                      {myDeposits.slice(0, 12).map((d) => (
-                        <div
-                          key={d.id}
-                          className="flex items-center gap-2 rounded-lg bg-ink-900 px-3 py-2 text-xs"
-                        >
-                          <span
-                            className={cn(
-                              "shrink-0 rounded px-1 py-0.5 text-[9px] font-black uppercase",
-                              d.kind === "withdraw"
-                                ? "bg-emerald-500/15 text-emerald-400"
-                                : "bg-brand-500/15 text-brand-300"
+                      {myDeposits.slice(0, 12).map((d) => {
+                        const isOffer = d.status === "pending" && !!d.offerTs && !d.offerRespondedTs;
+                        const netReq =
+                          d.status === "approved"
+                            ? Math.max(0, Math.round(((d.offered ?? d.amount) * (100 - Math.min(90, Math.max(0, d.commissionPct ?? 0)))) / 100))
+                            : d.amount;
+                        return (
+                          <div key={d.id} className="rounded-lg bg-ink-900 p-2 text-xs">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={cn(
+                                  "shrink-0 rounded px-1 py-0.5 text-[9px] font-black uppercase",
+                                  d.kind === "withdraw"
+                                    ? "bg-emerald-500/15 text-emerald-400"
+                                    : "bg-brand-500/15 text-brand-300"
+                                )}
+                              >
+                                {d.kind === "withdraw" ? "Çekim" : "Yatır"}
+                              </span>
+                              <span className="font-display font-bold text-white/80">{money(d.amount)}</span>
+                              <span className="truncate text-[10px] text-white/30">{d.method}</span>
+                              {(d.commissionPct ?? 0) > 0 && (
+                                <span className="rounded bg-lose/10 px-1 py-0.5 text-[9px] font-black text-lose">
+                                  -%{d.commissionPct}
+                                </span>
+                              )}
+                              <span className="ml-auto shrink-0 text-[10px] text-white/25">{ago(d.ts)}</span>
+                              <span
+                                className={cn(
+                                  "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase",
+                                  d.status === "approved"
+                                    ? "bg-emerald-500/15 text-emerald-400"
+                                    : d.status === "pending"
+                                      ? isOffer
+                                        ? "bg-amber-500/15 text-amber-300"
+                                        : "bg-brand-500/15 text-brand-300"
+                                      : "bg-lose/15 text-lose"
+                                )}
+                              >
+                                {d.status === "approved" ? "Onaylandı" : isOffer ? "Teklif" : d.status === "pending" ? "Bekliyor" : "Reddedildi"}
+                              </span>
+                            </div>
+                            {isOffer && (
+                              <div className="mt-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2">
+                                <div className="flex items-center justify-between text-[10px] text-white/55">
+                                  <span>
+                                    Teklif: <span className="font-black text-amber-300">{money(d.offered ?? 0)}</span>
+                                    {d.offered! < d.amount ? ` (istedin: ${money(d.amount)})` : ""}
+                                  </span>
+                                  <span>
+                                    {d.kind === "withdraw" ? "ödenecek" : "yüklenecek"}:{" "}
+                                    <span className="font-black text-emerald-400">{money(netReq)}</span>
+                                  </span>
+                                </div>
+                                <div className="mt-2 flex gap-1.5">
+                                  <button
+                                    onClick={() => {
+                                      const r = respondDepositOffer(d.id, true);
+                                      if (!r.ok) pushToast({ kind: "lose", title: "Kabul edilemedi", sub: r.error });
+                                      else click();
+                                    }}
+                                    className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-500 font-display text-[11px] font-bold text-ink-950 transition hover:brightness-110"
+                                  >
+                                    <Check className="h-3.5 w-3.5" strokeWidth={3} /> Kabul Et
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      const r = respondDepositOffer(d.id, false);
+                                      if (!r.ok) pushToast({ kind: "lose", title: "Reddedilemedi", sub: r.error });
+                                      else click();
+                                    }}
+                                    className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg border border-lose/40 bg-lose/10 text-[11px] font-bold text-lose transition hover:bg-lose/20"
+                                  >
+                                    <X className="h-3.5 w-3.5" strokeWidth={3} /> Reddet
+                                  </button>
+                                </div>
+                              </div>
                             )}
-                          >
-                            {d.kind === "withdraw" ? "Çekim" : "Yatır"}
-                          </span>
-                          <span className="font-display font-bold text-white/80">{money(d.amount)}</span>
-                          <span className="truncate text-[10px] text-white/30">{d.method}</span>
-                          <span className="ml-auto shrink-0 text-[10px] text-white/25">{ago(d.ts)}</span>
-                          <span
-                            className={cn(
-                              "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase",
-                              d.status === "approved"
-                                ? "bg-emerald-500/15 text-emerald-400"
-                                : d.status === "pending"
-                                  ? "bg-brand-500/15 text-brand-300"
-                                  : "bg-lose/15 text-lose"
-                            )}
-                          >
-                            {d.status === "approved" ? "Onaylandı" : d.status === "pending" ? "Bekliyor" : "Reddedildi"}
-                          </span>
-                        </div>
-                      ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
