@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Crown, Medal, MessageSquare, Send, Trophy, Users, X } from "lucide-react";
-import { ADMIRATION_LINES, CELEBRITY_LINES, CELEBRITY_USERS, CHAT_LINES, COMMUNITY_USERS } from "../data/fakers";
+import { ADMIRATION_LINES, CELEBRITY_LINES, CELEBRITY_USERS, CHAT_LINES, CHAT_REPLIES, COMMUNITY_USERS } from "../data/fakers";
+import { FEED_USERS } from "../data/cases";
 import { mcHead } from "../config";
 import { fmtMoney } from "../data/skins";
 import { pick, randInt, uid } from "../lib/rng";
@@ -21,11 +22,12 @@ interface ChatMsg {
 
 const AV_COLORS = ["#f98e1d", "#4b69ff", "#d32ce6", "#2fd673", "#53c8ff", "#eb4b4b", "#8847ff"];
 
+const BOT_NAMES = [...new Set([...FEED_USERS, ...COMMUNITY_USERS, ...CELEBRITY_USERS])];
 function botName(): string {
-  return Math.random() < 0.1 ? pick(CELEBRITY_USERS) : pick(COMMUNITY_USERS);
+  return pick(BOT_NAMES);
 }
 function botLine(): string {
-  return Math.random() < 0.1 ? pick(CELEBRITY_LINES) : pick(CHAT_LINES);
+  return Math.random() < 0.08 ? pick(CELEBRITY_LINES) : pick(CHAT_LINES);
 }
 
 function Avatar({ name, size = 28 }: { name: string; size?: number }) {
@@ -67,12 +69,12 @@ export function ChatRail() {
   const { userName, inventoryValue, chat, sendChat, isAdmin, clearChat } = useGame();
   const [mode, setMode] = useState<"chat" | "top">("chat");
   const [msgs, setMsgs] = useState<ChatMsg[]>(() =>
-    Array.from({ length: 14 }, (_, i) => ({
+    Array.from({ length: 32 }, (_, i) => ({
       id: uid(),
-      user: pick(COMMUNITY_USERS),
-      level: randInt(1, 42),
-      text: pick(CHAT_LINES),
-      ts: Date.now() - (14 - i) * 8000,
+      user: botName(),
+      level: randInt(1, 52),
+      text: botLine(),
+      ts: Date.now() - (32 - i) * 5200,
     }))
   );
   const [input, setInput] = useState("");
@@ -84,7 +86,7 @@ export function ChatRail() {
       won: randInt(3200, 156000),
     })).sort((a, b) => b.won - a.won)
   );
-  const [online] = useState(() => randInt(1100, 1600));
+  const [online] = useState(() => randInt(3200, 4600));
   const scrollRef = useRef<HTMLDivElement>(null);
   const alive = useRef(true);
 
@@ -94,12 +96,27 @@ export function ChatRail() {
     const loop = () => {
       t = window.setTimeout(() => {
         if (!alive.current) return;
-        setMsgs((prev) => [
-          ...prev.slice(-28),
-          { id: uid(), user: botName(), level: randInt(1, 42), text: botLine(), ts: Date.now() },
-        ]);
+        const push = (text: string) =>
+          setMsgs((prev) => [
+            ...prev.slice(-48),
+            { id: uid(), user: botName(), level: randInt(1, 52), text, ts: Date.now() },
+          ]);
+        /* ana mesaj + %40 ihtimalle eş zamanlı ikinci mesaj (yoğunluk) */
+        push(botLine());
+        if (Math.random() < 0.4) push(botLine());
+        /* %30 ihtimalle 0.8-2.6 sn sonra bir bot cevap verir (sohbet zinciri) */
+        if (Math.random() < 0.3) {
+          const reply = pick(CHAT_REPLIES);
+          window.setTimeout(() => {
+            if (!alive.current) return;
+            setMsgs((prev) => [
+              ...prev.slice(-48),
+              { id: uid(), user: botName(), level: randInt(1, 52), text: reply, ts: Date.now() },
+            ]);
+          }, randInt(800, 2600));
+        }
         loop();
-      }, randInt(2600, 7000));
+      }, randInt(1100, 3200));
     };
     loop();
     const drift = window.setInterval(() => {
@@ -131,17 +148,17 @@ export function ChatRail() {
     if (!res.ok) return;
     setInput("");
     /* herkes hayran oldu — birkaç bot kısa aralıklarla yazsın */
-    const fanCount = randInt(3, 6);
+    const fanCount = randInt(2, 4);
     for (let i = 0; i < fanCount; i++) {
       window.setTimeout(
         () => {
           if (!alive.current) return;
           setMsgs((prev) => [
-            ...prev.slice(-28),
+            ...prev.slice(-48),
             { id: uid(), user: botName(), level: randInt(1, 48), text: pick(ADMIRATION_LINES), ts: Date.now() },
           ]);
         },
-        500 + i * randInt(500, 1100)
+        400 + i * randInt(450, 900)
       );
     }
   }
@@ -157,7 +174,7 @@ export function ChatRail() {
       admin: m.admin,
       me: normKey(m.key) === normKey(userName),
     }));
-    return [...msgs, ...global].sort((a, b) => a.ts - b.ts).slice(-60);
+    return [...msgs, ...global].sort((a, b) => a.ts - b.ts).slice(-90);
   }, [msgs, chat, userName]);
 
   const myRank = useMemo(() => 187 + ((userName.length * 7) % 60), [userName]);

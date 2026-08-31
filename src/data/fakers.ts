@@ -52,6 +52,25 @@ export const CHAT_LINES = [
   "20 yaş üstü tayfa var mı burada", "cs2 kasa açılımı asmr videosu çekicem burdan",
   "statTrak sayacı sıfırlanabiliyor mu bilen", "savaşta beraberlik olunca ne oluyo",
   "şu an 7. sayfada envanterim var koleksiyonerim", "fire serpent hayaldi gerçek oldu bugün",
+  "site güzel de fiyatlar bi tık pahalı yav", "burada her şey pahalı ama bi yandan da çekiyor",
+  "fiyatlar dalgalanıyor ya dün 1 milyondu bugün 1.4 milyon olmuş ekonomik dalga nedir",
+  "dalga varken satma bekle tepeyi gör", "çöküş başladı yine millet panik satış yapıyor",
+  "market her şey pahalı en ucuza baktım yine yanıp söndü", "kupon kodu olan var mı yatırıcam",
+  "bu hafta kupon çıkar mı ya adminden rica edelim", "pahalı ama kasa açmadan duramıyorum obur adamım",
+  "daggers ne kadar olmuş inceliyorum", "yeni özel kasa gelmiş mi mağazaya bakan var mı",
+  "kasadan çıkanı satıp yükselteceğim stratejim bu", "canlı akışta millet sürekli açıyor ben de dayanamadım",
+  "bugün 3 kasa açtım 2'si mavi kaldı biri sarı", "asimov fiyatı düşmüş alım zamanı mı",
+  "jackpot geçen turda biri 8 milyon kazandı gördün mü", "ben jackpot girmiyorum bakiye eriyor",
+  "savaşta x5 oynamak hamur gibi", "upgrader'da herkes pamuk gibi kaybediyor ama ben yine giriyorum",
+  "liderlik tablosuna giren var mı burdan", "profil vitrini yeni güncellemede fena değil",
+  "buradan envanteri yükseltmek en mantıklısı", "sattığım sticker mı kasa mı kararsızım",
+  "günlük ödülü 20 saatte bir alıp hemen kasaya basıyorum", "şansım bugün açık gibi ama göreceğiz",
+  "herkes pahalı kasa açıyor ben hediye paketiyle idare ediyorum", "kasalar pahalı çünkü içinden iyi şeyler çıkıyo",
+  "senin taktik ne hocam direkt mi satıyorsun", "fiyat grafiği yeni gelmiş ya süper la",
+  "dalga %150 görünce satmayanlar şimdi zengin", "çöküşte topladım biraz şimdi düzeliyor",
+  "bıçak kasası hala sınırlı adet mi", "özel kasa bitmiş sanırım akışta görmedim",
+  "kuzular diyarı burası herkes kasa açıyor", "ben mi uyuyorum herkes mi kazanıyor",
+  "sabah yine 5 milyon verdi kasa ", "bu siteyi tavsiye eden arkadaşa helal olsun",
 ];
 
 /* Ünlü/sosyetik botlar — jackpotta deli para basarlar, sohbette ağızları gevşek */
@@ -66,12 +85,23 @@ export const CELEBRITY_LINES = [
   "pazardaki her şeyi alıyorum, boş işlerle uğraşmayın",
 ];
 
-/* Sohbete mesaj yazınca herkesin yazdığı hayranlık replikleri */
+/* Soru/cevap zinciri — bot biri bir şey yazınca diğeri cevap verir */
+export const CHAT_REPLIES = [
+  "valla aynen katılıyorum", "bence de öyle ya", "sen mi oynuyorsun ya",
+  "hocam bana da söyle taktik", "dalga mı bekliyorduk biz", "kupon bekliyorum ben",
+  "aynı bende oldu", "yok ya bana hep mavi geliyor", "buraya da yazmışlar", 
+  "geçen hafta gördüm öyle bi şey", "hangi kasa hocam", "bende de var o kasa",
+  "fiyatı yükseltici mi düşmüş", "senin şansın yüksekmiş", "hayırlı olsun kardeşim",
+  "beyler bu bilgi yanlış değil mi", "herkes pahalı diyo ya ben seviyorum",
+  "az önce baktım gerçekten artmış", "buraya yeni mi geldin", "sen de mi kasa açıyorsun",
+];
+
+/* Sohbete mesaj yazınca botların verdiği doğal yorumlar (başkan övgüsü yok) */
 export const ADMIRATION_LINES = [
-  "hayranınım abi 😍", "efsanesin kral 👑", "bu ne ya 🔥🔥", "vay be helal olsun",
-  "seni takip ediyorum artık", "mahallenin efsanesi bu", "abi sen kimsin ya 😱",
-  "bizim için de dua et 😂", "para basmışsın bugün 💰", "okulda anlatacağım bunu",
-  "işte böyle bir efsane", "gören de ünlü sanacak 🤩",
+  "güzel açılışmış", "helal olsun", "hayırlı olsun kral", "iyi gelmiş",
+  "ben de o kasadan bekliyorum ya", "bende böyle bir şey çıksa sevinirim",
+  "bugünlerde şanslısın galiba", "güzel günlermiş", "sen de mi yükseltiyorsun",
+  "al buraya da yazıyorum", "kral konuş", "az önce mi attın",
 ];
 
 export const BATTLE_VERBS = ["ezdi", "yendi", "tokatladı", "devirdi", "solladı", "havaya uçurdu"];
