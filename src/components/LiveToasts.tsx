@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Sparkles, TrendingUp } from "lucide-react";
 import { BOT_NAMES } from "../data/fakers";
-import { fmtMoney, SKIN_MAP } from "../data/skins";
+import { fmtMoney, SKIN_MAP, type RarityKey } from "../data/skins";
+import { FEED_ACTIONS } from "../data/cases";
 import { pick, randInt, uid } from "../lib/rng";
 
 interface ToastItem {
@@ -27,8 +28,20 @@ export function LiveToasts() {
     };
     const spin = () => {
       if (!alive) return;
-      const pool = Object.values(SKIN_MAP).filter((s) => !s.sticker);
-      const s = pick(pool.length ? pool : Object.values(SKIN_MAP));
+      /* bot kazançları da gerçek raklık oranlarını takip eder —
+         bıçak/sarı artık feed'de her dakika görünmez (1/100k) */
+      const total = FEED_ACTIONS.reduce((a, t) => a + t.weight, 0);
+      let r = Math.random() * total;
+      let tier: RarityKey = "milspec";
+      for (const t of FEED_ACTIONS) {
+        r -= t.weight;
+        if (r <= 0) {
+          tier = t.tier;
+          break;
+        }
+      }
+      const pool = Object.values(SKIN_MAP).filter((s) => !s.sticker && s.rarity === tier);
+      const s = pick(pool.length ? pool : Object.values(SKIN_MAP).filter((x) => !x.sticker));
       const name = pick(BOT_NAMES);
       const amount = Math.max(1000, Math.round((s.price ?? 0) * (0.85 + Math.random() * 0.6)));
       push(`🎉 ${name} kasasından çıkardı`, `${s.weapon} | ${s.name} · ${fmtMoney(amount)}`);

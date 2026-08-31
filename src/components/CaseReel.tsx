@@ -12,7 +12,7 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { rollCase, caseContentsDetailed, casePrice, type CaseDef } from "../data/cases";
+import { formatOdds, rollCase, caseContentsDetailed, casePrice, type CaseDef } from "../data/cases";
 import { QUICK_SELL_RATE, applyVipCaseDisc } from "../config";
 import { rollFloat, wearFromFloat, WEARS } from "../data/wear";
 import { FloatBar, WearBadge } from "./WearUi";
@@ -485,7 +485,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                       className="rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider"
                       style={{ color: r.color, borderColor: `${r.color}44`, background: `${r.color}12` }}
                     >
-                      {r.tr} %{odds[t]!.toFixed(2)}
+                      {r.tr} {formatOdds(odds[t]!)}
                     </span>
                   );
                 })}

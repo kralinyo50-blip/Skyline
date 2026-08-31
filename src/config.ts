@@ -53,8 +53,9 @@ export const ADMIN_ADJUST_DAILY = 250_000_000;
 
 /* ---------------- PITY (GARANTİ) SİSTEMİ ---------------- */
 
-/** Bu kadar açılışta covert/rare çıkmazsa bir sonraki garanti */
-export const PITY_GUARANTEE = 5;
+/** Bu kadar açılışta covert/rare çıkmazsa bir sonraki garanti.
+ *  Efsanevi (bıçak) nadirliği korumak için yüksek tutulur — garanti bile %0.001'i bozmaz. */
+export const PITY_GUARANTEE = 500;
 
 /** En ucuz skin fiyatı */
 export const MIN_PRICE = 1200;

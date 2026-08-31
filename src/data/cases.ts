@@ -91,25 +91,26 @@ function tierOf(pool: Skin[], tier: RarityKey): string[] {
   return pool.filter((s) => s.rarity === tier).map((s) => s.id);
 }
 
-/* CS gerçek oranlarına yakın ağırlıklar (onbinde) —
-   ★ Aşırı Nadir (bıçak/eldiven) bilinçli olarak çok nadir: ~%0.04 */
+/* CS gerçek oranlarına yakın ağırlıklar (toplam 100.000) —
+   ★ Aşırı Nadir (bıçak/eldiven) GERÇEKTEN efsanevi: 1/100.000 kasa (~%0.001).
+   Gizli (covert) %0.5 — "yüzde 1 civarı" hedefin altında tutulur. */
 export const TIER_WEIGHTS: Record<RarityKey, number> = {
-  consumer: 7000,
-  industrial: 5000,
-  milspec: 7992,
-  restricted: 1598,
-  classified: 320,
-  covert: 64,
-  rare: 4,
+  consumer: 45_000,
+  industrial: 25_000,
+  milspec: 18_999,
+  restricted: 9_000,
+  classified: 1_500,
+  covert: 500,
+  rare: 1,
 };
 
-/* standart kasa ağırlıkları (milspec tabanlı) */
+/* standart kasa ağırlıkları (milspec tabanlı) — toplam 100.000 */
 const W_CASE: Partial<Record<RarityKey, number>> = {
-  milspec: 7992,
-  restricted: 1598,
-  classified: 320,
-  covert: 64,
-  rare: 4,
+  milspec: 88_999,
+  restricted: 9_000,
+  classified: 1_500,
+  covert: 500,
+  rare: 1,
 };
 
 function byTier(tier: RarityKey): string[] {
@@ -1014,32 +1015,22 @@ function rollCaseWith(caseDef: CaseDef, rng: () => number): Skin {
   return skin;
 }
 
-/* Pity: kasadan covert/rare çekme garantisi — garanti dolduysa
-   doğrudan yüksek kademe havuzundan döndür (deterministik değil, oyun içi kural).
-   Bıçak/eldiven (rare) pity'de bile çok nadir: kademe ağırlığıyla seçilir
-   (covert:rare ≈ 64:6), yani garanti neredeyse her zaman covert olur. */
+/* Pity: kasadan gizli (covert) çekme garantisi — garanti dolduysa
+   doğrudan covert havuzundan döndürür.
+   Bıçak/eldiven (rare) GARANTİYE GİRMEZ: efsanevi nadirlik (1/100.000)
+   pity ile asla zedelenmez — garanti yalnızca covert verir. */
 export function rollCasePity(caseDef: CaseDef): Skin {
   const weights = weightsFor(caseDef);
   const tiers = (Object.keys(caseDef.contents) as RarityKey[]).filter(
     (t) => (caseDef.contents[t]?.length ?? 0) > 0 && (weights[t] ?? 0) > 0
   );
-  const high = tiers.filter((t) => t === "covert" || t === "rare");
+  /* garantide bıçak yok — sadece covert; covert yoksa normal çekiliş */
+  const high = tiers.filter((t) => t === "covert");
   if (!high.length) return rollCase(caseDef);
-  /* yüksek kademe içinde kademe ağırlığıyla seç (rare ≈ %8.6) */
-  const totalW = high.reduce((a, t) => a + (weights[t] ?? 0), 0);
-  let roll = Math.random() * totalW;
-  let tier: RarityKey = high[0];
-  for (const t of high) {
-    roll -= weights[t] ?? 0;
-    if (roll <= 0) {
-      tier = t;
-      break;
-    }
-  }
-  const pool = caseDef.contents[tier]!;
+  const pool = caseDef.contents[high[0]]!;
   const id = pool[Math.floor(Math.random() * pool.length)];
   let skin = SKIN_MAP[id];
-  if (skin && skin.rarity !== "rare" && Math.random() < 0.1) {
+  if (skin && Math.random() < 0.1) {
     const st = SKIN_MAP[skin.id + "-st"];
     if (st) skin = st;
   }
@@ -1099,9 +1090,16 @@ export const FEED_USERS = [
 ];
 
 export const FEED_ACTIONS: { tier: RarityKey; weight: number }[] = [
-  { tier: "milspec", weight: 42 },
-  { tier: "restricted", weight: 30 },
-  { tier: "classified", weight: 18 },
-  { tier: "covert", weight: 7.5 },
-  { tier: "rare", weight: 2.5 },
+  { tier: "milspec", weight: 84 },
+  { tier: "restricted", weight: 12 },
+  { tier: "classified", weight: 3.5 },
+  { tier: "covert", weight: 0.499 },
+  { tier: "rare", weight: 0.001 },
 ];
+
+/** Olasılık yüzdesini kullanıcı dostu biçimlendir — çok küçükse "1/100.000" göster */
+export function formatOdds(pct: number): string {
+  if (pct <= 0) return "%0";
+  if (pct < 0.005) return `1/${Math.round(100 / pct).toLocaleString("tr-TR")}`;
+  return `%${pct.toFixed(2)}`;
+}
