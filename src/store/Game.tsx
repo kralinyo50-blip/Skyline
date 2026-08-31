@@ -104,6 +104,8 @@ import {
   type EconomyWave,
   type EconomyConfig,
   type PriceSnap,
+  type DepositPack,
+  type DepositPackSettings,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
@@ -287,6 +289,9 @@ interface GameState {
 
   myDeposits: DepositReq[];
   requestDeposit: (amount: number, method: string) => void;
+  /** yatırma paketleri + yönetim (admin auto-save) */
+  depositPacks: DepositPackSettings | null;
+  setDepositPacks: (packs: DepositPack[]) => { ok: boolean; error?: string };
   requestWithdraw: (amount: number, method: string, payTo: string) => boolean;
   heldBalance: number;
 
@@ -3258,37 +3263,72 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     (amount: number, method: string) => {
       if (!user) return;
       let auto = false;
+      let autoCredit = 0;
       mutate((draft) => {
         auto = !!draft.settings?.autoApproveDeposits;
+        /* paket bonusu — talep anında sabitlenir (sonradan değişse bile korunur) */
+        const pack = (draft.depositPacks?.packs ?? []).find((p) => p.amount === amount);
+        const bonus = pack?.bonus ?? 0;
+        const credit = amount + Math.round((amount * bonus) / 100);
         draft.deposits.unshift({
           id: uid(),
           userKey: user.key,
           userName: user.name,
           amount,
           method,
+          bonus,
           kind: "deposit",
           status: auto ? "approved" : "pending",
           ts: Date.now(),
           decidedTs: auto ? Date.now() : undefined,
           decidedBy: auto ? "Otomatik Onay" : undefined,
         });
+        autoCredit = credit;
       });
       forceSync();
+      const bonus = autoCredit > amount ? autoCredit - amount : 0;
       pushToast(
         auto
           ? {
               kind: "money",
               title: "Yatırman otomatik onaylandı",
-              sub: `${money(amount)} hesabına ekleniyor`,
+              sub: `${money(autoCredit)} hesabına ekleniyor${bonus > 0 ? ` (+${money(bonus)} bonus)` : ""}`,
             }
           : {
               kind: "info",
               title: "Yatırma talebin iletildi",
-              sub: `${money(amount)} — ${ADMIN_NAME} onayı bekleniyor`,
+              sub: `${money(amount)}${bonus > 0 ? ` +${money(bonus)} bonus = ${money(autoCredit)}` : ""} — ${ADMIN_NAME} onayı bekleniyor`,
             }
       );
     },
     [user, mutate, pushToast]
+  );
+
+  /* --------- yatırma paketleri (admin) --------- */
+  const setDepositPacks = useCallback(
+    (packs: DepositPack[]): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const clean = packs
+        .map((p) => ({
+          amount: Math.max(100, Math.min(10_000_000, Math.round(p.amount) || 0)),
+          bonus: Math.max(0, Math.min(200, Math.round(p.bonus) || 0)),
+        }))
+        .filter((p) => p.amount > 0)
+        .sort((a, b) => a.amount - b.amount);
+      if (clean.length === 0) return { ok: false, error: "En az bir paket kalmalı" };
+      mutate((draft) => {
+        draft.depositPacks = { ts: Date.now(), by: me.name, packs: clean };
+      });
+      pushToast({
+        kind: "info",
+        title: "Yatırma paketleri güncellendi",
+        sub: "Oranlar anında tüm cihazlara yayıldı",
+      });
+      coinDing();
+      return { ok: true };
+    },
+    [mutate, pushToast]
   );
 
   /* --------- para çekme talebi (bakiye anında bloke edilir) --------- */
@@ -3367,7 +3407,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
               });
             } else {
               /* Eski sürümden kalan başlangıç bonusları artık uygulanmaz. */
-              const delta = d.method === "Başlangıç Bonusu" ? 0 : d.amount;
+              const bonus = d.method === "Başlangıç Bonusu" ? 0 : Math.max(0, d.bonus ?? 0);
+              const delta = d.method === "Başlangıç Bonusu" ? 0 : d.amount + Math.round((d.amount * bonus) / 100);
               me.balance = Math.max(0, Math.round(me.balance + delta));
             }
           }
@@ -3398,7 +3439,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                 : d.skinId
                   ? `Skin hediyesi: ${d.skinName ?? d.skinId}`
                   : d.amount >= 0
-                    ? `${money(d.amount)} hesabına eklendi`
+                    ? `${money(d.amount + Math.round((d.amount * Math.max(0, d.bonus ?? 0)) / 100))} hesabına eklendi${
+                        (d.bonus ?? 0) > 0 ? ` (+${money(Math.round((d.amount * d.bonus!) / 100))} bonus)` : ""
+                      }`
                     : `${money(Math.abs(d.amount))} hesabından silindi`,
             sub:
               d.method === "Başlangıç Bonusu"
@@ -3742,6 +3785,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     myDeposits,
     requestDeposit,
     requestWithdraw,
+    depositPacks: db.depositPacks ?? null,
+    setDepositPacks,
     heldBalance: myDeposits
       .filter((d) => d.kind === "withdraw" && d.status === "pending")
       .reduce((a, d) => a + d.amount, 0),

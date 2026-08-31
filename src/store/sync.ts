@@ -9,6 +9,7 @@ import {
   type MarketListing,
   type MarketPayment,
   type PriceSnap,
+  type DepositPackSettings,
 } from "./db";
 
 /* -------------------------------------------------------------
@@ -63,6 +64,8 @@ export interface CloudDoc {
   economyConfig?: DB["economyConfig"];
   /** fiyat geçmişi kareleri — id ile birleştirilir */
   priceSnaps?: PriceSnap[];
+  /** yatırma paketleri — en yeni ts kazanır */
+  depositPacks?: DepositPackSettings;
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -104,6 +107,7 @@ export function toCloudDoc(db: DB): CloudDoc {
     economyWave: db.economyWave ?? undefined,
     economyConfig: db.economyConfig ?? undefined,
     priceSnaps: [...(db.priceSnaps ?? [])].sort((a, b) => a.ts - b.ts).slice(-300),
+    depositPacks: db.depositPacks ?? undefined,
   };
 }
 
@@ -160,6 +164,7 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     economyWave: local.economyWave,
     economyConfig: local.economyConfig,
     priceSnaps: [...(local.priceSnaps ?? [])],
+    depositPacks: local.depositPacks,
   };
 
   /* kullanıcılar */
@@ -288,6 +293,11 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
   if (cloud.economyConfig && (!out.economyConfig || cloud.economyConfig.ts > out.economyConfig.ts))
     out.economyConfig = cloud.economyConfig;
   else if (!cloud.economyConfig && !out.economyConfig) out.economyConfig = undefined;
+
+  /* yatırma paketleri — en yeni ts kazanır */
+  if (cloud.depositPacks && (!out.depositPacks || cloud.depositPacks.ts > out.depositPacks.ts))
+    out.depositPacks = cloud.depositPacks;
+  else if (!cloud.depositPacks && !out.depositPacks) out.depositPacks = undefined;
 
   /* fiyat geçmişi — id birleşimi, en yeni 300 kare korunur */
   {

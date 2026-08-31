@@ -51,6 +51,7 @@ import {
 import { click, coinDing } from "../lib/audio";
 import { useGame, levelFromSpent, weeklyStats } from "../store/Game";
 import { SKIN_MAP, RARITY, hypotheticalSkinPrice, type Skin } from "../data/skins";
+import { DEFAULT_DEPOSIT_PACKS } from "../store/db";
 import { CASES, previewCasePrice } from "../data/cases";
 import { MAX_STICKERS, STICKERS } from "../data/stickers";
 import { WEARS, rollFloat, type WearKey } from "../data/wear";
@@ -180,7 +181,17 @@ export function AdminPanel() {
     cancelEconomyWave,
     setEconomyConfig,
     resetEconomy,
+    depositPacks,
+    setDepositPacks,
   } = useGame();
+
+  const depositPackList = useMemo(
+    () =>
+      [...(depositPacks?.packs?.length ? depositPacks.packs : DEFAULT_DEPOSIT_PACKS)].sort(
+        (a, b) => a.amount - b.amount
+      ),
+    [depositPacks]
+  );
 
   const [urlInput, setUrlInput] = useState(syncUrl ?? "");
   const [codeInput, setCodeInput] = useState(syncCode ?? "");
@@ -255,6 +266,7 @@ export function AdminPanel() {
   const [pinQuery, setPinQuery] = useState("");
 
   /* ekonomik dalga — hazır seçenekler: yön / şiddet / nadir / süre / bitiş / otomatik */
+  const PACK_BONUSES = [0, 5, 10, 15, 20, 25, 30, 50, 100];
   const ECO_STRENGTHS: Record<string, { label: string; down: string; surge: number }> = {
     light: { label: "Hafif", down: "Hafif", surge: 25 },
     medium: { label: "Orta", down: "Orta", surge: 50 },
@@ -657,6 +669,12 @@ export function AdminPanel() {
                         >
                           {money(d.amount)}
                         </div>
+                        {d.kind !== "withdraw" && (d.bonus ?? 0) > 0 && (
+                          <div className="mt-0.5 text-[10px] font-bold text-emerald-400">
+                            +{money(Math.round((d.amount * d.bonus!) / 100))} bonus →{" "}
+                            {money(d.amount + Math.round((d.amount * d.bonus!) / 100))}
+                          </div>
+                        )}
                       </div>
                       <div className="flex w-full gap-2 sm:w-auto">
                         <button
@@ -669,7 +687,11 @@ export function AdminPanel() {
                               sub:
                                 d.kind === "withdraw"
                                   ? `${d.userName} kişisine ${money(d.amount)} öde${d.payTo ? ` → ${d.payTo}` : ""}`
-                                  : `${d.userName} → ${money(d.amount)}`,
+                                  : `${d.userName} → ${money(d.amount + Math.round((d.amount * Math.max(0, d.bonus ?? 0)) / 100))}${
+                                      (d.bonus ?? 0) > 0
+                                        ? ` (+${money(Math.round((d.amount * d.bonus!) / 100))} bonus)`
+                                        : ""
+                                    }`,
                             });
                           }}
                           className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 px-5 font-display text-sm font-bold text-ink-950 transition hover:brightness-110 sm:flex-none"
@@ -717,6 +739,11 @@ export function AdminPanel() {
                         {d.kind === "withdraw" ? "Çekim" : "Yatır"}
                       </span>
                       <span className="font-display font-bold text-white/50">{money(d.amount)}</span>
+                      {(d.bonus ?? 0) > 0 && (
+                        <span className="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-black text-emerald-400">
+                          +%{d.bonus}
+                        </span>
+                      )}
                       <span className="ml-auto text-[11px] text-white/30">{ago(d.ts)}</span>
                       <span
                         className={cn(
@@ -2180,6 +2207,81 @@ export function AdminPanel() {
             Ayarlar <span className="font-bold text-white/75">tüm cihazlara otomatik yayınlanır</span> (senkron kodu
             giren herkes aynı ayarı kullanır). Çekim talepleri (para çekme) güvenlik için{" "}
             <span className="font-bold text-white/75">her zaman manuel onay</span> gerektirir.
+          </div>
+
+          {/* ============ YATIRMA PAKETLERİ ============ */}
+          <div className="rounded-2xl border border-emerald-500/25 bg-gradient-to-b from-emerald-500/8 to-ink-900/70 p-5 lg:col-span-2">
+            <div className="flex items-center gap-2">
+              <BadgePercent className="h-4 w-4 text-emerald-400" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Yatırma Paketleri
+              </span>
+              <span className="ml-auto rounded-full bg-ink-600 px-2 py-0.5 text-[9px] font-black uppercase text-white/40">
+                Bonuslu · otomatik kayıt
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+              Paket tutarını seçen oyuncu, onaylanınca{" "}
+              <span className="font-bold text-emerald-300">belirtilen bonusla</span> kredilendirilir. Örn:{" "}
+              <span className="font-bold text-white/70">$10.000 + %10 → $11.000</span>. Büyük paketi daha avantajlı
+              yapmak isteyebilirsin. Paketler yatırma ekranında kısayol olarak da görünür.
+            </p>
+            <div className="mt-3 space-y-2">
+              {depositPackList.map((p) => (
+                <div
+                  key={p.amount}
+                  className="flex items-center gap-2 rounded-xl border border-line bg-ink-900/70 px-3 py-2.5"
+                >
+                  <div className="min-w-[82px]">
+                    <div className="font-display text-sm font-black text-white/85">{money(p.amount)}</div>
+                    <div className="text-[8px] uppercase tracking-wider text-white/30">paket</div>
+                  </div>
+                  <div className="mx-1 h-7 w-px bg-line" />
+                  <div className="flex flex-wrap items-center gap-1">
+                    {PACK_BONUSES.map((b) => (
+                      <button
+                        key={b}
+                        onClick={() => {
+                          const res = setDepositPacks(
+                            depositPackList.map((x) => (x.amount === p.amount ? { ...x, bonus: b } : x))
+                          );
+                          if (!res.ok) pushToast({ kind: "lose", title: "Kaydedilemedi", sub: res.error });
+                        }}
+                        className={cn(
+                          "rounded-md px-2 py-1 text-[10px] font-black transition",
+                          p.bonus === b
+                            ? "bg-emerald-500 text-ink-950"
+                            : "bg-ink-700 text-white/45 hover:text-white"
+                        )}
+                      >
+                        +%{b}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="ml-auto text-right">
+                    <div className="font-display text-xs font-black text-emerald-400">
+                      {money(p.amount + Math.round((p.amount * p.bonus) / 100))}
+                    </div>
+                    <div className="text-[8px] uppercase tracking-wider text-white/30">yüklenecek</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <span className="text-[9px] text-white/30">
+                Bonus seçeneğine tıkla → anında kaydedilir, tüm cihazlara yayılır.
+              </span>
+              <button
+                onClick={() => {
+                  if (!window.confirm("Paketler varsayılana dönsün mü? (1.000→%0 · 100.000→%50)")) return;
+                  const res = setDepositPacks(DEFAULT_DEPOSIT_PACKS);
+                  if (!res.ok) pushToast({ kind: "lose", title: "Geri alınamadı", sub: res.error });
+                }}
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-line bg-ink-800 px-3 py-2 text-[10px] font-bold text-white/60 transition hover:bg-ink-700"
+              >
+                <RotateCcw className="h-3 w-3" /> Varsayılana döndür
+              </button>
+            </div>
           </div>
         </div>
       )}

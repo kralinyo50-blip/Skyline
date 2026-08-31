@@ -192,7 +192,35 @@ export interface DepositReq {
   skinName?: string;
   /** hediye seçenekleri: aşınma + sticker */
   skinOpts?: { float?: number; stickers?: string[] };
+  /** yatırma paketi bonusu (%) — talep anında paketten hesaplanır */
+  bonus?: number;
 }
+
+/* ---------------- YATIRMA PAKETLERİ ---------------- */
+
+/** Paket: belirli tutarda yatırma = üstüne % bonus (avantajlı paket) */
+export interface DepositPack {
+  amount: number;
+  /** onaylanınca yüklenen tutar: amount + amount*bonus/100 */
+  bonus: number;
+}
+
+/** Admin'in düzenlediği paket listesi — en yeni ts kazanır */
+export interface DepositPackSettings {
+  ts: number;
+  by: string;
+  packs: DepositPack[];
+}
+
+/** Varsayılan paketler — büyük paket daha avantajlı */
+export const DEFAULT_DEPOSIT_PACKS: DepositPack[] = [
+  { amount: 1000, bonus: 0 },
+  { amount: 5000, bonus: 5 },
+  { amount: 10000, bonus: 10 },
+  { amount: 25000, bonus: 20 },
+  { amount: 50000, bonus: 30 },
+  { amount: 100000, bonus: 50 },
+];
 
 /* ---------------- ETKİNLİK / ÇEKİLİŞ / DUYURU ---------------- */
 
@@ -483,6 +511,8 @@ export interface DB {
   economyConfig?: EconomyConfig | null;
   /** fiyat geçmişi kareleri — id ile birleştirilir, son 300 tutulur */
   priceSnaps?: PriceSnap[];
+  /** yatırma paketleri (bonuslu) — en yeni ts kazanır */
+  depositPacks?: DepositPackSettings | null;
 }
 
 const LS_KEY = "skyline:v1";
@@ -513,6 +543,7 @@ export function emptyDB(): DB {
     economyWave: null,
     economyConfig: null,
     priceSnaps: [],
+    depositPacks: null,
   };
 }
 
@@ -553,6 +584,7 @@ export function loadDB(): DB {
       economyWave: parsed.economyWave ?? null,
       economyConfig: parsed.economyConfig ?? null,
       priceSnaps: Array.isArray(parsed.priceSnaps) ? [...parsed.priceSnaps] : [],
+      depositPacks: parsed.depositPacks ?? null,
     };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.

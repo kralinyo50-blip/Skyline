@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { useGame, DAILY_COOLDOWN, type TabKey } from "../store/Game";
 import { ADMIN_NAME, BRAND, CURRENCY, SCALE, VIP_PLANS, mcHead, money } from "../config";
+import { DEFAULT_DEPOSIT_PACKS } from "../store/db";
 import { click, coinDing } from "../lib/audio";
 import { loadPrefs, savePrefs, type Prefs } from "../lib/prefs";
 import { cn } from "../utils/cn";
@@ -75,6 +76,7 @@ export function Header() {
     level, levelTitleStr, levelProgress, xpCurrent, xpNeeded,
     lastDaily, claimDaily, isAdmin, userName, logout,
     requestDeposit, requestWithdraw, heldBalance, myDeposits, pendingDepositList, pendingUserList,
+    depositPacks,
     syncCode, setSyncCode, syncStatus,
     vipUntil, vipPlan, vipActive, buyVip,
   } = useGame();
@@ -115,6 +117,13 @@ export function Header() {
   const myPending = myDeposits.filter((d) => d.status === "pending");
   const adminBadge = pendingDepositList.length + pendingUserList.length;
   const amountNum = Math.max(0, Math.round(Number(amount.replace(/[^\d]/g, "")) || 0));
+
+  /* yatırma paketleri — admin panelinden değiştirilebilir */
+  const packs = (depositPacks?.packs?.length ? depositPacks.packs : DEFAULT_DEPOSIT_PACKS).sort(
+    (a, b) => a.amount - b.amount
+  );
+  const activePack = mode === "deposit" ? packs.find((p) => p.amount === amountNum) : undefined;
+  const credit = amountNum + Math.round((amountNum * (activePack?.bonus ?? 0)) / 100);
 
   const allTabs: typeof TABS = isAdmin
     ? [...TABS, { key: "admin" as TabKey, label: "Panel", Icon: ShieldCheck }]
@@ -566,8 +575,14 @@ export function Header() {
                     </div>
                     <div className="font-display text-xl font-black text-white">Talep gönderildi</div>
                     <p className="max-w-xs text-sm text-white/45">
-                      <span className="font-bold text-emerald-400">{money(amountNum)}</span> tutarındaki{" "}
-                      {mode === "withdraw" ? "çekim" : "yatırma"} talebin{" "}
+                      <span className="font-bold text-emerald-400">
+                        {mode === "withdraw" ? money(amountNum) : money(credit)}
+                      </span>{" "}
+                      {mode === "withdraw"
+                        ? "tutarındaki çekim talebin"
+                        : activePack && activePack.bonus > 0
+                          ? `(+${money(credit - amountNum)} bonus) yatırma talebin`
+                          : "tutarındaki yatırma talebin"}{" "}
                       <span className="font-semibold text-brand-300">{ADMIN_NAME}</span> onayına düştü.
                       {mode === "withdraw"
                         ? " Tutar bakiyenden bloke edildi, onaylanınca ödemen yapılacak."
@@ -610,24 +625,43 @@ export function Header() {
                     </div>
 
                     <div className="mt-2.5 grid grid-cols-3 gap-2">
-                      {PRESETS.map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => {
-                            setAmount(String(p));
-                            click();
-                          }}
-                          className={cn(
-                            "rounded-lg border py-2 font-display text-sm font-bold transition",
-                            amountNum === p
-                              ? "border-brand-500 bg-brand-500/10 text-brand-300"
-                              : "border-line bg-ink-700 text-white/55 hover:text-white"
-                          )}
-                        >
-                          {money(p)}
-                        </button>
-                      ))}
+                      {(mode === "deposit" ? packs.map((p) => p.amount) : PRESETS).map((p) => {
+                        const pack = mode === "deposit" ? packs.find((x) => x.amount === p) : undefined;
+                        return (
+                          <button
+                            key={p}
+                            onClick={() => {
+                              setAmount(String(p));
+                              click();
+                            }}
+                            className={cn(
+                              "relative rounded-lg border py-2 font-display text-sm font-bold transition",
+                              amountNum === p
+                                ? "border-brand-500 bg-brand-500/10 text-brand-300"
+                                : "border-line bg-ink-700 text-white/55 hover:text-white"
+                            )}
+                          >
+                            {money(p)}
+                            {pack && pack.bonus > 0 && (
+                              <span className="absolute -top-1.5 right-1 rounded-full bg-emerald-500 px-1 py-px text-[8px] font-black text-ink-950">
+                                +%{pack.bonus}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
+
+                    {mode === "deposit" && activePack && activePack.bonus > 0 && (
+                      <div className="mt-2.5 flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-[11px]">
+                        <span className="text-white/55">
+                          Paket bonusu <span className="font-black text-emerald-400">+%{activePack.bonus}</span>
+                        </span>
+                        <span className="font-display text-sm font-black text-emerald-400">
+                          {money(credit)} yüklenecek
+                        </span>
+                      </div>
+                    )}
 
                     <label className="mb-1.5 mt-4 block text-[11px] font-bold uppercase tracking-widest text-white/40">
                       Ödeme yöntemi
@@ -706,7 +740,8 @@ export function Header() {
                           : "bg-gradient-to-b from-brand-400 to-brand-600"
                       )}
                     >
-                      {money(amountNum)} {mode === "withdraw" ? "Çekim Talebi" : "Talep Et"}
+                      {mode === "withdraw" ? money(amountNum) : money(credit)}{" "}
+                      {mode === "withdraw" ? "Çekim Talebi" : "Yükle ve Al"}
                     </button>
                   </>
                 )}
