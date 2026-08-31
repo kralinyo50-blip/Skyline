@@ -2964,8 +2964,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const me = currentUser(fresh);
       if (!me) return { ok: false, error: "Oturum bulunamadı" };
       const owned = me.vipLevel ?? 0;
-      if (level <= owned) return { ok: false, error: "Bu kademe zaten sende — sıradakini al" };
-      if (level !== owned + 1) return { ok: false, error: `Önce ${vipLevelEntry(level - 1)?.label ?? ""} almalısın` };
+      if (level <= owned) return { ok: false, error: "Bu kademe zaten sende" };
       if (me.balance < want.price) {
         return { ok: false, error: `Yetersiz bakiye — ${money(want.price)} gerekli` };
       }

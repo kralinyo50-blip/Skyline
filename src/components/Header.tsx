@@ -1259,21 +1259,22 @@ export function Header() {
                                     <span className="pointer-events-none rounded-lg border border-emerald-500/30 px-2.5 py-1.5 text-[10px] font-black uppercase text-emerald-400">
                                       Sahip
                                     </span>
-                                  ) : next ? (
+                                  ) : (
                                     <button
                                       onClick={() => {
                                         const r = buyVipLevel(idx + 1);
                                         if (!r.ok && r.error)
                                           pushToast({ kind: "lose", title: "VIP", sub: r.error });
                                       }}
-                                      className="rounded-lg bg-gradient-to-b from-rar-rare to-brand-600 px-3 py-1.5 text-[11px] font-black uppercase text-ink-950 transition hover:brightness-110 active:scale-95"
+                                      className={cn(
+                                        "rounded-lg px-3 py-1.5 text-[11px] font-black uppercase transition hover:brightness-110 active:scale-95",
+                                        next
+                                          ? "bg-gradient-to-b from-rar-rare to-brand-600 text-ink-950"
+                                          : "border border-rar-rare/40 bg-rar-rare/10 text-rar-rare"
+                                      )}
                                     >
-                                      Satın Al
+                                      {next ? "Satın Al" : "Doğrudan Al"}
                                     </button>
-                                  ) : (
-                                    <span className="rounded-lg border border-line px-2.5 py-1.5 text-[10px] font-black uppercase text-white/25">
-                                      🔒 Kilitli
-                                    </span>
                                   )}
                                 </div>
                               </div>
@@ -1286,8 +1287,9 @@ export function Header() {
                 </div>
 
                 <p className="mt-4 rounded-lg border border-line bg-ink-900 px-3 py-2.5 text-[10px] leading-relaxed text-white/35">
-                  VIP kademeleri <span className="font-bold text-white/60">bakiyenden para düşerek</span> sırayla
-                  satın alınır — önceki kademeye sahip olmadan sonrakini alamazsın. Toplam 6 sınıf × 4 kademe ={" "}
+                  VIP kademeleri <span className="font-bold text-white/60">bakiyenden para düşerek</span>
+                  satın alınır — <span className="font-bold text-white/60">istediğin kademeyi doğrudan alabilirsin</span>,
+                  sıralı almak zorunda değilsin. Toplam 6 sınıf × 4 kademe ={" "}
                   <span className="font-bold text-white/60">24 seviye</span>:{" "}
                   {VIP_TIERS.filter((t) => t.id !== "none").map((t) => t.label).join(" → ")}. Kademe arttıkça
                   günlük ödül çarpanı, cashback, pazar komisyonu avantajı ve kasa indirimi artar.
