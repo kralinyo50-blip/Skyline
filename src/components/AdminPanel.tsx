@@ -1349,7 +1349,7 @@ export function AdminPanel() {
             {economyActive ? (
               <button
                 onClick={() => {
-                  if (window.confirm("Ekonomik dalga şimdi sona ersin mi?")) cancelEconomyWave();
+                  if (window.confirm("Ekonomik dalga şimdi sona ersin mi?\nFiyatlar o anki seviyede kalacak.")) cancelEconomyWave();
                 }}
                 className="mt-3 flex h-12 w-full items-center justify-center gap-1.5 rounded-xl border border-lose/40 bg-lose/10 font-display text-sm font-black uppercase tracking-wider text-lose transition hover:bg-lose/20"
               >
