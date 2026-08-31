@@ -7,6 +7,7 @@ import { STICKER_MAP, stickerBonus } from "../data/stickers";
 import { floatPremium, WEARS } from "../data/wear";
 import { SkinImg } from "./SkinCard";
 import { FloatBar, WearBadge } from "./WearUi";
+import { PriceHistoryChart } from "./PriceChart";
 
 /* ------------------------------------------------------------------
    Eşya detay modalı — CS tarzı:
@@ -175,6 +176,20 @@ export function ItemDetailModal({ item, onClose, actions, subtitle }: Props) {
               </div>
             )}
           </div>
+
+          {!isSticker && skin && (
+            <div className="mt-3 rounded-xl border border-line bg-ink-900 p-3.5">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Fiyat Geçmişi · Son 24 saat
+                </span>
+                <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[8px] font-bold uppercase text-white/35">
+                  Baz fiyat
+                </span>
+              </div>
+              <PriceHistoryChart skinId={skin.id} />
+            </div>
+          )}
 
           {subtitle && <p className="mt-3 text-[10px] text-white/35">{subtitle}</p>}
 

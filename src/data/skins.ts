@@ -386,9 +386,9 @@ function easeRamp(p: number): number {
 
 /** Aktif dalga için kademe çarpanı — zaman kontrolü + yumuşak artış/düşüş.
  *  fadeInMin: tepeye yavaş yavaş çıkar; fadeOutMin: bitişten sonra yavaşça iner. */
-export function waveMultiplier(rarity: RarityKey, wave?: EconomyWaveLike | null): number {
+export function waveMultiplierAt(rarity: RarityKey, wave?: EconomyWaveLike | null, at?: number): number {
   if (!wave || wave.cancelled || (wave.surge ?? 0) <= 0) return 1;
-  const now = Date.now();
+  const now = at ?? Date.now();
   const start = wave.ts ?? 0;
   const peak = waveTierFactor(rarity, wave.surge ?? 0, wave.rareBoost ?? 0, wave.direction ?? "up");
   const end = wave.endsAt ?? start;
@@ -413,12 +413,17 @@ export function waveMultiplier(rarity: RarityKey, wave?: EconomyWaveLike | null)
   return 1;
 }
 
-/** Hiçbir şeyi değiştirmeden varsayımsal fiyatı hesapla (admin önizlemesi).
- *  Çarpanlar: orijinal × global × nadirlik × skin bazlı × dalga. */
-export function hypotheticalSkinPrice(
+export function waveMultiplier(rarity: RarityKey, wave?: EconomyWaveLike | null): number {
+  return waveMultiplierAt(rarity, wave, Date.now());
+}
+
+/** Belirli bir andaki fiyatı hiçbir şeyi değiştirmeden hesapla (geçmiş grafiği).
+ *  Çarpanlar: orijinal × global × nadirlik × skin bazlı × dalga(t). */
+export function skinPriceAt(
   id: string,
   ps?: PriceSettingsLike | null,
-  wave?: EconomyWaveLike | null
+  wave?: EconomyWaveLike | null,
+  at?: number
 ): number {
   const s = SKIN_MAP[id];
   if (!s) return 0;
@@ -426,7 +431,16 @@ export function hypotheticalSkinPrice(
   const r = (ps?.byRarity?.[s.rarity] ?? 100) / 100;
   const baseId = id.endsWith("-st") || id.endsWith("-sv") ? id.slice(0, -3) : id;
   const k = (ps?.bySkin?.[id] ?? ps?.bySkin?.[baseId] ?? 100) / 100;
-  return Math.max(10, Math.round((ORIG_PRICES.get(id) ?? s.price) * g * r * k * waveMultiplier(s.rarity, wave)));
+  return Math.max(10, Math.round((ORIG_PRICES.get(id) ?? s.price) * g * r * k * waveMultiplierAt(s.rarity, wave, at)));
+}
+
+/** Hiçbir şeyi değiştirmeden varsayımsal fiyatı hesapla (admin önizlemesi). */
+export function hypotheticalSkinPrice(
+  id: string,
+  ps?: PriceSettingsLike | null,
+  wave?: EconomyWaveLike | null
+): number {
+  return skinPriceAt(id, ps, wave, Date.now());
 }
 
 /** Fiyat çarpanlarını SKIN_MAP'e uygula (100 = normal, 150 = +%50, 50 = yarı).

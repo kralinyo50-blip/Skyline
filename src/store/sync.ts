@@ -8,6 +8,7 @@ import {
   type JackpotState,
   type MarketListing,
   type MarketPayment,
+  type PriceSnap,
 } from "./db";
 
 /* -------------------------------------------------------------
@@ -60,6 +61,8 @@ export interface CloudDoc {
   economyWave?: DB["economyWave"];
   /** otomatik dalga ayarları — en yeni ts kazanır */
   economyConfig?: DB["economyConfig"];
+  /** fiyat geçmişi kareleri — id ile birleştirilir */
+  priceSnaps?: PriceSnap[];
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -100,6 +103,7 @@ export function toCloudDoc(db: DB): CloudDoc {
     weekPin: db.weekPin ?? undefined,
     economyWave: db.economyWave ?? undefined,
     economyConfig: db.economyConfig ?? undefined,
+    priceSnaps: [...(db.priceSnaps ?? [])].sort((a, b) => a.ts - b.ts).slice(-300),
   };
 }
 
@@ -155,6 +159,7 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     weekPin: local.weekPin,
     economyWave: local.economyWave,
     economyConfig: local.economyConfig,
+    priceSnaps: [...(local.priceSnaps ?? [])],
   };
 
   /* kullanıcılar */
@@ -283,6 +288,18 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
   if (cloud.economyConfig && (!out.economyConfig || cloud.economyConfig.ts > out.economyConfig.ts))
     out.economyConfig = cloud.economyConfig;
   else if (!cloud.economyConfig && !out.economyConfig) out.economyConfig = undefined;
+
+  /* fiyat geçmişi — id birleşimi, en yeni 300 kare korunur */
+  {
+    const smap = new Map<string, PriceSnap>();
+    (out.priceSnaps ?? []).forEach((sn) => {
+      if (sn && sn.id) smap.set(sn.id, sn);
+    });
+    (cloud.priceSnaps ?? []).forEach((sn) => {
+      if (sn && sn.id && !smap.has(sn.id)) smap.set(sn.id, sn);
+    });
+    out.priceSnaps = [...smap.values()].sort((a, b) => a.ts - b.ts).slice(-300);
+  }
 
   /* jackpot — herkese aynı pot, eksik senkron korumalı birleşim */
   out.jackpot = mergeJackpot(local.jackpot ?? null, cloud.jackpot ?? null, local.session);

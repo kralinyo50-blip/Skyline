@@ -267,6 +267,21 @@ export interface PriceSettings {
   bySkin?: Record<string, number>;
 }
 
+/** Fiyat geçmişi karesi — fiyatı etkileyen her olayda bir kayıt düşer.
+ *  Dalga eğrisi deterministik olduğu için geçmiş fiyat sonradan yeniden
+ *  kurulabilir: ORIG × global × nadirlik × skin × waveMultiplierAt(t). */
+export interface PriceSnap {
+  id: string;
+  ts: number;
+  by: string;
+  note?: string;
+  global?: number;
+  byRarity?: Partial<Record<RarityKey, number>>;
+  bySkin?: Record<string, number>;
+  /** o anki dalga (tepede değil, tam tanımı) — yoksa null */
+  wave?: EconomyWave | null;
+}
+
 /* ---------------- HAFTANIN OYUNCUSU (admin override) ---------------- */
 
 export interface WeekPin {
@@ -466,6 +481,8 @@ export interface DB {
   economyWave?: EconomyWave | null;
   /** otomatik dalga ayarları — en yeni ts kazanır */
   economyConfig?: EconomyConfig | null;
+  /** fiyat geçmişi kareleri — id ile birleştirilir, son 300 tutulur */
+  priceSnaps?: PriceSnap[];
 }
 
 const LS_KEY = "skyline:v1";
@@ -495,6 +512,7 @@ export function emptyDB(): DB {
     weekPin: null,
     economyWave: null,
     economyConfig: null,
+    priceSnaps: [],
   };
 }
 
@@ -534,6 +552,7 @@ export function loadDB(): DB {
       weekPin: parsed.weekPin ?? null,
       economyWave: parsed.economyWave ?? null,
       economyConfig: parsed.economyConfig ?? null,
+      priceSnaps: Array.isArray(parsed.priceSnaps) ? [...parsed.priceSnaps] : [],
     };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.

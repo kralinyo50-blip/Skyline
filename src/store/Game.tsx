@@ -103,6 +103,7 @@ import {
   type WeekPin,
   type EconomyWave,
   type EconomyConfig,
+  type PriceSnap,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
@@ -448,6 +449,8 @@ interface GameState {
   /* ekonomik dalga */
   economyWave: EconomyWave | null;
   economyConfig: EconomyConfig | null;
+  /** fiyat geçmişi kareleri (id ile birleşir) */
+  priceSnaps: PriceSnap[];
   startEconomyWave: (
     surge: number,
     rareBoost: number,
@@ -566,6 +569,26 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     saveDB(fresh);
     setDb(fresh);
     notifyDbChanged();
+  }, []);
+
+  /* fiyat geçmişi: fiyatı etkileyen her olayda bir kare düşer — grafik
+     dalga eğrisini deterministik yeniden kurar (son 300 kare). */
+  const pushPriceSnap = useCallback((draft: DB, note?: string) => {
+    const ps = draft.priceSettings;
+    const w = draft.economyWave;
+    draft.priceSnaps = [
+      ...(draft.priceSnaps ?? []),
+      {
+        id: uid(),
+        ts: Date.now(),
+        by: ps?.by ?? w?.by ?? "sistem",
+        note,
+        global: ps?.global ?? 100,
+        byRarity: { ...(ps?.byRarity ?? {}) },
+        bySkin: { ...(ps?.bySkin ?? {}) },
+        wave: w ? { ...w } : null,
+      },
+    ].slice(-300);
   }, []);
 
   /** Site geneli kutlama — tüm cihazlara yayınlanır (admin) */
@@ -2310,10 +2333,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           byRarity: patch.byRarity ?? draft.priceSettings?.byRarity ?? {},
           bySkin: patch.bySkin ?? draft.priceSettings?.bySkin ?? {},
         };
+        pushPriceSnap(draft, "Fiyat ayarı");
       });
       return { ok: true };
     },
-    [mutate]
+    [mutate, pushPriceSnap]
   );
 
   /* fiyat çarpanları + ekonomik dalgayı uygula + bot ilanlarını ölçekle */
@@ -2367,8 +2391,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       draft.priceSettings = { ts: Date.now(), by: wave.by, global: ps.global ?? 100, byRarity, bySkin: { ...(ps.bySkin ?? {}) } };
       /* permanent:false → işlendi bayrağı; gözlemci bir daha fold etmez */
       draft.economyWave = { ...draft.economyWave, cancelled: true, permanent: false, ts: Date.now() };
+      pushPriceSnap(draft, "Kalıcı seviye işlendi");
     });
-  }, [mutate]);
+  }, [mutate, pushPriceSnap]);
 
   useEffect(() => {
     const iv = window.setInterval(() => {
@@ -2416,6 +2441,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           fadeInMin: fin,
           fadeOutMin: fout,
         };
+        pushPriceSnap(draft, direction === "up" ? "Dalga başladı" : "Çöküş başladı");
       });
       pushToast({
         kind: "money",
@@ -2441,9 +2467,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     mutate((draft) => {
       if (!draft.economyWave) return;
       draft.economyWave = { ...draft.economyWave, cancelled: true, ts: Date.now(), endsAt: Date.now() };
+      pushPriceSnap(draft, "Dalga durduruldu");
     });
     pushToast({ kind: "info", title: "Ekonomik dalga durduruldu", sub: "Fiyatlar normale döndü" });
-  }, [mutate, pushToast, foldWaveIntoPrices]);
+  }, [mutate, pushToast, foldWaveIntoPrices, pushPriceSnap]);
 
   const setEconomyConfig = useCallback(
     (p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin" | "direction" | "after" | "fadeMin">>): { ok: boolean; error?: string } => {
@@ -2510,6 +2537,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         },
         ...(draft.adminLog ?? []),
       ].slice(0, 300);
+      pushPriceSnap(draft, "Sıfırlama");
     });
     pushToast({
       kind: "info",
@@ -2518,7 +2546,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     });
     coinDing();
     return { ok: true };
-  }, [mutate, pushToast]);
+  }, [mutate, pushToast, pushPriceSnap]);
 
   /* otomatik dalga — yalnızca admin cihazı üretir, ayarlar sync ile yayılır */
   useEffect(() => {
@@ -2554,10 +2582,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           fadeOutMin: fade,
         };
         draft.economyConfig = { ...draft.economyConfig, ts: Date.now(), lastAt: now };
+        pushPriceSnap(draft, dir === "up" ? "Otomatik dalga" : "Otomatik çöküş");
       });
     }, 20000);
     return () => clearInterval(iv);
-  }, [db.economyConfig, mutate]);
+  }, [db.economyConfig, mutate, pushPriceSnap]);
 
   /* ---------------- HAFTANIN OYUNCUSU — admin sabitleme ---------------- */
   const pinWeekWinner = useCallback(
@@ -3851,6 +3880,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     cancelEconomyWave,
     setEconomyConfig,
     resetEconomy,
+    priceSnaps: db.priceSnaps ?? [],
 
     /* haftanın oyuncusu */
     weekWinner,
