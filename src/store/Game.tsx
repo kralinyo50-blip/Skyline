@@ -101,6 +101,8 @@ import {
   type CaseSale,
   type PriceSettings,
   type WeekPin,
+  type EconomyWave,
+  type EconomyConfig,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
@@ -442,6 +444,15 @@ interface GameState {
   skinBasePrice: (id: string) => number;
   /** fiyat çarpanı değiştiğinde artar — memo dep'lerinde kullan */
   priceVersion: number;
+
+  /* ekonomik dalga */
+  economyWave: EconomyWave | null;
+  economyConfig: EconomyConfig | null;
+  startEconomyWave: (surge: number, rareBoost: number, minutes: number) => { ok: boolean; error?: string };
+  cancelEconomyWave: () => void;
+  setEconomyConfig: (
+    p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin">>
+  ) => { ok: boolean; error?: string };
 
   /* haftanın oyuncusu */
   weekWinner: { key: string; name: string; spent: number; opened: number } | null;
@@ -2295,11 +2306,125 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [mutate]
   );
 
-  /* buluttan gelen fiyat ayarlarını uygula + bot pazar ilanlarını ölçekle */
-  useEffect(() => {
-    applyPriceOverrides(db.priceSettings ?? null);
+  /* fiyat çarpanları + ekonomik dalgayı uygula + bot ilanlarını ölçekle */
+  const applyPricing = useCallback(() => {
+    const d = dbRef.current;
+    applyPriceOverrides(d.priceSettings ?? null, d.economyWave ?? null);
     setBotListings((prev) => rescaleBotListings(prev));
-  }, [db.priceSettings]);
+  }, []);
+
+  /* dalga bitişi/cancel sonrası fiyatları normale döndürme takibi */
+  const pricingStateRef = useRef<{ waveId: string; ended: boolean }>({ waveId: "", ended: false });
+
+  useEffect(() => {
+    const w = db.economyWave ?? null;
+    pricingStateRef.current = { waveId: w?.id ?? "", ended: false };
+    applyPricing();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db.economyWave, db.priceSettings, applyPricing]);
+
+  useEffect(() => {
+    const iv = window.setInterval(() => {
+      const st = pricingStateRef.current;
+      const w = dbRef.current.economyWave;
+      const active = !!w && !w.cancelled && w.endsAt > Date.now();
+      if (st.waveId && !st.ended && !active) {
+        st.ended = true; /* dalga bitti — bir kez normal fiyatlara dön */
+        applyPricing();
+      }
+    }, 10000);
+    return () => clearInterval(iv);
+  }, [applyPricing]);
+
+  /* ---------------- EKONOMİK DALGA (admin) ---------------- */
+  const startEconomyWave = useCallback(
+    (surge: number, rareBoost: number, minutes: number): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const surgeV = Math.max(5, Math.min(2000, Math.round(surge)));
+      const rareV = Math.max(0, Math.min(1000, Math.round(rareBoost)));
+      const m = Math.max(1, Math.min(1440, Math.round(minutes)));
+      mutate((draft) => {
+        draft.economyWave = {
+          id: uid(),
+          ts: Date.now(),
+          by: me.name,
+          surge: surgeV,
+          rareBoost: rareV,
+          endsAt: Date.now() + m * 60000,
+        };
+      });
+      pushToast({
+        kind: "money",
+        title: "Ekonomik dalga başladı",
+        sub: `+%${surgeV} (nadir +%${rareV}) · ${m} dk`,
+      });
+      coinDing();
+      return { ok: true };
+    },
+    [mutate, pushToast]
+  );
+
+  const cancelEconomyWave = useCallback(() => {
+    mutate((draft) => {
+      if (!draft.economyWave) return;
+      draft.economyWave = { ...draft.economyWave, cancelled: true, ts: Date.now(), endsAt: Date.now() };
+    });
+    pushToast({ kind: "info", title: "Ekonomik dalga durduruldu", sub: "Fiyatlar normale döndü" });
+  }, [mutate, pushToast]);
+
+  const setEconomyConfig = useCallback(
+    (p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin">>): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const clean = (v: number, min: number, max: number, def: number) =>
+        Number.isFinite(v) ? Math.max(min, Math.min(max, Math.round(v))) : def;
+      mutate((draft) => {
+        const cur = draft.economyConfig;
+        draft.economyConfig = {
+          ts: Date.now(),
+          by: me.name,
+          enabled: p.enabled ?? cur?.enabled ?? false,
+          intervalMin: p.intervalMin !== undefined ? clean(p.intervalMin, 0, 1440, 0) : cur?.intervalMin ?? 0,
+          surge: p.surge !== undefined ? clean(p.surge, 5, 2000, 50) : cur?.surge ?? 50,
+          rareBoost: p.rareBoost !== undefined ? clean(p.rareBoost, 0, 1000, 150) : cur?.rareBoost ?? 150,
+          durationMin: p.durationMin !== undefined ? clean(p.durationMin, 1, 1440, 30) : cur?.durationMin ?? 30,
+          lastAt: cur?.lastAt,
+        };
+      });
+      return { ok: true };
+    },
+    [mutate]
+  );
+
+  /* otomatik dalga — yalnızca admin cihazı üretir, ayarlar sync ile yayılır */
+  useEffect(() => {
+    const cfg = db.economyConfig;
+    const me = dbRef.current.users[dbRef.current.session ?? ""];
+    if (!cfg?.enabled || cfg.intervalMin <= 0 || !me?.isAdmin) return;
+    const iv = window.setInterval(() => {
+      const c = dbRef.current.economyConfig;
+      const u = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!c?.enabled || c.intervalMin <= 0 || !u?.isAdmin) return;
+      const now = Date.now();
+      if (now - (c.lastAt ?? 0) < c.intervalMin * 60000) return;
+      const w = dbRef.current.economyWave;
+      if (w && !w.cancelled && w.endsAt > now) return; /* aktif dalga sürüyor */
+      mutate((draft) => {
+        if (!draft.economyConfig) return;
+        draft.economyWave = {
+          id: uid(),
+          ts: now,
+          by: u.name,
+          surge: draft.economyConfig.surge,
+          rareBoost: draft.economyConfig.rareBoost,
+          endsAt: now + draft.economyConfig.durationMin * 60000,
+        };
+        draft.economyConfig = { ...draft.economyConfig, ts: Date.now(), lastAt: now };
+      });
+    }, 20000);
+    return () => clearInterval(iv);
+  }, [db.economyConfig, mutate]);
 
   /* ---------------- HAFTANIN OYUNCUSU — admin sabitleme ---------------- */
   const pinWeekWinner = useCallback(
@@ -3585,6 +3710,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     setPriceSettings,
     skinBasePrice,
     priceVersion,
+
+    /* ekonomik dalga */
+    economyWave: db.economyWave ?? null,
+    economyConfig: db.economyConfig ?? null,
+    startEconomyWave,
+    cancelEconomyWave,
+    setEconomyConfig,
 
     /* haftanın oyuncusu */
     weekWinner,

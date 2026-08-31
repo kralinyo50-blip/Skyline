@@ -307,8 +307,12 @@ export const fmtMoney = money;
 
 /* ---------------- SKİN FİYAT YÖNETİMİ (admin) ---------------- */
 
-/* orijinal (çarpansız) fiyatlar — uygulama ilk kez çalıştığında kaydedilir */
+/* orijinal (çarpansız) fiyatlar — modül yüklendiği anda ezberlenir.
+ * DİKKAT: SKINS içinde aynı id farklı fiyatlarla birden fazla geçebilir ve
+ * SKIN_MAP son kaydı tutar; ORIG de aynı şekilde SON kayıtla doldurulur
+ * (ilk kaydı almak taban uygulamasında fiyat kaymasına yol açar). */
 const ORIG_PRICES = new Map<string, number>();
+for (const s of SKINS) ORIG_PRICES.set(s.id, s.price);
 
 /* fiyat çarpanı revizyonu — React memolarının dep'inde kullanılır */
 let priceRev = 0;
@@ -322,18 +326,65 @@ export interface PriceSettingsLike {
   bySkin?: Record<string, number>;
 }
 
+/** Ekonomik dalga (yapısal tip — store'a bağımlılık yok) */
+export interface EconomyWaveLike {
+  surge?: number;
+  rareBoost?: number;
+  endsAt?: number;
+  cancelled?: boolean;
+}
+
+/** Kademe bazlı dalga duyarlılığı: zor çıkanlar daha çok yükselir */
+const WAVE_TIER: Record<RarityKey, number> = {
+  consumer: 0.25,
+  industrial: 0.3,
+  milspec: 0.4,
+  restricted: 0.55,
+  classified: 0.75,
+  covert: 1,
+  rare: 1.5,
+};
+
+/** Aktif dalga için kademe çarpanı: 1 + (surge/100) × duyarlılık × (rareBoost) */
+export function waveMultiplier(rarity: RarityKey, wave?: EconomyWaveLike | null): number {
+  if (!wave || wave.cancelled || (wave.endsAt ?? Infinity) <= Date.now() || (wave.surge ?? 0) <= 0)
+    return 1;
+  let f = WAVE_TIER[rarity] ?? 0.5;
+  if (rarity === "covert" || rarity === "rare") f *= 1 + (wave.rareBoost ?? 0) / 100;
+  return 1 + ((wave.surge ?? 0) / 100) * f;
+}
+
+/** Hiçbir şeyi değiştirmeden varsayımsal fiyatı hesapla (admin önizlemesi).
+ *  Çarpanlar: orijinal × global × nadirlik × skin bazlı × dalga. */
+export function hypotheticalSkinPrice(
+  id: string,
+  ps?: PriceSettingsLike | null,
+  wave?: EconomyWaveLike | null
+): number {
+  const s = SKIN_MAP[id];
+  if (!s) return 0;
+  const g = (ps?.global ?? 100) / 100;
+  const r = (ps?.byRarity?.[s.rarity] ?? 100) / 100;
+  const baseId = id.endsWith("-st") || id.endsWith("-sv") ? id.slice(0, -3) : id;
+  const k = (ps?.bySkin?.[id] ?? ps?.bySkin?.[baseId] ?? 100) / 100;
+  return Math.max(10, Math.round((ORIG_PRICES.get(id) ?? s.price) * g * r * k * waveMultiplier(s.rarity, wave)));
+}
+
 /** Fiyat çarpanlarını SKIN_MAP'e uygula (100 = normal, 150 = +%50, 50 = yarı).
+ *  Aktif ekonomik dalga varsa üstüne kademe bazlı dalga çarpanı biner.
  *  Herbir SKINS öğesi SKIN_MAP ile aynı referans olduğundan tüm ekranlar etkilenir.
  *  -st / -sv varyantları, taban skinin skin-bazlı çarpanını da devralır. */
-export function applyPriceOverrides(ps?: PriceSettingsLike | null): void {
+export function applyPriceOverrides(ps?: PriceSettingsLike | null, wave?: EconomyWaveLike | null): void {
   for (const id of Object.keys(SKIN_MAP)) {
     const s = SKIN_MAP[id];
-    if (!ORIG_PRICES.has(id)) ORIG_PRICES.set(id, s.price);
     const g = (ps?.global ?? 100) / 100;
     const r = (ps?.byRarity?.[s.rarity] ?? 100) / 100;
     const baseId = id.endsWith("-st") || id.endsWith("-sv") ? id.slice(0, -3) : id;
     const k = (ps?.bySkin?.[id] ?? ps?.bySkin?.[baseId] ?? 100) / 100;
-    s.price = Math.max(10, Math.round((ORIG_PRICES.get(id) ?? s.price) * g * r * k));
+    s.price = Math.max(
+      10,
+      Math.round((ORIG_PRICES.get(id) ?? s.price) * g * r * k * waveMultiplier(s.rarity, wave))
+    );
   }
   priceRev++;
 }

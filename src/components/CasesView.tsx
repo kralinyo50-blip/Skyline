@@ -14,6 +14,7 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
   const { caseSale, priceSettings } = useGame();
   const price = casePrice(def, caseSale, priceSettings);
   const saleOn = price < def.price;
+  const waveOn = price > def.price;
   return (
     <button
       onClick={() => {
@@ -34,6 +35,11 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
       {saleOn && (
         <span className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-ink-950 shadow-lg">
           %{Math.round((1 - price / def.price) * 100)} İndirim
+        </span>
+      )}
+      {!saleOn && waveOn && (
+        <span className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-sky-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-ink-950 shadow-lg">
+          +%{Math.round((price / def.price - 1) * 100)} Dalga
         </span>
       )}
       <span

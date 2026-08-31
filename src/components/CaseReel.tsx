@@ -152,6 +152,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
   const { balance, credit, addItem, pushToast, openCase, caseSale, priceSettings, priceVersion } = useGame();
   const price = casePrice(def, caseSale, priceSettings);
   const saleOn = price < def.price;
+  const waveOn = price > def.price;
   const [phase, setPhase] = useState<Phase>("info");
   const [winner, setWinner] = useState<Skin | null>(null);
   const [reel, setReel] = useState<Skin[]>([]);
@@ -463,6 +464,11 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                 {saleOn && !phase.includes("landed") && (
                   <span className="flex h-9 items-center gap-1.5 rounded-xl border border-emerald-500/50 bg-emerald-500/15 px-3 text-[11px] font-black uppercase tracking-wider text-emerald-400">
                     🔥 %{Math.round((1 - price / def.price) * 100)} İndirimli
+                  </span>
+                )}
+                {!saleOn && waveOn && !phase.includes("landed") && (
+                  <span className="flex h-9 items-center gap-1.5 rounded-xl border border-sky-400/50 bg-sky-400/15 px-3 text-[11px] font-black uppercase tracking-wider text-sky-300">
+                    🌊 %{Math.round((price / def.price - 1) * 100)} Dalga
                   </span>
                 )}
                 <motion.button

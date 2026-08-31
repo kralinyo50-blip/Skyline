@@ -1,4 +1,4 @@
-import { SKIN_MAP, BASE_SKINS, RARITY, currentPriceRev, type Skin, type RarityKey, TIER_ORDER } from "./skins";
+import { SKIN_MAP, BASE_SKINS, RARITY, currentPriceRev, hypotheticalSkinPrice, type EconomyWaveLike, type Skin, type RarityKey, TIER_ORDER } from "./skins";
 import type { CaseSale, PriceSettings } from "../store/db";
 import { EXTRA_SKINS } from "./extraSkins";
 import { LEGEND_SKINS, LEGEND_IDS } from "./legends";
@@ -766,7 +766,10 @@ const SOUVENIR_CASES: CaseDef[] = [
 ];
 
 /* Kasa fiyatı = beklenen değer × kâr payı (otomatik dengeli) */
-function expectedValue(c: CaseDef): number {
+function expectedValue(
+  c: CaseDef,
+  priceOf: (s: Skin) => number = (s) => s.price
+): number {
   const weights = weightsFor(c);
   const tiers = (Object.keys(c.contents) as RarityKey[]).filter(
     (t) => (c.contents[t]?.length ?? 0) > 0 && (weights[t] ?? 0) > 0
@@ -775,7 +778,7 @@ function expectedValue(c: CaseDef): number {
   return tiers.reduce((acc, t) => {
     const pool = c.contents[t]!.map((id) => SKIN_MAP[id]).filter(Boolean);
     if (!pool.length) return acc;
-    const avg = pool.reduce((s, k) => s + k.price, 0) / pool.length;
+    const avg = pool.reduce((s, k) => s + priceOf(k), 0) / pool.length;
     /* hatıra paketlerinde eşyalar altın varyant olarak çıkar */
     const mult = c.souvenir ? 1.55 : 1;
     return acc + ((weights[t] ?? 0) / total) * avg * mult;
@@ -886,10 +889,8 @@ export const CASE_MAP: Record<string, CaseDef> = Object.fromEntries(
  * ps.ts yerine priceRev anahtarı kullanılır (aksi halde eski fiyatla önbelleklenir). */
 const caseScaleCache = new Map<string, { rev: number; scale: number }>();
 
-/** Kasa beklenen değerindeki değişim oranı (skin zam/indirimine göre).
- *  Hediye Paketi (gift) sabit fiyatlı kalır. */
-export function caseScale(def: CaseDef, ps?: PriceSettings | null): number {
-  if (!ps || def.id === "gift") return 1;
+/** Kasa beklenen değerindeki değişim oranı (skin zam/indirimi + ekonomik dalga). */
+export function caseScale(def: CaseDef): number {
   const rev = currentPriceRev();
   const hit = caseScaleCache.get(def.id);
   if (hit && hit.rev === rev) return hit.scale;
@@ -902,13 +903,27 @@ export function caseScale(def: CaseDef, ps?: PriceSettings | null): number {
   return scale;
 }
 
+/** Admin önizlemesi: hiçbir şeyi değiştirmeden varsayımsal kasa fiyatı.
+ *  Önce yükleme anındaki orijinal beklentiden oran alınır, sonra hipotetik
+ *  skin fiyatlarıyla hesaplanan yeni beklenti oranına uygulanır. */
+export function previewCasePrice(
+  def: CaseDef,
+  ps?: PriceSettings | null,
+  wave?: EconomyWaveLike | null
+): number {
+  if ((def.origValue ?? 0) <= 0) return def.price;
+  const cur = expectedValue(def, (s) => hypotheticalSkinPrice(s.id, ps, wave));
+  const scale = cur > 0 ? cur / (def.origValue ?? 1) : 1;
+  return Math.max(1, Math.round(def.price * scale));
+}
+
 /** Kasa fiyatı — skin zam/indirimi + aktif kasa indirimi etkinliği uygulu */
 export function casePrice(
   def: CaseDef,
   sale?: CaseSale | null,
-  ps?: PriceSettings | null
+  _ps?: PriceSettings | null
 ): number {
-  const base = Math.max(1, Math.round(def.price * caseScale(def, ps)));
+  const base = Math.max(1, Math.round(def.price * caseScale(def)));
   if (
     sale &&
     !sale.cancelled &&

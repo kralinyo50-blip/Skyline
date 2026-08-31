@@ -276,6 +276,35 @@ export interface WeekPin {
   by: string;
 }
 
+/* ---------------- EKONOMİK DALGA ---------------- */
+
+/** Aktif ekonomik dalga — skin/pazar/kasa fiyatları geçici yükselir */
+export interface EconomyWave {
+  id: string;
+  ts: number;
+  by: string;
+  /** dalga gücü: 50 = %50 artış, 300 = 3 kat ort. */
+  surge: number;
+  /** covert/rare skinlerde ekstra ivme (% 0-500) */
+  rareBoost: number;
+  endsAt: number;
+  cancelled?: boolean;
+}
+
+/** Otomatik dalga ayarları — admin belirler: sıklık, güç, süre */
+export interface EconomyConfig {
+  enabled: boolean;
+  /** dakika: 0 = sadece manuel, 1-1440 arası otomatik aralık */
+  intervalMin: number;
+  surge: number;
+  rareBoost: number;
+  durationMin: number;
+  /** son otomatik dalga zamanı */
+  lastAt?: number;
+  ts: number;
+  by: string;
+}
+
 export interface FirstLoginEvent {
   active: boolean;
   reward: number;
@@ -417,6 +446,10 @@ export interface DB {
   priceSettings?: PriceSettings | null;
   /** admin'in haftanın oyuncusunu sabitlemesi (override) */
   weekPin?: WeekPin | null;
+  /** aktif ekonomik dalga — en yeni ts kazanır */
+  economyWave?: EconomyWave | null;
+  /** otomatik dalga ayarları — en yeni ts kazanır */
+  economyConfig?: EconomyConfig | null;
 }
 
 const LS_KEY = "skyline:v1";
@@ -444,6 +477,8 @@ export function emptyDB(): DB {
     caseSale: null,
     priceSettings: null,
     weekPin: null,
+    economyWave: null,
+    economyConfig: null,
   };
 }
 
@@ -481,6 +516,8 @@ export function loadDB(): DB {
       caseSale: parsed.caseSale ?? null,
       priceSettings: parsed.priceSettings ?? null,
       weekPin: parsed.weekPin ?? null,
+      economyWave: parsed.economyWave ?? null,
+      economyConfig: parsed.economyConfig ?? null,
     };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.

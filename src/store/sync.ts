@@ -56,6 +56,10 @@ export interface CloudDoc {
   priceSettings?: DB["priceSettings"];
   /** haftanın oyuncusu admin sabitlemesi — en yeni ts kazanır */
   weekPin?: DB["weekPin"];
+  /** ekonomik dalga — en yeni ts kazanır */
+  economyWave?: DB["economyWave"];
+  /** otomatik dalga ayarları — en yeni ts kazanır */
+  economyConfig?: DB["economyConfig"];
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -94,6 +98,8 @@ export function toCloudDoc(db: DB): CloudDoc {
     caseSale: db.caseSale ?? undefined,
     priceSettings: db.priceSettings ?? undefined,
     weekPin: db.weekPin ?? undefined,
+    economyWave: db.economyWave ?? undefined,
+    economyConfig: db.economyConfig ?? undefined,
   };
 }
 
@@ -147,6 +153,8 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     caseSale: local.caseSale,
     priceSettings: local.priceSettings,
     weekPin: local.weekPin,
+    economyWave: local.economyWave,
+    economyConfig: local.economyConfig,
   };
 
   /* kullanıcılar */
@@ -265,6 +273,16 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
   if (cloud.weekPin && (!out.weekPin || cloud.weekPin.ts > out.weekPin.ts))
     out.weekPin = cloud.weekPin;
   else if (!cloud.weekPin && !out.weekPin) out.weekPin = undefined;
+
+  /* ekonomik dalga — en yeni ts kazanır */
+  if (cloud.economyWave && (!out.economyWave || cloud.economyWave.ts > out.economyWave.ts))
+    out.economyWave = cloud.economyWave;
+  else if (!cloud.economyWave && !out.economyWave) out.economyWave = undefined;
+
+  /* otomatik dalga ayarları — en yeni ts kazanır */
+  if (cloud.economyConfig && (!out.economyConfig || cloud.economyConfig.ts > out.economyConfig.ts))
+    out.economyConfig = cloud.economyConfig;
+  else if (!cloud.economyConfig && !out.economyConfig) out.economyConfig = undefined;
 
   /* jackpot — herkese aynı pot, eksik senkron korumalı birleşim */
   out.jackpot = mergeJackpot(local.jackpot ?? null, cloud.jackpot ?? null, local.session);

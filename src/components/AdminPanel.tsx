@@ -31,6 +31,7 @@ import {
   Store,
   Tag,
   Unplug,
+  Waves,
   UserRoundCheck,
   Users,
   Wifi,
@@ -48,8 +49,8 @@ import {
 } from "../config";
 import { click, coinDing } from "../lib/audio";
 import { useGame, levelFromSpent, weeklyStats } from "../store/Game";
-import { SKIN_MAP, RARITY, type Skin } from "../data/skins";
-import { CASES } from "../data/cases";
+import { SKIN_MAP, RARITY, hypotheticalSkinPrice, type Skin } from "../data/skins";
+import { CASES, previewCasePrice } from "../data/cases";
 import { MAX_STICKERS, STICKERS } from "../data/stickers";
 import { WEARS, rollFloat, type WearKey } from "../data/wear";
 import { FloatBar } from "./WearUi";
@@ -172,6 +173,11 @@ export function AdminPanel() {
     adminListings,
     adminCreateListing,
     adminCancelListing,
+    economyWave,
+    economyConfig,
+    startEconomyWave,
+    cancelEconomyWave,
+    setEconomyConfig,
   } = useGame();
 
   const [urlInput, setUrlInput] = useState(syncUrl ?? "");
@@ -246,10 +252,27 @@ export function AdminPanel() {
   /* haftanın oyuncusu pin */
   const [pinQuery, setPinQuery] = useState("");
 
+  /* ekonomik dalga */
+  const [ecoAutoOn, setEcoAutoOn] = useState(false);
+  const [ecoInterval, setEcoInterval] = useState("60");
+  const [ecoSurge, setEcoSurge] = useState("100");
+  const [ecoRare, setEcoRare] = useState("200");
+  const [ecodur, setEcodur] = useState("30");
+
   /* başka cihazdan/sync'ten gelen global çarpanı panele yansıt */
   useEffect(() => {
     setPriceGlobal(String(priceSettings?.global ?? 100));
   }, [priceSettings?.ts]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* dalga ayarları sync'ten geldiğinde panele yansıt */
+  useEffect(() => {
+    if (!economyConfig) return;
+    setEcoAutoOn(economyConfig.enabled);
+    setEcoInterval(String(economyConfig.intervalMin));
+    setEcoSurge(String(economyConfig.surge));
+    setEcoRare(String(economyConfig.rareBoost));
+    setEcodur(String(economyConfig.durationMin));
+  }, [economyConfig?.ts]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const skinResults = useMemo(() => {
     const qq = skinQuery.trim().toLowerCase();
@@ -281,6 +304,13 @@ export function AdminPanel() {
     return () => clearInterval(iv);
   }, []);
   const saleActiveNow = !!caseSale && !caseSale.cancelled && caseSale.endsAt > admNow;
+
+  /* ekonomik dalga — canlı durum + önizleme */
+  const economyActive = !!economyWave && !economyWave.cancelled && economyWave.endsAt > admNow;
+  const draftedSurge = Number(ecoSurge.replace(/\D/g, "")) || 50;
+  const draftedRare = Number(ecoRare.replace(/\D/g, "")) || 0;
+  const draftWave = { surge: draftedSurge, rareBoost: draftedRare, endsAt: Infinity };
+  const ecoCase = CASES.find((c) => c.id === "parcel") ?? CASES.find((c) => c.id !== "gift") ?? CASES[0];
 
   /* fiyat yönetimi — uygulanmış %'ler */
   const rarKeys = Object.keys(RARITY) as (keyof typeof RARITY)[];
@@ -781,6 +811,171 @@ export function AdminPanel() {
                 <X className="h-4 w-4" /> Etkinliği Şimdi Bitir
               </button>
             )}
+          </div>
+
+          {/* ============ EKONOMİK DALGA ============ */}
+          <div className="rounded-2xl border border-sky-400/30 bg-gradient-to-b from-sky-400/8 to-ink-900/70 p-5">
+            <div className="flex items-center gap-2">
+              <Waves className="h-4 w-4 text-sky-300" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Ekonomik Dalga
+              </span>
+              {economyActive ? (
+                <span className="ml-auto rounded-full bg-sky-400/15 px-2.5 py-1 text-[10px] font-black uppercase text-sky-300">
+                  Dalga Aktif
+                </span>
+              ) : (
+                <span className="ml-auto rounded-full bg-ink-600 px-2.5 py-1 text-[10px] font-black uppercase text-white/35">
+                  {ecoAutoOn ? "Otomatik Açık" : "Kapalı"}
+                </span>
+              )}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+              Tüm skin fiyatları geçici yükselir; <span className="font-bold text-sky-300">zor çıkanlar (covert/rare) çok daha fazla</span>{" "}
+              ivmelenir. Kasa fiyatları ve pazar değerleri de canlı olarak takip eder.
+            </p>
+
+            {economyActive && (
+              <div className="mt-3 rounded-xl border border-sky-400/30 bg-ink-900/70 px-4 py-2.5 text-[11px] text-white/60">
+                <div className="font-bold text-sky-300">
+                  +%{economyWave?.surge} dalga · nadir +%{economyWave?.rareBoost} ·{" "}
+                  {Math.max(0, Math.round((economyWave!.endsAt - admNow) / 60000))} dk kaldı
+                </div>
+                <div className="mt-0.5 text-white/40">{economyWave?.by} başlattı — tüm cihazlara yayılır</div>
+              </div>
+            )}
+
+            {/* ayarlar */}
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <label className="flex cursor-pointer items-center gap-2 text-[11px] font-bold text-white/60">
+                <input
+                  type="checkbox"
+                  checked={ecoAutoOn}
+                  onChange={(e) => setEcoAutoOn(e.target.checked)}
+                  className="h-4 w-4 accent-sky-400"
+                />
+                Otomatik Dalga
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Sıklık (dk · 0 = manuel)
+                </span>
+                <input
+                  value={ecoInterval}
+                  onChange={(e) => setEcoInterval(e.target.value.replace(/\D/g, ""))}
+                  inputMode="numeric"
+                  className="h-11 w-full rounded-xl border border-line bg-ink-900 px-3 font-display text-base font-bold text-white focus:border-sky-400/60 focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Dalga Gücü (% artış)
+                </span>
+                <input
+                  value={ecoSurge}
+                  onChange={(e) => setEcoSurge(e.target.value.replace(/\D/g, ""))}
+                  inputMode="numeric"
+                  className="h-11 w-full rounded-xl border border-line bg-ink-900 px-3 font-display text-base font-bold text-white focus:border-sky-400/60 focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Nadir İvmesi (%)
+                </span>
+                <input
+                  value={ecoRare}
+                  onChange={(e) => setEcoRare(e.target.value.replace(/\D/g, ""))}
+                  inputMode="numeric"
+                  className="h-11 w-full rounded-xl border border-line bg-ink-900 px-3 font-display text-base font-bold text-white focus:border-sky-400/60 focus:outline-none"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Süre (dakika)
+                </span>
+                <input
+                  value={ecodur}
+                  onChange={(e) => setEcodur(e.target.value.replace(/\D/g, ""))}
+                  inputMode="numeric"
+                  className="h-11 w-full rounded-xl border border-line bg-ink-900 px-3 font-display text-base font-bold text-white focus:border-sky-400/60 focus:outline-none"
+                />
+              </label>
+            </div>
+
+            {/* canlı önizleme */}
+            <div className="mt-3 rounded-xl border border-sky-400/20 bg-ink-900/70 px-3 py-2.5 text-[10px] leading-relaxed text-white/45">
+              <div className="mb-1 font-black uppercase tracking-widest text-sky-300/80">Önizleme (bu ayarlarla)</div>
+              <div>
+                <span className="text-white/60">Normal skin:</span>{" "}
+                <span className="text-white/70">{money(1200)}</span> →{" "}
+                <span className="font-bold text-emerald-400">{money(hypotheticalSkinPrice("negev-boroque", priceSettings, draftWave))}</span>{" "}
+                · <span className="text-white/60">Covert:</span>{" "}
+                <span className="text-white/70">{money(skinBasePrice("m4a1s-atomic-alloy") || 14500)}</span> →{" "}
+                <span className="font-bold text-emerald-400">{money(hypotheticalSkinPrice("m4a1s-atomic-alloy", priceSettings, draftWave))}</span>
+              </div>
+              <div>
+                <span className="text-white/60">Bıçak (rare):</span>{" "}
+                <span className="text-white/70">{money(skinBasePrice("karambit-crimson-web") || 434800)}</span> →{" "}
+                <span className="font-bold text-amber-300">{money(hypotheticalSkinPrice("karambit-crimson-web", priceSettings, draftWave))}</span>
+              </div>
+              <div>
+                <span className="text-white/60">Kasa örneği:</span>{" "}
+                <span className="text-white/70">{money(ecoCase.price)}</span> →{" "}
+                <span className="font-bold text-emerald-400">{money(previewCasePrice(ecoCase, priceSettings, draftWave))}</span>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <button
+                onClick={() => {
+                  const res = setEconomyConfig({
+                    enabled: ecoAutoOn,
+                    intervalMin: Number(ecoInterval.replace(/\D/g, "")) || 0,
+                    surge: Number(ecoSurge.replace(/\D/g, "")) || 50,
+                    rareBoost: Number(ecoRare.replace(/\D/g, "")) || 0,
+                    durationMin: Number(ecodur.replace(/\D/g, "")) || 30,
+                  });
+                  if (res.ok) {
+                    pushToast({
+                      kind: "info",
+                      title: "Dalga ayarları kaydedildi",
+                      sub: ecoAutoOn && Number(ecoInterval) > 0 ? `Her ${ecoInterval} dk otomatik dalga` : "Sadece manuel başlatma",
+                    });
+                    coinDing();
+                  } else pushToast({ kind: "lose", title: "Kaydedilemedi", sub: res.error });
+                }}
+                className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-sky-400/40 bg-sky-400/10 font-display text-sm font-bold text-sky-300 transition hover:bg-sky-400/20"
+              >
+                <Settings className="h-4 w-4" /> Ayarları Kaydet
+              </button>
+              {economyActive ? (
+                <button
+                  onClick={() => {
+                    if (window.confirm("Ekonomik dalga şimdi sona ersin mi? Fiyatlar normale döner.")) cancelEconomyWave();
+                  }}
+                  className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-lose/40 bg-lose/10 font-display text-sm font-bold text-lose transition hover:bg-lose/20"
+                >
+                  <X className="h-4 w-4" /> Dalgayı Bitir
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    const res = startEconomyWave(
+                      Number(ecoSurge.replace(/\D/g, "")) || 50,
+                      Number(ecoRare.replace(/\D/g, "")) || 0,
+                      Number(ecodur.replace(/\D/g, "")) || 30
+                    );
+                    if (res.ok) {
+                      pushToast({ kind: "money", title: "Ekonomik dalga başladı", sub: "Fiyatlar yükseliyor — tüm cihazlara yayıldı" });
+                      coinDing();
+                    } else pushToast({ kind: "lose", title: "Başlatılamadı", sub: res.error });
+                  }}
+                  className="flex h-11 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-sky-400 to-sky-600 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110"
+                >
+                  <Waves className="h-4 w-4" /> Dalgayı Başlat
+                </button>
+              )}
+            </div>
           </div>
 
           {/* ============ HAFTANIN OYUNCUSU ============ */}
