@@ -11,7 +11,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { ADMIN_NAME, mcHead, money } from "../config";
+import { ADMIN_NAME, mcHead, money, vipTierOf } from "../config";
 import { click, coinDing } from "../lib/audio";
 import { SKIN_MAP } from "../data/skins";
 import { useGame, levelFromSpent } from "../store/Game";
@@ -352,9 +352,17 @@ export function CommunityView() {
                         <Medal className="h-3 w-3" /> Haftanın Oyuncusu
                       </span>
                     )}
-                    {u.pub?.vip && (
-                      <Crown className="h-3.5 w-3.5 shrink-0 text-rar-rare" fill="currentColor" strokeWidth={0} />
-                    )}
+                    {(() => {
+                      const t = vipTierOf(u.pub?.spent ?? u.stats.spent);
+                      return t.id !== "none" ? (
+                        <span
+                          className="flex shrink-0 items-center gap-0.5 rounded px-1 text-[8px] font-black uppercase"
+                          style={{ background: `${t.color}22`, color: t.color }}
+                        >
+                          {t.icon} {t.label}
+                        </span>
+                      ) : null;
+                    })()}
                   </div>
                   <div className="flex items-center gap-1.5 text-[10px] text-white/35">
                     <span>

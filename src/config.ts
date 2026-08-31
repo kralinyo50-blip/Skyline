@@ -71,26 +71,54 @@ export const CASE_MARKUP = 1.3;
 /** En ucuz kasa fiyatı */
 export const MIN_CASE_PRICE = 2500;
 
-/* ---------------- VIP & CASHBACK ---------------- */
+/* ---------------- VIP SINIFLARI (harcamaya göre) ---------------- */
 
-/** VIP paketleri — bakiyeyle satın alınır */
-export const VIP_PLANS: {
-  id: string;
+export interface VipTier {
+  id: "none" | "bakir" | "demir" | "altin" | "elmas" | "obsidyen" | "netherite";
   label: string;
-  days: number;
-  price: number;
-  /** kaybedilen bahislerden geri ödeme oranı */
-  cashback: number;
+  /** toplam harcama eşiği — bu kadar harcayınca sınıf aktif */
+  minSpent: number;
+  /** sınıf rozeti */
+  icon: string;
+  color: string;
   /** günlük ödül çarpanı */
   dailyMult: number;
-  /** pazar komisyonu (0 = VIP satıcı komisyonsuz satış) */
+  /** kaybedilen bahislerden geri ödeme oranı (0-1) */
+  cashback: number;
+  /** pazar satış komisyonu (0 = komisyonsuz) */
   fee: number;
-}[] = [
-  { id: "vip-1", label: "VIP 1 Gün", days: 1, price: 250_000, cashback: 0.02, dailyMult: 1.1, fee: 0 },
-  { id: "vip-7", label: "VIP 7 Gün", days: 7, price: 1_500_000, cashback: 0.05, dailyMult: 1.25, fee: 0 },
-  { id: "vip-30", label: "VIP 30 Gün", days: 30, price: 4_500_000, cashback: 0.08, dailyMult: 1.5, fee: 0 },
-  { id: "vip-365", label: "VIP 365 Gün", days: 365, price: 8_800_000, cashback: 0.15, dailyMult: 2.5, fee: 0 },
+  /** kasa açılışlarında indirim (%) */
+  caseDisc: number;
+}
+
+/** VIP sınıfları — para harcadıkça yükselir, özellikler sınıfa göre artar */
+export const VIP_TIERS: VipTier[] = [
+  { id: "none", label: "Misafir", minSpent: 0, icon: "👤", color: "#8b98a5", dailyMult: 1, cashback: 0, fee: MARKET_FEE, caseDisc: 0 },
+  { id: "bakir", label: "Bakır", minSpent: 250_000, icon: "🥉", color: "#c07a3e", dailyMult: 1.1, cashback: 0.02, fee: 0.045, caseDisc: 2 },
+  { id: "demir", label: "Demir", minSpent: 1_000_000, icon: "⚙️", color: "#a8b2bd", dailyMult: 1.25, cashback: 0.04, fee: 0.04, caseDisc: 3 },
+  { id: "altin", label: "Altın", minSpent: 5_000_000, icon: "🥇", color: "#ffd34d", dailyMult: 1.5, cashback: 0.06, fee: 0.03, caseDisc: 6 },
+  { id: "elmas", label: "Elmas", minSpent: 15_000_000, icon: "💎", color: "#7fe3ff", dailyMult: 1.75, cashback: 0.09, fee: 0.02, caseDisc: 10 },
+  { id: "obsidyen", label: "Obsidyen", minSpent: 40_000_000, icon: "🔮", color: "#b484ff", dailyMult: 2.5, cashback: 0.12, fee: 0.01, caseDisc: 15 },
+  { id: "netherite", label: "Netherite", minSpent: 100_000_000, icon: "🌌", color: "#5eead4", dailyMult: 3, cashback: 0.18, fee: 0, caseDisc: 20 },
 ];
+
+/** Harcamaya göre aktif VIP sınıfı */
+export function vipTierOf(spent: number): VipTier {
+  let cur = VIP_TIERS[0];
+  for (const t of VIP_TIERS) if (spent >= t.minSpent) cur = t;
+  return cur;
+}
+
+/** Bir sonraki VIP sınıfı (yoksa null) */
+export function vipNextTier(spent: number): VipTier | null {
+  return VIP_TIERS.find((t) => t.minSpent > spent) ?? null;
+}
+
+/** Kasa fiyat indirimi uygula (VIP sınıfına göre) */
+export function applyVipCaseDisc(price: number, spent: number): number {
+  const d = vipTierOf(spent).caseDisc;
+  return d > 0 ? Math.max(1, Math.round(price * (1 - d / 100))) : price;
+}
 
 /* ---------------- JACKPOT ---------------- */
 

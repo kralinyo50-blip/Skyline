@@ -4,15 +4,15 @@ import { Flame, Package, PackageOpen, TrendingUp, Users } from "lucide-react";
 import { CASES, casePrice, toCaseDef, type CaseDef } from "../data/cases";
 import { fmtMoney, SKINS } from "../data/skins";
 import { click, hoverPop } from "../lib/audio";
-import { BRAND, CURRENCY } from "../config";
+import { BRAND, CURRENCY, applyVipCaseDisc } from "../config";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
 import { CaseModal } from "./CaseReel";
 import { MissionsPanel } from "./MissionsPanel";
 
 function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
-  const { caseSale, priceSettings } = useGame();
-  const price = casePrice(def, caseSale, priceSettings);
+  const { caseSale, priceSettings, vipSpent } = useGame();
+  const price = applyVipCaseDisc(casePrice(def, caseSale, priceSettings), vipSpent);
   /* indirim, dalga sırasında da GÖRÜNÜR: rozet fiyat karşılaştırmasına değil
      etkinlik durumuna bakar (dalga güçlüyken indirimli fiyat bazın üstünde kalabilir) */
   const saleActive =

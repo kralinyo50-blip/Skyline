@@ -130,7 +130,7 @@ function VerifyModal({
 
 /* ---------------- PROFİL / İSTATİSTİK ---------------- */
 export function StatsView() {
-  const { rollLogs, achievements, unlockedAch, showcase, toggleShowcase, vipActive } = useGame();
+  const { rollLogs, achievements, unlockedAch, showcase, toggleShowcase, vipActive, vipTier } = useGame();
   const [verify, setVerify] = useState<{ seed: string; nonce: number; caseId: string; result: string } | null>(null);
   const [showAll, setShowAll] = useState(false);
 
@@ -182,7 +182,12 @@ export function StatsView() {
           <span className="ml-auto flex items-center gap-1 text-[10px] font-bold text-white/35">
             {showcase.length}/3
             {vipActive && (
-              <span className="ml-1 rounded-full bg-rar-rare/15 px-2 py-0.5 font-black uppercase text-rar-rare">VIP</span>
+              <span
+                className="ml-1 rounded-full px-2 py-0.5 font-black uppercase"
+                style={{ background: `${vipTier.color}22`, color: vipTier.color }}
+              >
+                {vipTier.icon} {vipTier.label}
+              </span>
             )}
           </span>
         </div>

@@ -601,6 +601,8 @@ export interface DB {
   coupons?: CouponSettings | null;
   /** admin özel kasaları — id birleşimi */
   customCases?: CustomCase[];
+  /** VIP sınıf sistemine geçiş damgası — eski VIP'ler bir kez temizlenir */
+  vipResetAt?: number;
 }
 
 const LS_KEY = "skyline:v1";
@@ -634,6 +636,7 @@ export function emptyDB(): DB {
     depositPacks: null,
     coupons: null,
     customCases: [],
+    vipResetAt: undefined,
   };
 }
 
@@ -677,6 +680,7 @@ export function loadDB(): DB {
       depositPacks: parsed.depositPacks ?? null,
       coupons: parsed.coupons ?? null,
       customCases: Array.isArray(parsed.customCases) ? [...parsed.customCases] : [],
+      vipResetAt: parsed.vipResetAt,
     };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.

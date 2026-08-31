@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { rollCase, caseContentsDetailed, casePrice, type CaseDef } from "../data/cases";
-import { QUICK_SELL_RATE } from "../config";
+import { QUICK_SELL_RATE, applyVipCaseDisc } from "../config";
 import { rollFloat, wearFromFloat, WEARS } from "../data/wear";
 import { FloatBar, WearBadge } from "./WearUi";
 import { STICKER_MAP, STICKERS, stickerBonus } from "../data/stickers";
@@ -149,8 +149,8 @@ interface BatchHit {
 }
 
 export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void }) {
-  const { balance, credit, addItem, pushToast, openCase, caseSale, priceSettings, priceVersion, customCases } = useGame();
-  const price = casePrice(def, caseSale, priceSettings);
+  const { balance, credit, addItem, pushToast, openCase, caseSale, priceSettings, priceVersion, customCases, vipSpent } = useGame();
+  const price = applyVipCaseDisc(casePrice(def, caseSale, priceSettings), vipSpent);
   /* özel/sınırlı kasa: stok kadar toplu açılabilir (×10 bile olsa) */
   const limitedStock =
     def.limited || def.id.startsWith("custom-")
