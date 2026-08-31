@@ -237,15 +237,22 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
   if (cloud.raffle?.cancelled) {
     /* iptal her yerde geçerli — kimin yerel kopyası olursa olsun */
     out.raffle = { ...cloud.raffle };
-  } else if (cloud.raffle && (!out.raffle || cloud.raffle.endsAt > (out.raffle?.endsAt ?? 0))) {
-    out.raffle = cloud.raffle;
-  } else if (out.raffle) {
-    /* katılımcıları ve kazananı birleştir */
+  } else if (cloud.raffle && (!out.raffle || cloud.raffle.id !== out.raffle.id)) {
+    /* FARKLI çekilişler: sonuçlanmış olan kazanır; ikisi de açıksa daha yeni
+       başlayan geçerli. Eski çekilişin katılımcıları yenisine asla sızmaz. */
+    const c = cloud.raffle;
+    const l = out.raffle;
+    const preferCloud = c.drawn && !l?.drawn ? true : !c.drawn && l?.drawn ? false : c.endsAt > (l?.endsAt ?? 0);
+    if (!l || preferCloud) out.raffle = c;
+  } else if (out.raffle && cloud.raffle) {
+    /* AYNI çekiliş (aynı id): katılımcıları birleştir, TEK kazananı koru */
     const mine = out.raffle;
     const theirs = cloud.raffle;
-    if (theirs) {
+    if (theirs.id === mine.id) {
       mine.participants = { ...(theirs.participants ?? {}), ...(mine.participants ?? {}) };
       if (!mine.winner && theirs.winner) mine.winner = theirs.winner;
+      else if (theirs.winner && mine.winner && (theirs.winner.ts ?? 0) < (mine.winner.ts ?? 0))
+        mine.winner = theirs.winner;
       if (theirs.drawn) mine.drawn = true;
     }
   }

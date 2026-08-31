@@ -2136,14 +2136,20 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const drawRaffleNow = useCallback(() => {
     const r = raffleRef.current;
-    if (!r || r.drawn || Date.now() < r.endsAt) return;
+    if (!r || r.drawn || r.cancelled || Date.now() < r.endsAt) return;
+    /* SENKRON TOLERANSI: bitişten 60 sn sonra çekiliş yapılır. Bu sürede tüm
+       cihazlar katılımcı listesini birleştirir (sync 1.5 sn) — böylece eksik
+       roster ile yanlış kazanan seçilmez, skin ödülü kaybolmaz. */
+    if (Date.now() < r.endsAt + 60000) return;
     const ids = Object.keys(r.participants ?? {}).sort();
     if (!ids.length) {
+      /* 60 sn sonra hâlâ katılımcı yoksa gerçekten boştur — ama tekrar denemek
+         için drawn bayrağı 30 sn daha bekletilir (son katılım senkronlanabilsin) */
+      if (Date.now() < r.endsAt + 90000) return;
       mutate((draft) => {
-        if (draft.raffle) {
-          draft.raffle.drawn = true;
-          draft.raffle.winner = { key: "", name: "Katılımcı yok", ts: Date.now() };
-        }
+        if (!draft.raffle || draft.raffle.id !== r.id || draft.raffle.drawn) return;
+        draft.raffle.drawn = true;
+        draft.raffle.winner = { key: "", name: "Katılımcı yok", ts: Date.now() };
       });
       return;
     }
@@ -2153,7 +2159,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const winnerName = r.participants![winnerKey].name;
     const isSkin = !!r.skinId && !!SKIN_MAP[r.skinId];
     mutate((draft) => {
-      if (!draft.raffle || draft.raffle.endsAt !== r.endsAt) return;
+      if (!draft.raffle || draft.raffle.id !== r.id || draft.raffle.drawn) return;
       draft.raffle.drawn = true;
       draft.raffle.winner = { key: winnerKey, name: winnerName, ts: Date.now() };
       draft.deposits.unshift({
@@ -2288,7 +2294,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         [me.key]: { name: me.name, ts: Date.now() },
       };
     });
-    pushToast({ kind: "money", title: "Çekilişe katıldın!", sub: `Ödül: ${money(r.prize)} — iyi şanslar` });
+    const prizeLabel =
+      r.skinId && SKIN_MAP[r.skinId]
+        ? `${SKIN_MAP[r.skinId].weapon} | ${SKIN_MAP[r.skinId].name}`
+        : money(r.prize);
+    pushToast({ kind: "money", title: "Çekilişe katıldın!", sub: `Ödül: ${prizeLabel} — iyi şanslar` });
     coinDing();
   }, [mutate, pushToast]);
 

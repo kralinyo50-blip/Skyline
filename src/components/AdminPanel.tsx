@@ -58,6 +58,14 @@ import { MAX_STICKERS, STICKERS } from "../data/stickers";
 import { WEARS, rollFloat, type WearKey } from "../data/wear";
 import { FloatBar } from "./WearUi";
 
+/* Çekiliş ödül etiketi — skin çekilişinde para değil skin adı gösterilir */
+function rafflePrizeLabel(r: { skinId?: string; skinName?: string; prize: number }): string {
+  if (!r.skinId) return money(r.prize);
+  if (r.skinName) return r.skinName;
+  const sk = SKIN_MAP[r.skinId];
+  return sk ? `${sk.weapon} | ${sk.name}` : "Skin";
+}
+
 /* özel kasa şablonları için deterministik skin seçimi */
 function tplPicks(rarity: string, n: number): string[] {
   return Object.values(SKIN_MAP)
@@ -1497,12 +1505,12 @@ export function AdminPanel() {
                 {raffle.drawn ? (
                   <>
                     <span className="font-bold text-white/80">Sonuçlandı:</span>{" "}
-                    {raffle.winner?.name ?? "Katılımcı yok"} — {money(raffle.prize)}
+                    {raffle.winner?.name ?? "Katılımcı yok"} — {rafflePrizeLabel(raffle)}
                   </>
                 ) : (
                   <>
                     <span className="font-bold text-white/80">
-                      {money(raffle.prize)} ödül ·{" "}
+                      {rafflePrizeLabel(raffle)} ödül ·{" "}
                       {Math.round((raffle.endsAt - Date.now()) / 60000)} dk kaldı
                     </span>{" "}
                     · {Object.keys(raffle.participants ?? {}).length} katılımcı

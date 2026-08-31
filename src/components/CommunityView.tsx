@@ -48,6 +48,8 @@ export function CommunityView() {
     weekWinner,
   } = useGame();
   const now = useNow();
+  /* süre bitti ama çekiliş henüz sonuçlanmadı — senkron toleransı (60 sn) */
+  const raffleDrawing = !!raffle && !raffle.drawn && !raffle.cancelled && now >= raffle.endsAt;
 
   const leaderboard = useMemo(
     () =>
@@ -134,7 +136,7 @@ export function CommunityView() {
                 </div>
                 <div className="text-right">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-white/35">
-                    {raffleOpen ? "Kalan süre" : raffleDone ? "Kazanan" : "Sona erdi"}
+                    {raffleOpen ? "Kalan süre" : raffleDone ? "Kazanan" : raffleDrawing ? "Çekiliş yapılıyor…" : "Sona erdi"}
                   </div>
                   <div className="font-display text-2xl font-black tabular-nums text-white">
                     {raffleOpen ? countdown(raffle.endsAt - now) : raffle.winner?.name ?? "—"}
