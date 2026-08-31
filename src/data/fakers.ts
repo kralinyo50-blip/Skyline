@@ -96,6 +96,82 @@ export const CHAT_REPLIES = [
   "az önce baktım gerçekten artmış", "buraya yeni mi geldin", "sen de mi kasa açıyorsun",
 ];
 
+/* Tema bazlı sohbet tepkileri — biri bir şey yazınca diğerleri ona cevap verir.
+   match: anahtar kelime (küçük harf), replies: doğal cevap havuzu. */
+export const CHAT_REACTIONS: { match: string[]; replies: string[] }[] = [
+  {
+    match: ["bug", "hata", "olmuyo", "olmuyor", "bozuk", "düzelt"],
+    replies: [
+      "nasıl lan nasıl yapıyon 😂", "bana da olmuyor ya göster", "kanıt at görelim abi",
+      "ekran görüntüsü atsana", "valla bende de var aynı bug", "sen mi yaptın onu 🤣",
+      "hocam bana da öğret şu bugu", "admin görsün bunu yine de", "nasıl yaptın nasıl",
+    ],
+  },
+  {
+    match: ["pahalı", "lüks", "ucuz", "fiyat", "zamlı", "dalga"],
+    replies: [
+      "valla her şey pahalı ya", "dalgayı bekle kanka", "ucuzken alıyorum ben",
+      "fiyatlar uçuşta bu hafta", "dalga geçiyor site şu an", "bence alım zamanı bu",
+      "pahalı ama değer mi diyosun", "bir tık bekle tepeyi gör",
+    ],
+  },
+  {
+    match: ["çıktı", "çıktı", "kazandım", "çekti", "drop", "açtım", "düştü"],
+    replies: [
+      "helal olsun kral 👏", "nasıl yapıyon ya", "kanıt nerde 😅", "şanslı adamsın bugün",
+      "bende de bi tane çıksa", "hangi kasadan çıktı söyle", "hayırlı olsun hocam",
+    ],
+  },
+  {
+    match: ["kaybettim", "yaktı", "eridi", "sıfır", "battım"],
+    replies: [
+      "vay aga 😢", "ben de aynı durumdayım", "durun sakin toparlanır",
+      "bakiye erimesi normal kanka", "bana da oldu dün", "kumar bu işte kardeşim",
+    ],
+  },
+  {
+    match: ["kupon", "kod", "promosyon", "para yatır", "depozit", "yatırdım"],
+    replies: [
+      "kupon varsa atsana", "ben de bekliyorum kod", "yatırmanın bonusu var mı",
+      "paket bonusu ne kadar", "kupon geldi mi duyan", "kod paylaşan olursa sevinirim",
+    ],
+  },
+  {
+    match: ["özel kasa", "sınırlı", "stok", "yeni kasa", "mağaza"],
+    replies: [
+      "nerede o kasa ya", "bende stok bitmiş görünüyor", "yeni gelen mi o",
+      "özel kasa güzelmiş içeriği", "hızlı tükeniyor bunlar", "stoklar eriyor valla",
+    ],
+  },
+  {
+    match: ["sat", "sattım", "market", "alındı", "alıyorum"],
+    replies: [
+      "kaça satıyorsun söyle", "fiyat düşmüş mü bakayım", "bekle yükselsin satma",
+      "pazarda mı göreceğiz", "bende de var ondan", "alım satım keyfi başka",
+    ],
+  },
+  {
+    match: ["upgrader", "jackpot", "savaş", "battle", "çark"],
+    replies: [
+      "ben girmiyorum o oyuna", "geçen tur topladılar ya", "şans işi bunlar kanka",
+      "bakiye eriyor ama güzel", "upgrader da bir gece 2 milyon yaptım",
+    ],
+  },
+  {
+    match: ["selam", "merhaba", "iyi akşamlar", "naber", "nasılsın"],
+    replies: ["selam kral 👋", "naber kanka", "hoş geldin", "iyiyiz kasa açıyoruz"],
+  },
+];
+
+/** Bir bot mesajına en uygun doğal cevabı seç (anahtar kelime eşleşmezse genel) */
+export function replyToMessage(text: string): string {
+  const t = text.toLowerCase();
+  for (const r of CHAT_REACTIONS) {
+    if (r.match.some((m) => t.includes(m))) return r.replies[Math.floor(Math.random() * r.replies.length)];
+  }
+  return CHAT_REPLIES[Math.floor(Math.random() * CHAT_REPLIES.length)];
+}
+
 /* Sohbete mesaj yazınca botların verdiği doğal yorumlar (başkan övgüsü yok) */
 export const ADMIRATION_LINES = [
   "güzel açılışmış", "helal olsun", "hayırlı olsun kral", "iyi gelmiş",

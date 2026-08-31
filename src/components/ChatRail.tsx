@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Crown, Medal, MessageSquare, Send, Trophy, Users, X } from "lucide-react";
-import { ADMIRATION_LINES, CELEBRITY_LINES, CELEBRITY_USERS, CHAT_LINES, CHAT_REPLIES, COMMUNITY_USERS } from "../data/fakers";
+import { ADMIRATION_LINES, CELEBRITY_LINES, CELEBRITY_USERS, CHAT_LINES, CHAT_REPLIES, COMMUNITY_USERS, replyToMessage } from "../data/fakers";
 import { FEED_USERS } from "../data/cases";
 import { mcHead } from "../config";
 import { fmtMoney } from "../data/skins";
@@ -101,20 +101,32 @@ export function ChatRail() {
             ...prev.slice(-48),
             { id: uid(), user: botName(), level: randInt(1, 52), text, ts: Date.now() },
           ]);
-        /* ana mesaj + %40 ihtimalle eş zamanlı ikinci mesaj (yoğunluk) */
-        push(botLine());
-        if (Math.random() < 0.4) push(botLine());
-        /* %30 ihtimalle 0.8-2.6 sn sonra bir bot cevap verir (sohbet zinciri) */
-        if (Math.random() < 0.3) {
-          const reply = pick(CHAT_REPLIES);
+        /* ana mesaj — bir bot bir konu açar */
+        const line = botLine();
+        push(line);
+        /* %70 ihtimalle diğer bot konuya tepkili cevap verir */
+        if (Math.random() < 0.7) {
+          const reply = replyToMessage(line);
           window.setTimeout(() => {
             if (!alive.current) return;
             setMsgs((prev) => [
               ...prev.slice(-48),
               { id: uid(), user: botName(), level: randInt(1, 52), text: reply, ts: Date.now() },
             ]);
-          }, randInt(800, 2600));
+            /* %40 ihtimalle üçüncü bot cevaba yorum yapar (tam sohbet zinciri) */
+            if (Math.random() < 0.4) {
+              window.setTimeout(() => {
+                if (!alive.current) return;
+                setMsgs((prev) => [
+                  ...prev.slice(-48),
+                  { id: uid(), user: botName(), level: randInt(1, 52), text: pick(CHAT_REPLIES), ts: Date.now() },
+                ]);
+              }, randInt(900, 2400));
+            }
+          }, randInt(600, 2200));
         }
+        /* %30 ihtimalle aynı anda başka bot ayrı konu açar (kalabalık) */
+        if (Math.random() < 0.3) push(botLine());
         loop();
       }, randInt(1100, 3200));
     };
@@ -147,18 +159,20 @@ export function ChatRail() {
     const res = sendChat(text);
     if (!res.ok) return;
     setInput("");
-    /* herkes hayran oldu — birkaç bot kısa aralıklarla yazsın */
+    /* botlar kullanıcıya doğal tepki verir: tema eşleşirse ona, değilse genel yorum */
     const fanCount = randInt(2, 4);
     for (let i = 0; i < fanCount; i++) {
       window.setTimeout(
         () => {
           if (!alive.current) return;
+          const t =
+            Math.random() < 0.6 ? replyToMessage(text) : pick(ADMIRATION_LINES);
           setMsgs((prev) => [
             ...prev.slice(-48),
-            { id: uid(), user: botName(), level: randInt(1, 48), text: pick(ADMIRATION_LINES), ts: Date.now() },
+            { id: uid(), user: botName(), level: randInt(1, 48), text: t, ts: Date.now() },
           ]);
         },
-        400 + i * randInt(450, 900)
+        450 + i * randInt(500, 1100)
       );
     }
   }
