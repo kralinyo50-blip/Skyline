@@ -53,7 +53,7 @@ import { click, coinDing } from "../lib/audio";
 import { useGame, levelFromSpent, weeklyStats } from "../store/Game";
 import { SKIN_MAP, RARITY, hypotheticalSkinPrice, type Skin } from "../data/skins";
 import { DEFAULT_DEPOSIT_PACKS, type DepositReq } from "../store/db";
-import { CASES, previewCasePrice } from "../data/cases";
+import { CASES, previewCasePrice, toCaseDef } from "../data/cases";
 import { MAX_STICKERS, STICKERS } from "../data/stickers";
 import { WEARS, rollFloat, type WearKey } from "../data/wear";
 import { FloatBar } from "./WearUi";
@@ -385,6 +385,11 @@ export function AdminPanel() {
   const [saleDiscount, setSaleDiscount] = useState("50");
   const [saleMins, setSaleMins] = useState("60");
   const [saleAll, setSaleAll] = useState(true);
+  /* indirim uygulanabilir kasalar: yerleşik + aktif özel kasalar */
+  const saleCaseOptions = useMemo(
+    () => [...Object.values(CASES), ...customCases.filter((c) => c.active).map((c) => toCaseDef(c))],
+    [customCases]
+  );
   /* skin fiyat yönetimi */
   const [priceGlobal, setPriceGlobal] = useState(() => String((priceSettings?.global ?? 100) / 100 * 100));
   const [priceRar, setPriceRar] = useState<Record<string, string>>({});
@@ -976,7 +981,13 @@ export function AdminPanel() {
                   %{caseSale.discount} indirim · {caseSale.caseIds.length} kasa ·{" "}
                   {Math.max(0, Math.round((caseSale.endsAt - admNow) / 60000))} dk kaldı
                 </div>
-                <div className="mt-0.5 text-white/40">{caseSale.caseIds.slice(0, 6).join(", ")}...</div>
+                <div className="mt-0.5 text-white/40">
+                  {caseSale.caseIds
+                    .slice(0, 6)
+                    .map((id) => saleCaseOptions.find((c) => c.id === id)?.name ?? id)
+                    .join(", ")}
+                  {caseSale.caseIds.length > 6 ? "…" : ""}
+                </div>
               </div>
             )}
 
@@ -993,8 +1004,9 @@ export function AdminPanel() {
                 </label>
                 {!saleAll && (
                   <div className="mt-2 flex max-h-36 flex-wrap gap-1.5 overflow-y-auto">
-                    {Object.values(CASES).map((c) => {
+                    {saleCaseOptions.map((c) => {
                       const on = saleCaseSel.includes(c.id);
+                      const isCustom = c.id.startsWith("custom-");
                       return (
                         <button
                           key={c.id}
@@ -1009,6 +1021,7 @@ export function AdminPanel() {
                           )}
                         >
                           {c.name}
+                          {isCustom && <span className="ml-1 text-[8px] font-black uppercase text-amber-300/70">özel</span>}
                         </button>
                       );
                     })}
@@ -1041,7 +1054,7 @@ export function AdminPanel() {
                 <button
                   onClick={() => {
                     const ids = saleAll
-                      ? Object.keys(CASES)
+                      ? saleCaseOptions.map((c) => c.id)
                       : saleCaseSel;
                     const disc = Math.round(Number(saleDiscount) || 0);
                     const mins = Math.round(Number(saleMins) || 0);

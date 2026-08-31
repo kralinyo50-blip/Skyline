@@ -158,7 +158,11 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
       : 10;
   const batchCount = Math.max(0, Math.min(10, limitedStock));
   const batchPrice = price * batchCount;
-  const saleOn = price < def.price;
+  const saleActive =
+    !!caseSale && !caseSale.cancelled && caseSale.endsAt > Date.now() && caseSale.caseIds.includes(def.id);
+  const saleOn = saleActive;
+  /* indirimsiz güncel fiyat: dalga+indirim birlikteyken üstü çizili gösterim */
+  const regPrice = saleActive ? casePrice(def, null, priceSettings) : price;
   const waveOn = price > def.price;
   const [phase, setPhase] = useState<Phase>("info");
   const [winner, setWinner] = useState<Skin | null>(null);
@@ -490,7 +494,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
               <div className="flex flex-wrap items-center justify-center gap-3">
                 {saleOn && !phase.includes("landed") && (
                   <span className="flex h-9 items-center gap-1.5 rounded-xl border border-emerald-500/50 bg-emerald-500/15 px-3 text-[11px] font-black uppercase tracking-wider text-emerald-400">
-                    🔥 %{Math.round((1 - price / def.price) * 100)} İndirimli
+                    🔥 %{caseSale!.discount} İndirimli
                   </span>
                 )}
                 {!saleOn && waveOn && !phase.includes("landed") && (
@@ -518,7 +522,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                       <span className="flex items-center gap-1 rounded-lg bg-black/25 px-2.5 py-1 text-base">
                         <Coins className="h-4 w-4" />
                         {fmtMoney(price)}
-                        {saleOn && <s className="text-xs text-white/50 line-through">{fmtMoney(def.price)}</s>}
+                        {saleOn && <s className="text-xs text-white/50 line-through">{fmtMoney(regPrice)}</s>}
                       </span>
                     </>
                   ) : (

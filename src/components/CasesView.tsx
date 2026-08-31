@@ -13,8 +13,13 @@ import { MissionsPanel } from "./MissionsPanel";
 function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
   const { caseSale, priceSettings } = useGame();
   const price = casePrice(def, caseSale, priceSettings);
-  const saleOn = price < def.price;
-  const waveOn = price > def.price;
+  /* indirim, dalga sırasında da GÖRÜNÜR: rozet fiyat karşılaştırmasına değil
+     etkinlik durumuna bakar (dalga güçlüyken indirimli fiyat bazın üstünde kalabilir) */
+  const saleActive =
+    !!caseSale && !caseSale.cancelled && caseSale.endsAt > Date.now() && caseSale.caseIds.includes(def.id);
+  const saleOn = saleActive;
+  const regPrice = saleActive ? casePrice(def, null, priceSettings) : price;
+  const waveOn = !saleOn && price > def.price;
   const limited = def.limited || typeof def.stock === "number";
   return (
     <button
@@ -40,7 +45,7 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
       )}
       {saleOn && (
         <span className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-ink-950 shadow-lg">
-          %{Math.round((1 - price / def.price) * 100)} İndirim
+          %{caseSale!.discount} İndirim
         </span>
       )}
       {!saleOn && waveOn && (
@@ -81,7 +86,7 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
           <span className={cn("font-display text-lg font-black", saleOn ? "text-emerald-400" : "text-brand-300")}>
             {fmtMoney(price)}
           </span>
-          {saleOn && <s className="text-xs font-bold text-white/35">{fmtMoney(def.price)}</s>}
+          {saleOn && <s className="text-xs font-bold text-white/35">{fmtMoney(regPrice)}</s>}
         </div>
         <span className="flex items-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-400 to-brand-600 px-3.5 py-1.5 font-display text-sm font-bold text-ink-950 transition group-hover:brightness-110 group-hover:shadow-[0_6px_20px_-6px_rgba(249,142,29,0.8)]">
           <PackageOpen className="h-4 w-4" strokeWidth={2.4} />
