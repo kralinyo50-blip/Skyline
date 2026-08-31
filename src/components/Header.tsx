@@ -32,6 +32,8 @@ import {
 import { useGame, DAILY_COOLDOWN, type TabKey } from "../store/Game";
 import { ADMIN_NAME, BRAND, CURRENCY, SCALE, VIP_PLANS, mcHead, money } from "../config";
 import { DEFAULT_DEPOSIT_PACKS } from "../store/db";
+import { CASES } from "../data/cases";
+import { SKIN_MAP } from "../data/skins";
 import { click, coinDing } from "../lib/audio";
 import { loadPrefs, savePrefs, type Prefs } from "../lib/prefs";
 import { cn } from "../utils/cn";
@@ -124,6 +126,15 @@ export function Header() {
   );
   const activePack = mode === "deposit" ? packs.find((p) => p.amount === amountNum) : undefined;
   const credit = amountNum + Math.round((amountNum * (activePack?.bonus ?? 0)) / 100);
+  const giftLabel = (g?: { kind: string; id: string; count: number }) => {
+    if (!g) return null;
+    if (g.kind === "case") {
+      const c = CASES.find((x) => x.id === g.id);
+      return `${g.count > 1 ? g.count + "× " : ""}${c ? c.name : g.id}`;
+    }
+    const sk = SKIN_MAP[g.id];
+    return sk ? `${sk.weapon} | ${sk.name}` : g.id;
+  };
 
   const allTabs: typeof TABS = isAdmin
     ? [...TABS, { key: "admin" as TabKey, label: "Panel", Icon: ShieldCheck }]
@@ -580,8 +591,12 @@ export function Header() {
                       </span>{" "}
                       {mode === "withdraw"
                         ? "tutarındaki çekim talebin"
-                        : activePack && activePack.bonus > 0
-                          ? `(+${money(credit - amountNum)} bonus) yatırma talebin`
+                        : activePack && (activePack.bonus > 0 || (activePack.gifts ?? []).length > 0)
+                          ? `(+${money(credit - amountNum)} bonus ve ${
+                              (activePack.gifts ?? []).length > 0
+                                ? `${activePack.gifts!.map((g) => giftLabel(g)).filter(Boolean).join(", ")} hediyesi`
+                                : ""
+                            }) yatırma talebin`
                           : "tutarındaki yatırma talebin"}{" "}
                       <span className="font-semibold text-brand-300">{ADMIN_NAME}</span> onayına düştü.
                       {mode === "withdraw"
@@ -642,9 +657,10 @@ export function Header() {
                             )}
                           >
                             {money(p)}
-                            {pack && pack.bonus > 0 && (
-                              <span className="absolute -top-1.5 right-1 rounded-full bg-emerald-500 px-1 py-px text-[8px] font-black text-ink-950">
-                                +%{pack.bonus}
+                            {pack && (pack.bonus > 0 || (pack.gifts ?? []).length > 0) && (
+                              <span className="absolute -top-1.5 right-1 flex items-center gap-0.5 rounded-full bg-emerald-500 px-1 py-px text-[8px] font-black text-ink-950">
+                                {pack.bonus > 0 && `+%${pack.bonus}`}
+                                {(pack.gifts ?? []).length > 0 && <span>🎁</span>}
                               </span>
                             )}
                           </button>
@@ -652,14 +668,27 @@ export function Header() {
                       })}
                     </div>
 
-                    {mode === "deposit" && activePack && activePack.bonus > 0 && (
-                      <div className="mt-2.5 flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-[11px]">
-                        <span className="text-white/55">
-                          Paket bonusu <span className="font-black text-emerald-400">+%{activePack.bonus}</span>
-                        </span>
-                        <span className="font-display text-sm font-black text-emerald-400">
-                          {money(credit)} yüklenecek
-                        </span>
+                    {mode === "deposit" && activePack && (activePack.bonus > 0 || (activePack.gifts ?? []).length > 0) && (
+                      <div className="mt-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-[11px]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-white/55">
+                            Paket bonusu <span className="font-black text-emerald-400">+%{activePack.bonus}</span>
+                          </span>
+                          <span className="font-display text-sm font-black text-emerald-400">
+                            {money(credit)} yüklenecek
+                          </span>
+                        </div>
+                        {(activePack.gifts ?? []).length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 border-t border-emerald-500/20 pt-1.5 text-[10px] text-white/60">
+                            <span>🎁 Hediye:</span>
+                            {activePack.gifts!.map((g, gi) => (
+                              <span key={gi} className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-bold text-emerald-300">
+                                {g.kind === "case" ? `Kasa · ${giftLabel(g)}` : giftLabel(g)}
+                                {g.kind === "case" && " (onayda otomatik açılır)"}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
 

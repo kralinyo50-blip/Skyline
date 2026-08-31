@@ -106,10 +106,11 @@ import {
   type PriceSnap,
   type DepositPack,
   type DepositPackSettings,
+  type DepositPackGift,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
-import { rollCaseSeeded, rollCasePity, casePrice, type CaseDef } from "../data/cases";
+import { CASES, rollCaseSeeded, rollCasePity, casePrice, type CaseDef } from "../data/cases";
 import { applyPriceOverrides, skinBasePrice, currentPriceRev, waveTierFactor, waveFadeEnd } from "../data/skins";
 import {
   startSync,
@@ -3270,6 +3271,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const pack = (draft.depositPacks?.packs ?? []).find((p) => p.amount === amount);
         const bonus = pack?.bonus ?? 0;
         const credit = amount + Math.round((amount * bonus) / 100);
+        const gifts: DepositPackGift[] = (pack?.gifts ?? []).map((g) => ({ ...g }));
         draft.deposits.unshift({
           id: uid(),
           userKey: user.key,
@@ -3277,6 +3279,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           amount,
           method,
           bonus,
+          gifts,
           kind: "deposit",
           status: auto ? "approved" : "pending",
           ts: Date.now(),
@@ -3378,6 +3381,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         if (seenDepositRef.current.has(d.id)) return;
         seenDepositRef.current.add(d.id);
         const withdraw = d.kind === "withdraw";
+        const giftResults: string[] = [];
         mutate((draft) => {
           if (draft.claimed[d.id]) return;
           draft.claimed[d.id] = Date.now();
@@ -3410,6 +3414,23 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
               const bonus = d.method === "Başlangıç Bonusu" ? 0 : Math.max(0, d.bonus ?? 0);
               const delta = d.method === "Başlangıç Bonusu" ? 0 : d.amount + Math.round((d.amount * bonus) / 100);
               me.balance = Math.max(0, Math.round(me.balance + delta));
+            }
+
+            /* paket hediyeleri: kasa ücretsiz açılır (pity/istatistik etkilenmez) */
+            for (const g of d.gifts ?? []) {
+              if (g.kind === "case") {
+                const def = CASES.find((c) => c.id === g.id);
+                if (!def) continue;
+                for (let i = 0; i < Math.max(1, g.count); i++) {
+                  const skin = rollCaseSeeded(def, randHex(64), Math.floor(Math.random() * 1e9) + 1);
+                  me.inventory.unshift(makeSkinItem(skin.id));
+                  giftResults.push(`${def.name} → ${skin.weapon} | ${skin.name}`);
+                }
+              } else if (g.kind === "skin") {
+                if (!SKIN_MAP[g.id]) continue;
+                me.inventory.unshift(makeSkinItem(g.id));
+                giftResults.push(`${SKIN_MAP[g.id].weapon} | ${SKIN_MAP[g.id].name}`);
+              }
             }
           }
         });
@@ -3451,6 +3472,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                   : `İşlem ${d.decidedBy ?? ADMIN_NAME} tarafından onaylandı`,
           });
           coinDing();
+          if (giftResults.length > 0) {
+            pushToast({
+              kind: "money",
+              title: "Paket hediyesi geldi 🎁",
+              sub: giftResults.slice(0, 3).join(" · "),
+            });
+          }
         } else {
           pushToast({
             kind: "lose",

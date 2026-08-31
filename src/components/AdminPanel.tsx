@@ -192,6 +192,20 @@ export function AdminPanel() {
       ),
     [depositPacks]
   );
+  /* paket hediyesi yardımcıları */
+  const giftCases = useMemo(() => CASES.filter((c) => !c.capsule && !c.souvenir), []);
+  const giftSkins = useMemo(
+    () => Object.values(SKIN_MAP).filter((sk) => !sk.st && !sk.sv && sk.price >= 2000).sort((a, b) => b.price - a.price),
+    []
+  );
+  const giftLabelOf = (g: { kind: string; id: string; count: number }) => {
+    if (g.kind === "case") {
+      const c = CASES.find((x) => x.id === g.id);
+      return `${g.count > 1 ? g.count + "× " : ""}${c ? c.name : g.id}`;
+    }
+    const sk = SKIN_MAP[g.id];
+    return sk ? `${sk.weapon} | ${sk.name}` : g.id;
+  };
 
   const [urlInput, setUrlInput] = useState(syncUrl ?? "");
   const [codeInput, setCodeInput] = useState(syncCode ?? "");
@@ -2228,41 +2242,141 @@ export function AdminPanel() {
             </p>
             <div className="mt-3 space-y-2">
               {depositPackList.map((p) => (
-                <div
-                  key={p.amount}
-                  className="flex items-center gap-2 rounded-xl border border-line bg-ink-900/70 px-3 py-2.5"
-                >
-                  <div className="min-w-[82px]">
-                    <div className="font-display text-sm font-black text-white/85">{money(p.amount)}</div>
-                    <div className="text-[8px] uppercase tracking-wider text-white/30">paket</div>
-                  </div>
-                  <div className="mx-1 h-7 w-px bg-line" />
-                  <div className="flex flex-wrap items-center gap-1">
-                    {PACK_BONUSES.map((b) => (
-                      <button
-                        key={b}
-                        onClick={() => {
-                          const res = setDepositPacks(
-                            depositPackList.map((x) => (x.amount === p.amount ? { ...x, bonus: b } : x))
-                          );
-                          if (!res.ok) pushToast({ kind: "lose", title: "Kaydedilemedi", sub: res.error });
-                        }}
-                        className={cn(
-                          "rounded-md px-2 py-1 text-[10px] font-black transition",
-                          p.bonus === b
-                            ? "bg-emerald-500 text-ink-950"
-                            : "bg-ink-700 text-white/45 hover:text-white"
-                        )}
-                      >
-                        +%{b}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="ml-auto text-right">
-                    <div className="font-display text-xs font-black text-emerald-400">
-                      {money(p.amount + Math.round((p.amount * p.bonus) / 100))}
+                <div key={p.amount} className="rounded-xl border border-line bg-ink-900/70 p-3">
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-[82px]">
+                      <div className="font-display text-sm font-black text-white/85">{money(p.amount)}</div>
+                      <div className="text-[8px] uppercase tracking-wider text-white/30">paket</div>
                     </div>
-                    <div className="text-[8px] uppercase tracking-wider text-white/30">yüklenecek</div>
+                    <div className="mx-1 h-7 w-px bg-line" />
+                    <div className="flex flex-wrap items-center gap-1">
+                      {PACK_BONUSES.map((b) => (
+                        <button
+                          key={b}
+                          onClick={() => {
+                            const res = setDepositPacks(
+                              depositPackList.map((x) => (x.amount === p.amount ? { ...x, bonus: b } : x))
+                            );
+                            if (!res.ok) pushToast({ kind: "lose", title: "Kaydedilemedi", sub: res.error });
+                          }}
+                          className={cn(
+                            "rounded-md px-2 py-1 text-[10px] font-black transition",
+                            p.bonus === b
+                              ? "bg-emerald-500 text-ink-950"
+                              : "bg-ink-700 text-white/45 hover:text-white"
+                          )}
+                        >
+                          +%{b}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="ml-auto text-right">
+                      <div className="font-display text-xs font-black text-emerald-400">
+                        {money(p.amount + Math.round((p.amount * p.bonus) / 100))}
+                      </div>
+                      <div className="text-[8px] uppercase tracking-wider text-white/30">yüklenecek</div>
+                    </div>
+                  </div>
+
+                  {/* hediyeler */}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-line pt-2">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-white/35">Hediye:</span>
+                    {(p.gifts ?? []).map((g, gi) => (
+                      <span
+                        key={`${g.kind}-${gi}`}
+                        className="flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold text-emerald-300"
+                      >
+                        🎁 {giftLabelOf(g)}
+                        {g.kind === "case" && (
+                          <span className="ml-0.5 flex gap-0.5">
+                            {[1, 2, 3].map((n) => (
+                              <button
+                                key={n}
+                                onClick={() => {
+                                  setDepositPacks(
+                                    depositPackList.map((x) =>
+                                      x.amount === p.amount
+                                        ? {
+                                            ...x,
+                                            gifts: (x.gifts ?? []).map((gg, i2) => (i2 === gi ? { ...gg, count: n } : gg)),
+                                          }
+                                        : x
+                                    )
+                                  );
+                                }}
+                                className={cn(
+                                  "rounded px-1 text-[9px] font-black transition",
+                                  g.count === n ? "bg-emerald-400 text-ink-950" : "bg-ink-700 text-white/50"
+                                )}
+                              >
+                                {n}
+                              </button>
+                            ))}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => {
+                            setDepositPacks(
+                              depositPackList.map((x) =>
+                                x.amount === p.amount
+                                  ? { ...x, gifts: (x.gifts ?? []).filter((_, i2) => i2 !== gi) }
+                                  : x
+                              )
+                            );
+                          }}
+                          className="text-white/40 transition hover:text-lose"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        if (!id) return;
+                        setDepositPacks(
+                          depositPackList.map((x) =>
+                            x.amount === p.amount
+                              ? { ...x, gifts: [...(x.gifts ?? []), { kind: "case", id, count: 1 }] }
+                              : x
+                          )
+                        );
+                      }}
+                      className="h-7 rounded-lg border border-line bg-ink-800 px-1.5 text-[10px] font-bold text-white/55 focus:outline-none"
+                    >
+                      <option value="">+ Kasa hediye ekle…</option>
+                      {giftCases.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value=""
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        if (!id) return;
+                        setDepositPacks(
+                          depositPackList.map((x) =>
+                            x.amount === p.amount
+                              ? { ...x, gifts: [...(x.gifts ?? []), { kind: "skin", id, count: 1 }] }
+                              : x
+                          )
+                        );
+                      }}
+                      className="h-7 rounded-lg border border-line bg-ink-800 px-1.5 text-[10px] font-bold text-white/55 focus:outline-none"
+                    >
+                      <option value="">+ Skin hediye ekle…</option>
+                      {giftSkins.slice(0, 60).map((sk) => (
+                        <option key={sk.id} value={sk.id}>
+                          {sk.weapon} | {sk.name}
+                        </option>
+                      ))}
+                    </select>
+                    {(p.gifts ?? []).length === 0 && (
+                      <span className="text-[9px] text-white/25">— kasa hediyesi yok, bonusla sınırlı</span>
+                    )}
                   </div>
                 </div>
               ))}

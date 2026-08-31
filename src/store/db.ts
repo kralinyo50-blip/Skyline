@@ -194,15 +194,28 @@ export interface DepositReq {
   skinOpts?: { float?: number; stickers?: string[] };
   /** yatırma paketi bonusu (%) — talep anında paketten hesaplanır */
   bonus?: number;
+  /** talep anında sabitlenen hediyeler (kasa/skin) */
+  gifts?: DepositPackGift[];
 }
 
 /* ---------------- YATIRMA PAKETLERİ ---------------- */
+
+/** Paket hediyesi: kasa (onayda otomatik açılır) veya skin (envantere düşer) */
+export interface DepositPackGift {
+  kind: "case" | "skin";
+  /** kasa id veya skin id */
+  id: string;
+  /** kasa adedi (skin için 1) */
+  count: number;
+}
 
 /** Paket: belirli tutarda yatırma = üstüne % bonus (avantajlı paket) */
 export interface DepositPack {
   amount: number;
   /** onaylanınca yüklenen tutar: amount + amount*bonus/100 */
   bonus: number;
+  /** yanında verilen hediyeler (kasa otomatik açılır) */
+  gifts?: DepositPackGift[];
 }
 
 /** Admin'in düzenlediği paket listesi — en yeni ts kazanır */
@@ -218,8 +231,11 @@ export const DEFAULT_DEPOSIT_PACKS: DepositPack[] = [
   { amount: 5000, bonus: 5 },
   { amount: 10000, bonus: 10 },
   { amount: 25000, bonus: 20 },
-  { amount: 50000, bonus: 30 },
-  { amount: 100000, bonus: 50 },
+  { amount: 50000, bonus: 30, gifts: [{ kind: "case", id: "gift", count: 1 }] },
+  { amount: 100000, bonus: 50, gifts: [{ kind: "case", id: "vault", count: 1 }] },
+  { amount: 120000, bonus: 50, gifts: [{ kind: "case", id: "gallery", count: 1 }] },
+  { amount: 250000, bonus: 75, gifts: [{ kind: "case", id: "vault", count: 2 }] },
+  { amount: 500000, bonus: 100, gifts: [{ kind: "case", id: "knife-case", count: 1 }] },
 ];
 
 /* ---------------- ETKİNLİK / ÇEKİLİŞ / DUYURU ---------------- */
