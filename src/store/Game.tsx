@@ -51,6 +51,7 @@ import {
   isValidMcName,
 } from "../config";
 import { CELEBRITY_USERS, COMMUNITY_USERS } from "../data/fakers";
+import { emitLive } from "./liveEvents";
 import {
   generateBotListings,
   makeBotListing,
@@ -1926,6 +1927,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       saveDB(fresh);
       setDb(fresh);
       notifyDbChanged();
+      emitLive({ kind: "caseWin", user: me.name, item: `${skin.weapon} | ${skin.name}`, amount: skin.price });
       if (forced)
         pushToastSafe.current({
           kind: "info",

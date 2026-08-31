@@ -20,6 +20,7 @@ import { CasinoAmbience } from "./components/CasinoAmbience";
 import { CelebrationOverlay } from "./components/CelebrationOverlay";
 import { AdminPanel } from "./components/AdminPanel";
 import { Toasts } from "./components/Toasts";
+import { LiveToasts } from "./components/LiveToasts";
 import { Footer } from "./components/Footer";
 
 function Shell() {
@@ -74,6 +75,7 @@ function Shell() {
 
       <CelebrationOverlay />
       <Toasts />
+      <LiveToasts />
     </div>
   );
 }

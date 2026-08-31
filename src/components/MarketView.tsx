@@ -27,6 +27,8 @@ import { WEARS, wearFromFloat } from "../data/wear";
 import { itemValue, type InvItem } from "../data/items";
 import { type MarketListing } from "../store/db";
 import { click } from "../lib/audio";
+import { pick, randInt, uid } from "../lib/rng";
+import { BOT_NAMES } from "../data/fakers";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
 import { SkinImg } from "./SkinCard";
@@ -688,6 +690,44 @@ export function MarketView() {
   const [page, setPage] = useState(1);
   const [invPage, setInvPage] = useState(1);
 
+  /* son satışlar — dükkan canlılığı (botlar ara ara ürün alır) */
+  const [sales, setSales] = useState<{ id: string; name: string; item: string; price: number }[]>(() =>
+    Array.from({ length: 3 }, () => {
+      const sk = pick(Object.values(SKIN_MAP).filter((x) => !x.sticker));
+      return {
+        id: uid(),
+        name: pick(BOT_NAMES),
+        item: `${sk.weapon} | ${sk.name}`,
+        price: Math.max(500, Math.round((sk.price ?? 0) * (0.9 + Math.random() * 0.4))),
+      };
+    })
+  );
+  useEffect(() => {
+    let alive = true;
+    const timers: number[] = [];
+    const add = () => {
+      if (!alive) return;
+      const sk = pick(Object.values(SKIN_MAP).filter((x) => !x.sticker));
+      setSales((prev) =>
+        [
+          {
+            id: uid(),
+            name: pick(BOT_NAMES),
+            item: `${sk.weapon} | ${sk.name}`,
+            price: Math.max(500, Math.round((sk.price ?? 0) * (0.9 + Math.random() * 0.4))),
+          },
+          ...prev,
+        ].slice(0, 6)
+      );
+      timers.push(window.setTimeout(add, randInt(6000, 14000)));
+    };
+    timers.push(window.setTimeout(add, 5000));
+    return () => {
+      alive = false;
+      timers.forEach((id) => clearTimeout(id));
+    };
+  }, []);
+
   /* Dükkan: bot + gerçek oyuncu ilanları birleşik liste */
   const shopItems = useMemo(() => {
     const bots: ShopItem[] = botListings.map((l) => ({ kind: "bot" as const, l }));
@@ -1053,6 +1093,40 @@ export function MarketView() {
               {sort === "cheap" ? <ArrowUpNarrowWide className="h-3.5 w-3.5" /> : <ArrowDownWideNarrow className="h-3.5 w-3.5" />}
               Fiyat
             </button>
+          </div>
+
+          {/* canlı satış akışı */}
+          <div className="mb-3 rounded-xl border border-line bg-ink-900/50 p-2.5">
+            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-white/40">
+              <span className="live-dot h-1.5 w-1.5 rounded-full bg-emerald-400" />
+              Son satışlar
+            </div>
+            <div className="mt-2 flex flex-col gap-1.5">
+              <AnimatePresence initial={false}>
+                {sales.map((sl, i) => (
+                  <motion.div
+                    key={sl.id}
+                    layout
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className={cn(
+                      "flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-[11px]",
+                      i === 0 ? "border-brand-500/25 bg-brand-500/5" : "border-transparent bg-ink-800/60"
+                    )}
+                  >
+                    <ShoppingCart className="h-3.5 w-3.5 shrink-0 text-brand-300/70" />
+                    <span className="min-w-0 flex-1 truncate text-white/60">
+                      <span className={cn("font-semibold", i === 0 ? "text-brand-200" : "text-white/80")}>{sl.name}</span>{" "}
+                      <span className="text-white/40">aldı</span>{" "}
+                      <span className="text-white/75">{sl.item}</span>
+                    </span>
+                    <span className="shrink-0 font-display text-[11px] font-bold text-emerald-400">{money(sl.price)}</span>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
           </div>
 
           {shopItems.length === 0 ? (
