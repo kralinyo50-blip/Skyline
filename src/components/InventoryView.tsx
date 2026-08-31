@@ -336,6 +336,7 @@ export function InventoryView() {
   const {
     inventory,
     inventoryValue,
+    priceVersion,
     quickSell,
     setUpgraderPick,
     setTab,
@@ -385,7 +386,8 @@ export function InventoryView() {
         break;
     }
     return sorted;
-  }, [inventory, sort, filter, wearFilter, q]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventory, sort, filter, wearFilter, q, priceVersion]);
 
   const stickerCount = inventory.filter((i) => isStickerItem(i.skinId)).length;
 

@@ -310,6 +310,12 @@ export const fmtMoney = money;
 /* orijinal (çarpansız) fiyatlar — uygulama ilk kez çalıştığında kaydedilir */
 const ORIG_PRICES = new Map<string, number>();
 
+/* fiyat çarpanı revizyonu — React memolarının dep'inde kullanılır */
+let priceRev = 0;
+export function currentPriceRev(): number {
+  return priceRev;
+}
+
 export interface PriceSettingsLike {
   global?: number;
   byRarity?: Partial<Record<RarityKey, number>>;
@@ -317,16 +323,19 @@ export interface PriceSettingsLike {
 }
 
 /** Fiyat çarpanlarını SKIN_MAP'e uygula (100 = normal, 150 = +%50, 50 = yarı).
- *  Herbir SKINS öğesi SKIN_MAP ile aynı referans olduğundan tüm ekranlar etkilenir. */
+ *  Herbir SKINS öğesi SKIN_MAP ile aynı referans olduğundan tüm ekranlar etkilenir.
+ *  -st / -sv varyantları, taban skinin skin-bazlı çarpanını da devralır. */
 export function applyPriceOverrides(ps?: PriceSettingsLike | null): void {
   for (const id of Object.keys(SKIN_MAP)) {
     const s = SKIN_MAP[id];
     if (!ORIG_PRICES.has(id)) ORIG_PRICES.set(id, s.price);
     const g = (ps?.global ?? 100) / 100;
     const r = (ps?.byRarity?.[s.rarity] ?? 100) / 100;
-    const k = (ps?.bySkin?.[id] ?? 100) / 100;
-    s.price = Math.max(1200, Math.round((ORIG_PRICES.get(id) ?? s.price) * g * r * k));
+    const baseId = id.endsWith("-st") || id.endsWith("-sv") ? id.slice(0, -3) : id;
+    const k = (ps?.bySkin?.[id] ?? ps?.bySkin?.[baseId] ?? 100) / 100;
+    s.price = Math.max(10, Math.round((ORIG_PRICES.get(id) ?? s.price) * g * r * k));
   }
+  priceRev++;
 }
 
 /** Çarpansız taban fiyatı (admin panelinde referans gösterimi) */

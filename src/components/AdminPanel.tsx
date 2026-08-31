@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertTriangle,
@@ -246,6 +246,11 @@ export function AdminPanel() {
   /* haftanın oyuncusu pin */
   const [pinQuery, setPinQuery] = useState("");
 
+  /* başka cihazdan/sync'ten gelen global çarpanı panele yansıt */
+  useEffect(() => {
+    setPriceGlobal(String(priceSettings?.global ?? 100));
+  }, [priceSettings?.ts]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const skinResults = useMemo(() => {
     const qq = skinQuery.trim().toLowerCase();
     return Object.values(SKIN_MAP)
@@ -269,7 +274,13 @@ export function AdminPanel() {
     [skinResults, skinPage]
   );
 
-  const saleActiveNow = !!caseSale && !caseSale.cancelled && caseSale.endsAt > Date.now();
+  /* etkinlik geri sayımı için canlı saat (30 sn'de bir tazelenir) */
+  const [admNow, setAdmNow] = useState(Date.now());
+  useEffect(() => {
+    const iv = window.setInterval(() => setAdmNow(Date.now()), 30000);
+    return () => clearInterval(iv);
+  }, []);
+  const saleActiveNow = !!caseSale && !caseSale.cancelled && caseSale.endsAt > admNow;
 
   /* fiyat yönetimi — uygulanmış %'ler */
   const rarKeys = Object.keys(RARITY) as (keyof typeof RARITY)[];
@@ -279,7 +290,7 @@ export function AdminPanel() {
   const listingSkins = useMemo(() => {
     const qq = listQuery.trim().toLowerCase();
     return Object.values(SKIN_MAP)
-      .filter((s) => !s.sticker)
+      .filter((s) => !s.sticker && !s.st && !s.sv)
       .filter((s) => !qq || s.name.toLowerCase().includes(qq) || s.weapon.toLowerCase().includes(qq) || s.id.includes(qq))
       .sort((a, b) => RARITY[b.rarity].order - RARITY[a.rarity].order || a.name.localeCompare(b.name))
       .slice(0, 12);
@@ -674,7 +685,7 @@ export function AdminPanel() {
               <div className="mt-3 rounded-xl border border-emerald-500/30 bg-ink-900/70 px-4 py-2.5 text-[11px] text-white/60">
                 <div className="font-bold text-emerald-400">
                   %{caseSale.discount} indirim · {caseSale.caseIds.length} kasa ·{" "}
-                  {Math.max(0, Math.round((caseSale.endsAt - Date.now()) / 60000))} dk kaldı
+                  {Math.max(0, Math.round((caseSale.endsAt - admNow) / 60000))} dk kaldı
                 </div>
                 <div className="mt-0.5 text-white/40">{caseSale.caseIds.slice(0, 6).join(", ")}...</div>
               </div>
@@ -1349,6 +1360,16 @@ export function AdminPanel() {
                   onChange={(e) => setPriceGlobal(e.target.value)}
                   className="w-full accent-brand-500"
                 />
+                <div className="mt-1.5 rounded-lg bg-ink-800/70 px-2.5 py-1.5 text-[9px] leading-relaxed text-white/40">
+                  Örnek: <span className="text-white/60">1200 ₺ → </span>
+                  <span className="font-bold text-emerald-400">
+                    {money(Math.max(10, Math.round(1200 * (eff(priceGlobal) / 100))))}
+                  </span>{" "}
+                  · <span className="text-white/60">500.000 ₺ → </span>
+                  <span className="font-bold text-amber-300">
+                    {money(Math.max(10, Math.round(500000 * (eff(priceGlobal) / 100))))}
+                  </span>
+                </div>
                 <div className="mt-1 flex items-center gap-1.5">
                   <input
                     value={priceGlobal}
@@ -1428,7 +1449,7 @@ export function AdminPanel() {
                 >
                   <option value="">Skin seç…</option>
                   {Object.values(SKIN_MAP)
-                    .filter((s) => !s.sticker)
+                    .filter((s) => !s.sticker && !s.st && !s.sv)
                     .sort((a, b) => b.price - a.price || a.name.localeCompare(b.name))
                     .map((s) => (
                       <option key={s.id} value={s.id}>
@@ -1463,7 +1484,7 @@ export function AdminPanel() {
                     </div>
                     <div className="mt-2 text-[9px] text-white/35">
                       Taban: {money(skinBasePrice(priceSkinId))} → Etkin:{" "}
-                      <span className="font-bold text-emerald-400">{money(skinBasePrice(priceSkinId))}</span>
+                      <span className="font-bold text-emerald-400">{money(SKIN_MAP[priceSkinId]?.price ?? 0)}</span>
                     </div>
                   </>
                 )}

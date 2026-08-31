@@ -86,6 +86,7 @@ export function UpgraderView() {
     setTab,
     pushToast,
     nonce,
+    priceVersion,
     trackWager,
     trackMission,
   } = useGame();
@@ -117,7 +118,8 @@ export function UpgraderView() {
         const it = inventory.find((i) => i.uid === u);
         return a + (it ? itemValue(it) : 0);
       }, 0),
-    [selUids, inventory]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selUids, inventory, priceVersion]
   );
   const target: Skin | null = targetId ? SKIN_MAP[targetId] : null;
 
@@ -127,7 +129,8 @@ export function UpgraderView() {
       [...inventory].sort(
         (a, b) => (SKIN_MAP[b.skinId]?.price ?? 0) - (SKIN_MAP[a.skinId]?.price ?? 0)
       ),
-    [inventory]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inventory, priceVersion]
   );
 
   /* ön seçim (envanterden "Yükselt" ile gel) */
@@ -165,7 +168,8 @@ export function UpgraderView() {
   }, [totalSel, target]);
 
   /* TÜM skinler hedef olabilir — pahalı eşyada da asla "hedef yok" durumu oluşmaz */
-  const allTargets = useMemo(() => SKINS.filter((s) => !s.sticker).sort((a, b) => a.price - b.price), []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const allTargets = useMemo(() => SKINS.filter((s) => !s.sticker).sort((a, b) => a.price - b.price), [priceVersion]);
 
   const targets = useMemo(() => {
     if (totalSel <= 0) return [];

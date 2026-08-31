@@ -54,6 +54,7 @@ import { CELEBRITY_USERS, COMMUNITY_USERS } from "../data/fakers";
 import {
   generateBotListings,
   makeBotListing,
+  rescaleBotListings,
   generateTradeOffers,
   makeTradeOffer,
   sellChance,
@@ -104,7 +105,7 @@ import {
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
 import { rollCaseSeeded, rollCasePity, casePrice, type CaseDef } from "../data/cases";
-import { applyPriceOverrides, skinBasePrice } from "../data/skins";
+import { applyPriceOverrides, skinBasePrice, currentPriceRev } from "../data/skins";
 import {
   startSync,
   stopSync,
@@ -439,6 +440,8 @@ interface GameState {
   priceSettings: PriceSettings | null;
   setPriceSettings: (p: Partial<PriceSettings>) => { ok: boolean; error?: string };
   skinBasePrice: (id: string) => number;
+  /** fiyat çarpanı değiştiğinde artar — memo dep'lerinde kullan */
+  priceVersion: number;
 
   /* haftanın oyuncusu */
   weekWinner: { key: string; name: string; spent: number; opened: number } | null;
@@ -1791,7 +1794,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     (def: CaseDef): { skin: import("../data/skins").Skin; seed: string; nonce: number; forced: boolean } => {
       const fresh = loadDB();
       const me = currentUser(fresh);
-      const price = casePrice(def, fresh.caseSale ?? null);
+      const price = casePrice(def, fresh.caseSale ?? null, fresh.priceSettings ?? null);
       if (!me || me.balance < price) {
         pushToastSafe.current({
           kind: "lose",
@@ -2292,9 +2295,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [mutate]
   );
 
-  /* buluttan gelen fiyat ayarlarını uygula */
+  /* buluttan gelen fiyat ayarlarını uygula + bot pazar ilanlarını ölçekle */
   useEffect(() => {
     applyPriceOverrides(db.priceSettings ?? null);
+    setBotListings((prev) => rescaleBotListings(prev));
   }, [db.priceSettings]);
 
   /* ---------------- HAFTANIN OYUNCUSU — admin sabitleme ---------------- */
@@ -3349,9 +3353,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   }, [db.moneyReset, mutate]);
 
   const inventory = user?.inventory ?? [];
+  const priceVersion = currentPriceRev();
   const inventoryValue = useMemo(
     () => inventory.reduce((acc, i) => acc + itemValue(i), 0),
-    [inventory]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inventory, priceVersion]
   );
   const stats = user?.stats ?? { opened: 0, spent: 0, bestDrop: 0 };
   const level = levelFromSpent(stats.spent);
@@ -3578,6 +3584,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     priceSettings: db.priceSettings ?? null,
     setPriceSettings,
     skinBasePrice,
+    priceVersion,
 
     /* haftanın oyuncusu */
     weekWinner,

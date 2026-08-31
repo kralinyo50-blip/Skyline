@@ -532,7 +532,7 @@ function ShopBuyModal({
 
 /* ---------------- hepsini sat modalı ---------------- */
 function SellAllModal({ onClose }: { onClose: () => void }) {
-  const { inventory, listAllOnMarket } = useGame();
+  const { inventory, listAllOnMarket, priceVersion } = useGame();
   const [pct, setPct] = useState("10");
 
   const p = Math.max(0, Math.min(500, Number(pct.replace(/[^\d]/g, "")) || 0));
@@ -549,7 +549,8 @@ function SellAllModal({ onClose }: { onClose: () => void }) {
       }
     });
     return [...m.values()];
-  }, [inventory]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventory, priceVersion]);
   const itemCount = inventory.length;
   const baseTotal = groups.reduce((a, g) => a + g.value, 0);
   const gross = inventory.reduce((a, i) => a + Math.max(100, Math.round((itemValue(i) * (1 + p / 100)) / 100) * 100), 0);
@@ -672,6 +673,7 @@ export function MarketView() {
     inventory,
     balance,
     shopListings,
+    priceVersion,
   } = useGame();
 
   const [tab, setTab] = useState<Tab>("buy");
@@ -739,7 +741,8 @@ export function MarketView() {
         .map((i) => ({ item: i, skin: SKIN_MAP[i.skinId], val: itemValue(i) }))
         .filter((x) => x.skin)
         .sort((a, b) => b.val - a.val),
-    [inventory]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inventory, priceVersion]
   );
 
   const copyCounts = useMemo(() => {
@@ -1070,9 +1073,19 @@ export function MarketView() {
                   const l = item.l;
                   const unit = isBot ? (l as Listing).unitPrice ?? (l as Listing).price : (l as MarketListing).unitPrice;
                   const sellerName = isBot ? (l as Listing).seller : (l as MarketListing).sellerName;
-                  const baseValue = l.baseValue ?? SKIN_MAP[l.skinId]?.price ?? 0;
                   const s = SKIN_MAP[l.skinId];
                   if (!s) return null;
+                  /* fiyat çarpanı değiştiyse "değer" canlı itemValue ile hesaplanır
+                     (aşınma + sticker + çarpan dahil) — eski ilan fiyatlarıyla karışmaz */
+                  const firstCopy = (l as MarketListing).copies?.[0];
+                  const probeL: InvItem = {
+                    uid: "probeL",
+                    skinId: l.skinId,
+                    ts: 0,
+                    float: (l as Listing).float ?? firstCopy?.float,
+                    stickers: (l as Listing).stickers ?? firstCopy?.stickers,
+                  };
+                  const baseValue = itemValue(probeL);
                   const r = RARITY[s.rarity];
                   const ratio = priceRatio({ price: unit, baseValue, skinId: l.skinId });
                   const badge = ratioBadge(ratio);

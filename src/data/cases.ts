@@ -1,5 +1,5 @@
-import { SKIN_MAP, BASE_SKINS, RARITY, type Skin, type RarityKey, TIER_ORDER } from "./skins";
-import type { CaseSale } from "../store/db";
+import { SKIN_MAP, BASE_SKINS, RARITY, currentPriceRev, type Skin, type RarityKey, TIER_ORDER } from "./skins";
+import type { CaseSale, PriceSettings } from "../store/db";
 import { EXTRA_SKINS } from "./extraSkins";
 import { LEGEND_SKINS, LEGEND_IDS } from "./legends";
 import { WEAPON_CAT } from "./weaponCats";
@@ -29,6 +29,8 @@ export interface CaseDef {
   anime?: boolean;
   /** Katalog dağıtımından etkilenmez — içeriği zaten tam havuz */
   sealed?: boolean;
+  /** yükleme anındaki orijinal beklenen değer (fiyat çarpanı hesabı için) */
+  origValue?: number;
   contents: Partial<Record<RarityKey, string[]>>;
 }
 
@@ -859,16 +861,19 @@ export const CASES: CaseDef[] = [
   ...SOUVENIR_CASES,
 ].map((c) => {
   const e = enrichCase(ensureSkinCount(c));
+  const orig = expectedValue(e);
   return {
     ...e,
+    /* fiyat çarpanı yönetimi için yükleme anındaki orijinal kası değeri */
+    origValue: orig,
     /* Hediye Paketi: değeri sabit tutulur (4200$) — zor skin zammından etkilenmez */
     /* Bıçak & Eldiven Kasası: +%45 zam (bıçak/eldiven zammının üzerine) */
     price:
       c.id === "gift"
         ? 4200
         : c.id === "knife-case"
-          ? roundCasePrice(expectedValue(e) * CASE_MARKUP * 1.45 * (e.stickered ? 1.15 : 1))
-          : roundCasePrice(expectedValue(e) * CASE_MARKUP * (e.stickered ? 1.15 : 1)),
+          ? roundCasePrice(orig * CASE_MARKUP * 1.45 * (e.stickered ? 1.15 : 1))
+          : roundCasePrice(orig * CASE_MARKUP * (e.stickered ? 1.15 : 1)),
   };
 });
 
@@ -876,8 +881,34 @@ export const CASE_MAP: Record<string, CaseDef> = Object.fromEntries(
   CASES.map((c) => [c.id, c])
 );
 
-/** Kasa fiyatı — aktif indirim etkinliği varsa indirimli değer */
-export function casePrice(def: CaseDef, sale?: CaseSale | null): number {
+/* kasa değer çarpanı önbelleği — fiyat revizyonu (rev) değişince yeniden hesaplanır.
+ * Not: uygulamada önce render, sonra applyPriceOverrides çalıştığı için
+ * ps.ts yerine priceRev anahtarı kullanılır (aksi halde eski fiyatla önbelleklenir). */
+const caseScaleCache = new Map<string, { rev: number; scale: number }>();
+
+/** Kasa beklenen değerindeki değişim oranı (skin zam/indirimine göre).
+ *  Hediye Paketi (gift) sabit fiyatlı kalır. */
+export function caseScale(def: CaseDef, ps?: PriceSettings | null): number {
+  if (!ps || def.id === "gift") return 1;
+  const rev = currentPriceRev();
+  const hit = caseScaleCache.get(def.id);
+  if (hit && hit.rev === rev) return hit.scale;
+  let scale = 1;
+  if ((def.origValue ?? 0) > 0) {
+    const cur = expectedValue(def);
+    scale = cur > 0 ? cur / (def.origValue ?? 1) : 1;
+  }
+  caseScaleCache.set(def.id, { rev, scale });
+  return scale;
+}
+
+/** Kasa fiyatı — skin zam/indirimi + aktif kasa indirimi etkinliği uygulu */
+export function casePrice(
+  def: CaseDef,
+  sale?: CaseSale | null,
+  ps?: PriceSettings | null
+): number {
+  const base = Math.max(1, Math.round(def.price * caseScale(def, ps)));
   if (
     sale &&
     !sale.cancelled &&
@@ -886,9 +917,9 @@ export function casePrice(def: CaseDef, sale?: CaseSale | null): number {
     sale.caseIds.includes(def.id)
   ) {
     const d = Math.min(90, Math.max(5, sale.discount));
-    return Math.max(0.01, Math.round(def.price * (1 - d / 100) * 100) / 100);
+    return Math.max(0.01, Math.round(base * (1 - d / 100) * 100) / 100);
   }
-  return def.price;
+  return base;
 }
 
 /* Kasada tüketici/endüstriyel kademe varsa oranları ona göre dağıt */

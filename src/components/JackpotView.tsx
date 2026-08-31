@@ -39,17 +39,19 @@ function countdown(ms: number): string {
 
 /* ---------- pota eşya katma modalı ---------- */
 function JoinModal({ onClose }: { onClose: () => void }) {
-  const { inventory, jackpotJoin, pushToast } = useGame();
+  const { inventory, jackpotJoin, pushToast, priceVersion } = useGame();
   const [sel, setSel] = useState<Set<string>>(new Set());
 
   const sorted = useMemo(
     () => [...inventory].sort((a, b) => itemValue(b) - itemValue(a)),
-    [inventory]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inventory, priceVersion]
   );
 
   const selValue = useMemo(
     () => sorted.filter((i) => sel.has(i.uid)).reduce((a, i) => a + itemValue(i), 0),
-    [sorted, sel]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sorted, sel, priceVersion]
   );
 
   function join() {

@@ -138,12 +138,13 @@ function OfferCard({ offer, onOpen }: { offer: TradeOffer; onOpen: () => void })
 }
 
 function TradeModal({ offer, onClose }: { offer: TradeOffer; onClose: () => void }) {
-  const { inventory, acceptTrade } = useGame();
+  const { inventory, acceptTrade, priceVersion } = useGame();
   const [sel, setSel] = useState<string[]>([]);
 
   const items = useMemo(
     () => inventory.filter((i) => SKIN_MAP[i.skinId]).sort((a, b) => itemValue(b) - itemValue(a)),
-    [inventory]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inventory, priceVersion]
   );
 
   const myValue = sel.reduce((a, u) => {
@@ -329,13 +330,14 @@ function ItemPickerGrid({
   onChange: (uids: string[]) => void;
   hide?: string[];
 }) {
-  const { inventory } = useGame();
+  const { inventory, priceVersion } = useGame();
   const items = useMemo(
     () =>
       inventory
         .filter((i) => SKIN_MAP[i.skinId] && !hide?.includes(i.uid))
         .sort((a, b) => itemValue(b) - itemValue(a)),
-    [inventory, hide]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inventory, hide, priceVersion]
   );
 
   if (!items.length)

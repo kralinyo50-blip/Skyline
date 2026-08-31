@@ -149,8 +149,8 @@ interface BatchHit {
 }
 
 export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void }) {
-  const { balance, credit, addItem, pushToast, openCase, caseSale } = useGame();
-  const price = casePrice(def, caseSale);
+  const { balance, credit, addItem, pushToast, openCase, caseSale, priceSettings, priceVersion } = useGame();
+  const price = casePrice(def, caseSale, priceSettings);
   const saleOn = price < def.price;
   const [phase, setPhase] = useState<Phase>("info");
   const [winner, setWinner] = useState<Skin | null>(null);
@@ -186,7 +186,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
   const phaseRef = useRef<Phase>("info");
   phaseRef.current = phase;
 
-  const { items: contentItems, odds } = useMemo(() => caseContentsDetailed(def), [def]);
+    const { items: contentItems, odds } = useMemo(() => caseContentsDetailed(def), [def, priceVersion]);
   const afford = balance >= price;
 
   const animateX = (from: number, to: number, dur: number, done: () => void) => {

@@ -98,6 +98,28 @@ export function generateBotListings(count = 96): Listing[] {
   return Array.from({ length: count }, () => makeBotListing()).sort((a, b) => b.ts - a.ts);
 }
 
+/** İlan kimliğini koruyarak bot ilanlarını YENİ fiyat çarpanlarına ölçekle.
+ *  Satıcı/aşınma/sticker/yaş aynı kalır; birim fiyat, toplam ve değer baz
+ *  fiyattaki değişim oranıyla (~margin korunur) yeniden hesaplanır.
+ *  Fiyat çarpanı değişmediyse sonuç birebir aynıdır (kayan nokta sapması yok). */
+export function rescaleBotListings(listings: Listing[]): Listing[] {
+  return listings.map((l) => {
+    const probe: InvItem = { uid: "probe", skinId: l.skinId, ts: 0, float: l.float, stickers: l.stickers };
+    const newBase = itemValue(probe);
+    const oldBase = l.baseValue > 0 ? l.baseValue : newBase;
+    const scale = oldBase > 0 && newBase > 0 ? newBase / oldBase : 1;
+    const qty = Math.max(1, l.qty ?? 1);
+    const oldUnit = l.unitPrice ?? (qty > 1 ? Math.round(l.price / qty) : l.price);
+    const unit = Math.max(100, Math.round((oldUnit * scale) / 100) * 100);
+    return {
+      ...l,
+      unitPrice: qty > 1 ? unit : undefined,
+      price: qty > 1 ? bulkTotal(unit, qty) : unit,
+      baseValue: newBase,
+    };
+  });
+}
+
 export function priceRatio(l: {
   price: number;
   baseValue?: number;

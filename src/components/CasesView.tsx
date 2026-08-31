@@ -11,8 +11,8 @@ import { CaseModal } from "./CaseReel";
 import { MissionsPanel } from "./MissionsPanel";
 
 function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
-  const { caseSale } = useGame();
-  const price = casePrice(def, caseSale);
+  const { caseSale, priceSettings } = useGame();
+  const price = casePrice(def, caseSale, priceSettings);
   const saleOn = price < def.price;
   return (
     <button

@@ -12,7 +12,7 @@ import { SkinCard, SkinImg } from "./SkinCard";
 const NEED = 10;
 
 export function ContractView() {
-  const { inventory, tradeUp, pushToast, setTab } = useGame();
+  const { inventory, tradeUp, pushToast, setTab, priceVersion } = useGame();
   const [sel, setSel] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<Skin | null>(null);
@@ -23,7 +23,8 @@ export function ContractView() {
         .map((i) => ({ item: i, skin: SKIN_MAP[i.skinId] }))
         .filter((x) => x.skin)
         .sort((a, b) => b.skin.price - a.skin.price),
-    [inventory]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inventory, priceVersion]
   );
 
   /* seçilenlerin kademesi — ilk seçim kademeyi kilitler */
@@ -48,7 +49,8 @@ export function ContractView() {
     return SKINS.filter((s) => s.rarity === nextTier && !s.st && !s.sv).sort(
       (a, b) => a.price - b.price
     );
-  }, [nextTier]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nextTier, priceVersion]);
 
   function toggle(uidKey: string, skin: Skin) {
     if (busy) return;
