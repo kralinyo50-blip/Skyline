@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Radio, Users } from "lucide-react";
-import { CASES, FEED_ACTIONS, FEED_USERS } from "../data/cases";
+import { CASES, FEED_ACTIONS, FEED_USERS, toCaseDef, type CaseDef } from "../data/cases";
 import { RARITY, SKIN_MAP, fmtMoney, type RarityKey, type Skin } from "../data/skins";
 import { mcHead } from "../config";
 import { pick, randInt, uid } from "../lib/rng";
+import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
 
 interface Drop {
@@ -15,7 +16,7 @@ interface Drop {
   ts: number;
 }
 
-function rollDrop(ts?: number): Drop {
+function rollDrop(ts?: number, customCases?: CaseDef[]): Drop {
   const total = FEED_ACTIONS.reduce((a, t) => a + t.weight, 0);
   let r = Math.random() * total;
   let tier: RarityKey = "milspec";
@@ -26,7 +27,8 @@ function rollDrop(ts?: number): Drop {
       break;
     }
   }
-  const candidates = CASES.filter((c) => (c.contents[tier]?.length ?? 0) > 0);
+  const pool = [...CASES, ...(customCases ?? [])];
+  const candidates = pool.filter((c) => (c.contents[tier]?.length ?? 0) > 0);
   const c = pick(candidates);
   const skinId = pick(c.contents[tier]!);
   let skin = SKIN_MAP[skinId];
@@ -77,11 +79,13 @@ function ago(ts: number, now: number): string {
 
 /** Mobil / tablet — kayan şerit */
 export function LiveTicker() {
+  const { customCases } = useGame();
+  const ccDefs = useMemo(() => customCases.filter((c) => c.stock > 0).map(toCaseDef), [customCases]);
   const items = useMemo(() => {
     const out: Drop[] = [];
-    for (let i = 0; i < 16; i++) out.push(rollDrop(Date.now() - randInt(10, 900) * 1000));
+    for (let i = 0; i < 16; i++) out.push(rollDrop(Date.now() - randInt(10, 900) * 1000, ccDefs));
     return out;
-  }, []);
+  }, [ccDefs]);
 
   return (
     <div className="relative h-11 overflow-hidden border-b border-line bg-ink-900/60 xl:hidden">
@@ -108,11 +112,13 @@ export function LiveTicker() {
 
 /** Masaüstü — sol sabit ray */
 export function FeedRail() {
+  const { customCases } = useGame();
+  const ccDefs = useMemo(() => customCases.filter((c) => c.stock > 0).map(toCaseDef), [customCases]);
   const [items, setItems] = useState<Drop[]>(() => {
     const now = Date.now();
-    return Array.from({ length: 8 }, (_, i) => rollDrop(now - randInt(8, 220) * 1000 - i * 5000)).sort(
-      (a, b) => b.ts - a.ts
-    );
+    return Array.from({ length: 8 }, (_, i) =>
+      rollDrop(now - randInt(8, 220) * 1000 - i * 5000, customCases.filter((c) => c.stock > 0).map(toCaseDef))
+    ).sort((a, b) => b.ts - a.ts);
   });
   const [now, setNow] = useState(Date.now());
   const [online, setOnline] = useState(2847);
@@ -124,7 +130,7 @@ export function FeedRail() {
     const loop = () => {
       t = window.setTimeout(() => {
         if (!alive.current) return;
-        setItems((prev) => [rollDrop(), ...prev].slice(0, 9));
+        setItems((prev) => [rollDrop(undefined, ccDefs), ...prev].slice(0, 9));
         loop();
       }, randInt(2800, 6800));
     };
@@ -140,7 +146,7 @@ export function FeedRail() {
       clearInterval(tickNow);
       clearInterval(tickOnline);
     };
-  }, []);
+  }, [ccDefs]);
 
   return (
     <aside className="fixed bottom-0 left-0 top-16 z-30 hidden w-[292px] flex-col border-r border-line bg-ink-950/70 backdrop-blur-sm xl:flex">

@@ -2626,6 +2626,28 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(iv);
   }, [db.economyConfig, mutate, pushPriceSnap]);
 
+  /* ---------------- ÖZEL KASA: BOTLAR DA SATIN ALIR ---------------- */
+  useEffect(() => {
+    const iv = window.setInterval(() => {
+      /* yalnızca admin cihazı üretir — aksi halde her cihaz stoktan düşer */
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me?.isAdmin) return;
+      const acts = (dbRef.current.customCases ?? []).filter((x) => x.active && x.stock > 0);
+      if (acts.length === 0) return;
+      /* ortalama ~45 sn'de bir bot alımı (stok hızla erimez) */
+      if (Math.random() > 0.55) return;
+      const cc = acts[Math.floor(Math.random() * acts.length)];
+      mutate((draft) => {
+        const cur = draft.customCases?.find((x) => x.id === cc.id);
+        if (!cur || !cur.active || cur.stock <= 0) return;
+        draft.customCases = (draft.customCases ?? []).map((x) =>
+          x.id === cc.id ? { ...x, stock: x.stock - 1, ts: Date.now() } : x
+        );
+      });
+    }, 20000);
+    return () => clearInterval(iv);
+  }, [mutate]);
+
   /* ---------------- HAFTANIN OYUNCUSU — admin sabitleme ---------------- */
   const pinWeekWinner = useCallback(
     (key: string): { ok: boolean; error?: string } => {
