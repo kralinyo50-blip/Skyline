@@ -267,19 +267,33 @@ export function AdminPanel() {
   const [ccContents, setCcContents] = useState<Partial<Record<string, string[]>>>({});
   const [ccTpl, setCcTpl] = useState<string | null>(null);
   const [ccEdit, setCcEdit] = useState(false);
-  const [ccSearch, setCcSearch] = useState("");
+
+  const [ccRarity, setCcRarity] = useState<string>("all");
+  const [ccPageRaw, setCcPageRaw] = useState(0);
+  const [ccQuery, setCcQuery] = useState("");
   const ccTotal = Object.values(ccContents).reduce((a, ids) => a + (ids?.length ?? 0), 0);
-  /* 'Biz Yapalım' modu: arama sonuçları */
-  const ccAllSkins = useMemo(() => Object.values(SKIN_MAP), []);
+  /* 'Biz Yapalım' modu: admin skin seçici gibi — arama + nadirlik + sayfalı grid */
   const ccResults = useMemo(() => {
-    const q = ccSearch.trim().toLowerCase();
-    const pool = ccAllSkins.filter((x) => !x.st && !x.sv);
-    if (!q) return [...pool].sort((a, b) => b.price - a.price).slice(0, 12);
-    return pool
-      .filter((x) => (x.weapon + " " + x.name).toLowerCase().includes(q))
-      .sort((a, b) => b.price - a.price)
-      .slice(0, 12);
-  }, [ccSearch, ccAllSkins]);
+    const qq = ccQuery.trim().toLowerCase();
+    return Object.values(SKIN_MAP)
+      .filter((s) => !s.sticker)
+      .filter((s) => ccRarity === "all" || s.rarity === ccRarity)
+      .filter(
+        (s) =>
+          !qq ||
+          s.name.toLowerCase().includes(qq) ||
+          s.weapon.toLowerCase().includes(qq) ||
+          s.id.includes(qq)
+      )
+      .sort((a, b) => RARITY[b.rarity].order - RARITY[a.rarity].order || b.price - a.price);
+  }, [ccQuery, ccRarity]);
+  const CC_PAGE = 24;
+  const ccPages = Math.max(1, Math.ceil(ccResults.length / CC_PAGE));
+  const ccPage = Math.min(ccPageRaw, ccPages - 1);
+  const ccPageItems = useMemo(
+    () => ccResults.slice(ccPage * CC_PAGE, (ccPage + 1) * CC_PAGE),
+    [ccResults, ccPage]
+  );
   const ccAddSkin = (id: string) => {
     const sk = SKIN_MAP[id];
     if (!sk) return;
@@ -2743,64 +2757,119 @@ export function AdminPanel() {
               </button>
 
               {ccTpl === "custom" && (
-                <div className="mt-3 rounded-xl border border-sky-500/25 bg-ink-900/60 p-3">
-                  <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">
-                    İçine ne koyacağız? — ara, tıkla, ekle
-                  </div>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
-                    <input
-                      value={ccSearch}
-                      onChange={(e) => setCcSearch(e.target.value)}
-                      placeholder="Skin ara… (örn. AWP, Karambit, AK-47, Dragon)"
-                      className="h-11 w-full rounded-xl border border-line bg-ink-950 pl-9 pr-3 text-sm font-bold text-white placeholder:text-white/25 focus:border-sky-500/60 focus:outline-none"
-                    />
+                <div className="mt-3 rounded-xl border border-sky-500/25 bg-ink-900/60">
+                  {/* arama + filtre */}
+                  <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
+                    <div className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border border-line bg-ink-900 px-3">
+                      <Search className="h-4 w-4 shrink-0 text-white/30" />
+                      <input
+                        value={ccQuery}
+                        onChange={(e) => {
+                          setCcQuery(e.target.value);
+                          setCcPageRaw(0);
+                        }}
+                        placeholder="Silah veya skin ara… (örn. AWP, Karambit, Redline)"
+                        className="h-full min-w-0 flex-1 bg-transparent text-sm text-white placeholder:text-white/25 focus:outline-none"
+                      />
+                    </div>
+                    <select
+                      value={ccRarity}
+                      onChange={(e) => {
+                        setCcRarity(e.target.value);
+                        setCcPageRaw(0);
+                      }}
+                      className="h-10 rounded-xl border border-line bg-ink-900 px-3 text-[11px] font-bold text-white/70 focus:outline-none"
+                    >
+                      <option value="all">Tüm nadirlikler</option>
+                      {Object.entries(RARITY)
+                        .sort((a, b) => b[1].order - a[1].order)
+                        .map(([k, r]) => (
+                          <option key={k} value={k}>
+                            {r.tr}
+                          </option>
+                        ))}
+                    </select>
                   </div>
 
-                  {/* sonuçlar */}
-                  <div className="mt-2 max-h-40 space-y-1 overflow-y-auto pr-1">
-                    {ccResults.map((sk) => {
-                      const added = Object.values(ccContents).flat().includes(sk.id);
-                      return (
-                        <button
-                          key={sk.id}
-                          onClick={() => (added ? ccRemoveSkin(sk.id) : ccAddSkin(sk.id))}
-                          className={cn(
-                            "flex w-full items-center gap-2 rounded-lg border px-2.5 py-1.5 text-left transition",
-                            added
-                              ? "border-emerald-500/40 bg-emerald-500/10"
-                              : "border-line bg-ink-900 hover:bg-ink-800"
-                          )}
-                        >
-                          <span
-                            className="h-2 w-2 shrink-0 rounded-full"
-                            style={{ background: RARITY[sk.rarity].color }}
-                          />
-                          <span className="min-w-0 flex-1 truncate text-[11px] font-bold text-white/75">
-                            {sk.weapon} | {sk.name}
-                          </span>
-                          <span className="shrink-0 text-[10px] font-bold text-white/35">{money(sk.price)}</span>
-                          <span
-                            className={cn(
-                              "shrink-0 rounded px-1.5 py-0.5 text-[10px] font-black",
-                              added ? "bg-emerald-500 text-ink-950" : "bg-sky-500/15 text-sky-300"
-                            )}
-                          >
-                            {added ? "✓" : "+"}
-                          </span>
-                        </button>
-                      );
-                    })}
-                    {ccResults.length === 0 && (
-                      <div className="rounded-lg border border-line bg-ink-900 px-3 py-3 text-center text-[10px] text-white/35">
-                        "{ccSearch}" için sonuç yok — başka bir şey ara
+                  {/* grid */}
+                  <div className="max-h-80 overflow-y-auto p-3">
+                    {ccPageItems.length === 0 ? (
+                      <p className="py-10 text-center text-xs text-white/35">
+                        Skin bulunamadı — aramayı değiştir
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+                        {ccPageItems.map((sk) => {
+                          const added = Object.values(ccContents).flat().includes(sk.id);
+                          return (
+                            <button
+                              key={sk.id}
+                              onClick={() => (added ? ccRemoveSkin(sk.id) : ccAddSkin(sk.id))}
+                              className={cn(
+                                "group relative overflow-hidden rounded-xl border text-left transition hover:-translate-y-0.5 hover:shadow-lg",
+                                added
+                                  ? "border-emerald-500/70 bg-emerald-500/10"
+                                  : "border-line bg-ink-900/80 hover:border-sky-500/60"
+                              )}
+                            >
+                              <div
+                                className="relative h-20 w-full"
+                                style={{
+                                  background: `radial-gradient(120% 90% at 50% 0%, ${RARITY[sk.rarity].color}1a 0%, transparent 60%), linear-gradient(to bottom, #10131d, #0a0d16)`,
+                                }}
+                              >
+                                <PickImg s={sk} className="h-full w-full p-1.5 transition group-hover:scale-105" />
+                                <span
+                                  className="absolute bottom-1.5 right-1.5 rounded bg-ink-950/80 px-1.5 py-0.5 text-[9px] font-black"
+                                  style={{ color: RARITY[sk.rarity].color }}
+                                >
+                                  {RARITY[sk.rarity].tr.slice(0, 4)}
+                                </span>
+                                {/* eklendi işareti */}
+                                <span
+                                  className={cn(
+                                    "absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-black shadow",
+                                    added ? "bg-emerald-500 text-ink-950" : "bg-ink-950/70 text-white/40"
+                                  )}
+                                >
+                                  {added ? "✓" : "+"}
+                                </span>
+                              </div>
+                              <div className="border-t border-line/70 px-2 py-1.5">
+                                <div className="truncate text-[10px] font-bold text-white/80">{sk.weapon}</div>
+                                <div className="truncate text-[10px] text-white/40">{sk.name}</div>
+                              </div>
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
 
+                  {/* sayfalama */}
+                  <div className="flex flex-wrap items-center justify-center gap-2 border-t border-line p-3">
+                    <button
+                      onClick={() => setCcPageRaw((p) => Math.max(0, p - 1))}
+                      disabled={ccPage === 0}
+                      className="flex h-9 items-center gap-1 rounded-lg border border-line bg-ink-800 px-3 text-xs font-bold text-white/60 transition hover:text-white disabled:opacity-30"
+                    >
+                      <ChevronLeft className="h-4 w-4" /> Önceki
+                    </button>
+                    <span className="px-2 text-xs font-bold text-white/50">
+                      Sayfa {ccPage + 1} / {ccPages} · {ccResults.length} skin
+                    </span>
+                    <button
+                      onClick={() => setCcPageRaw((p) => Math.min(ccPages - 1, p + 1))}
+                      disabled={ccPage >= ccPages - 1}
+                      className="flex h-9 items-center gap-1 rounded-lg border border-line bg-ink-800 px-3 text-xs font-bold text-white/60 transition hover:text-white disabled:opacity-30"
+                    >
+                      Sonraki <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+
                   {/* seçilenler */}
                   {ccTotal > 0 && (
-                    <div className="mt-2 border-t border-line pt-2">
+                    <div className="border-t border-line p-3">
                       <div className="mb-1 flex items-center justify-between">
                         <span className="text-[10px] font-bold text-white/45">Seçilen: {ccTotal} skin</span>
                         <button
@@ -2813,7 +2882,7 @@ export function AdminPanel() {
                           Tümünü kaldır
                         </button>
                       </div>
-                      <div className="flex max-h-28 flex-wrap gap-1 overflow-y-auto pr-1">
+                      <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto pr-1">
                         {Object.entries(ccContents).flatMap(([, ids]) =>
                           (ids ?? []).map((id) => (
                             <span
@@ -2821,10 +2890,7 @@ export function AdminPanel() {
                               className="flex items-center gap-1 rounded bg-ink-700 px-1.5 py-0.5 text-[9px] font-bold text-white/60"
                             >
                               {SKIN_MAP[id]?.weapon} | {SKIN_MAP[id]?.name}
-                              <button
-                                onClick={() => ccRemoveSkin(id)}
-                                className="text-white/30 hover:text-lose"
-                              >
+                              <button onClick={() => ccRemoveSkin(id)} className="text-white/30 hover:text-lose">
                                 <X className="h-2.5 w-2.5" />
                               </button>
                             </span>
