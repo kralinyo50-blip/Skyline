@@ -332,6 +332,7 @@ export interface EconomyWaveLike {
   rareBoost?: number;
   endsAt?: number;
   cancelled?: boolean;
+  direction?: "up" | "down";
 }
 
 /** Kademe bazlı dalga duyarlılığı: zor çıkanlar daha çok yükselir */
@@ -345,13 +346,30 @@ const WAVE_TIER: Record<RarityKey, number> = {
   rare: 1.5,
 };
 
-/** Aktif dalga için kademe çarpanı: 1 + (surge/100) × duyarlılık × (rareBoost) */
+/** Saf kademe faktörü — zaman kontrolü yok (admin önizleme + kalıcı işleme) */
+export function waveTierFactor(
+  rarity: RarityKey,
+  surge: number,
+  rareBoost: number,
+  direction: "up" | "down" = "up"
+): number {
+  let f = WAVE_TIER[rarity] ?? 0.5;
+  const boost = 1 + Math.max(0, rareBoost) / 100;
+  if (direction === "down") {
+    /* çöküşte SADECE pahalılar ekstra düşer; tavan %85 düşüş */
+    f = Math.min(f, 1);
+    if (rarity === "covert" || rarity === "rare") f *= 1 + Math.max(0, rareBoost) / 400;
+    return Math.max(0.15, 1 - (Math.max(0, surge) / 100) * f);
+  }
+  if (rarity === "covert" || rarity === "rare") f *= boost;
+  return 1 + (Math.max(0, surge) / 100) * f;
+}
+
+/** Aktif dalga için kademe çarpanı (zaman kontrolü ile) */
 export function waveMultiplier(rarity: RarityKey, wave?: EconomyWaveLike | null): number {
   if (!wave || wave.cancelled || (wave.endsAt ?? Infinity) <= Date.now() || (wave.surge ?? 0) <= 0)
     return 1;
-  let f = WAVE_TIER[rarity] ?? 0.5;
-  if (rarity === "covert" || rarity === "rare") f *= 1 + (wave.rareBoost ?? 0) / 100;
-  return 1 + ((wave.surge ?? 0) / 100) * f;
+  return waveTierFactor(rarity, wave.surge ?? 0, wave.rareBoost ?? 0, wave.direction ?? "up");
 }
 
 /** Hiçbir şeyi değiştirmeden varsayımsal fiyatı hesapla (admin önizlemesi).

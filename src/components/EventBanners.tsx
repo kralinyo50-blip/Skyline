@@ -54,10 +54,16 @@ export function EventBanners() {
           <Waves className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
           <div className="min-w-0 flex-1">
             <div className="text-[10px] font-black uppercase tracking-widest text-sky-300">
-              Ekonomik dalga — skinler +%{economyWave.surge} yükseliyor
+              {economyWave.direction === "down"
+                ? `Piyasa çöküşü — skinler %${economyWave.surge} ucuzluyor`
+                : `Ekonomik dalga — skinler +%${economyWave.surge} yükseliyor`}
             </div>
             <div className="truncate text-xs text-white/75">
-              Zor çıkanlar {economyWave.rareBoost > 0 ? `+%${economyWave.rareBoost} ekstra ivme ile ` : ""}rekor kırabilir · bitişe{" "}
+              {economyWave.rareBoost > 0
+                ? economyWave.direction === "down"
+                  ? `Pahalı skinler ekstra düşüyor · bitişe `
+                  : `Zor çıkanlar ekstra yükseliyor · bitişe `
+                : `Bitişe `}
               <span className="font-bold tabular-nums text-white">{cd(economyWave.endsAt - now)}</span>
             </div>
           </div>

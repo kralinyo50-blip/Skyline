@@ -468,7 +468,7 @@ export function CaseModal({ def, onClose }: { def: CaseDef; onClose: () => void 
                 )}
                 {!saleOn && waveOn && !phase.includes("landed") && (
                   <span className="flex h-9 items-center gap-1.5 rounded-xl border border-sky-400/50 bg-sky-400/15 px-3 text-[11px] font-black uppercase tracking-wider text-sky-300">
-                    🌊 %{Math.round((price / def.price - 1) * 100)} Dalga
+                    🌊 {price > def.price ? "+" : "-"}%{Math.abs(Math.round((price / def.price - 1) * 100))} Dalga
                   </span>
                 )}
                 <motion.button

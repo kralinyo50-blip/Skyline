@@ -278,16 +278,22 @@ export interface WeekPin {
 
 /* ---------------- EKONOMİK DALGA ---------------- */
 
-/** Aktif ekonomik dalga — skin/pazar/kasa fiyatları geçici yükselir */
+/** Dalga yönü: up = fiyatlar yükselir, down = çöküş (fiyatlar düşer) */
+export type WaveDirection = "up" | "down";
+
+/** Aktif ekonomik dalga — skin/pazar/kasa fiyatları geçici yükselir/düşer */
 export interface EconomyWave {
   id: string;
   ts: number;
   by: string;
-  /** dalga gücü: 50 = %50 artış, 300 = 3 kat ort. */
+  /** dalga gücü: 50 = %50 artış (up) veya düşüş (down) */
   surge: number;
-  /** covert/rare skinlerde ekstra ivme (% 0-500) */
+  /** covert/rare skinlerde ekstra ivme (% 0-1000) */
   rareBoost: number;
   endsAt: number;
+  direction?: WaveDirection;
+  /** bitince yeni seviye kalıcı olarak kalsın (fiyat ayarlarına işlenir) */
+  permanent?: boolean;
   cancelled?: boolean;
 }
 
@@ -299,6 +305,8 @@ export interface EconomyConfig {
   surge: number;
   rareBoost: number;
   durationMin: number;
+  /** otomatik dalga yönü: up / down / mix (karışık) */
+  direction?: "up" | "down" | "mix";
   /** son otomatik dalga zamanı */
   lastAt?: number;
   ts: number;

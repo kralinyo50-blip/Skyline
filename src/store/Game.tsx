@@ -107,7 +107,7 @@ import {
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
 import { rollCaseSeeded, rollCasePity, casePrice, type CaseDef } from "../data/cases";
-import { applyPriceOverrides, skinBasePrice, currentPriceRev } from "../data/skins";
+import { applyPriceOverrides, skinBasePrice, currentPriceRev, waveTierFactor } from "../data/skins";
 import {
   startSync,
   stopSync,
@@ -448,10 +448,16 @@ interface GameState {
   /* ekonomik dalga */
   economyWave: EconomyWave | null;
   economyConfig: EconomyConfig | null;
-  startEconomyWave: (surge: number, rareBoost: number, minutes: number) => { ok: boolean; error?: string };
+  startEconomyWave: (
+    surge: number,
+    rareBoost: number,
+    minutes: number,
+    direction?: "up" | "down",
+    permanent?: boolean
+  ) => { ok: boolean; error?: string };
   cancelEconomyWave: () => void;
   setEconomyConfig: (
-    p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin">>
+    p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin" | "direction">>
   ) => { ok: boolean; error?: string };
 
   /* haftanın oyuncusu */
@@ -2323,22 +2329,46 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db.economyWave, db.priceSettings, applyPricing]);
 
+  /** Kalıcı dalga bitince kademe çarpanlarını fiyat ayarlarına işle */
+  const foldWaveIntoPrices = useCallback((wave: EconomyWave) => {
+    mutate((draft) => {
+      if (!draft.economyWave || draft.economyWave.id !== wave.id) return;
+      const ps = draft.priceSettings ?? { ts: Date.now(), by: wave.by, global: 100, byRarity: {}, bySkin: {} };
+      const byRarity: NonNullable<PriceSettings["byRarity"]> = { ...(ps.byRarity ?? {}) };
+      (["consumer", "industrial", "milspec", "restricted", "classified", "covert", "rare"] as const).forEach((r) => {
+        const cur = byRarity[r] ?? 100;
+        const f = waveTierFactor(r, wave.surge, wave.rareBoost, wave.direction ?? "up");
+        byRarity[r] = Math.max(10, Math.min(1000, Math.round(cur * f)));
+      });
+      draft.priceSettings = { ts: Date.now(), by: wave.by, global: ps.global ?? 100, byRarity, bySkin: { ...(ps.bySkin ?? {}) } };
+      draft.economyWave = { ...draft.economyWave, cancelled: true, ts: Date.now() };
+    });
+  }, [mutate]);
+
   useEffect(() => {
     const iv = window.setInterval(() => {
       const st = pricingStateRef.current;
       const w = dbRef.current.economyWave;
       const active = !!w && !w.cancelled && w.endsAt > Date.now();
       if (st.waveId && !st.ended && !active) {
-        st.ended = true; /* dalga bitti — bir kez normal fiyatlara dön */
-        applyPricing();
+        st.ended = true; /* dalga bitti — bir kez işle */
+        const ended = dbRef.current.economyWave;
+        if (ended?.permanent) foldWaveIntoPrices(ended);
+        else applyPricing();
       }
     }, 10000);
     return () => clearInterval(iv);
-  }, [applyPricing]);
+  }, [applyPricing, foldWaveIntoPrices]);
 
   /* ---------------- EKONOMİK DALGA (admin) ---------------- */
   const startEconomyWave = useCallback(
-    (surge: number, rareBoost: number, minutes: number): { ok: boolean; error?: string } => {
+    (
+      surge: number,
+      rareBoost: number,
+      minutes: number,
+      direction: "up" | "down" = "up",
+      permanent = false
+    ): { ok: boolean; error?: string } => {
       const me = dbRef.current.users[dbRef.current.session ?? ""];
       if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
       const surgeV = Math.max(5, Math.min(2000, Math.round(surge)));
@@ -2352,12 +2382,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           surge: surgeV,
           rareBoost: rareV,
           endsAt: Date.now() + m * 60000,
+          direction,
+          permanent,
         };
       });
       pushToast({
         kind: "money",
-        title: "Ekonomik dalga başladı",
-        sub: `+%${surgeV} (nadir +%${rareV}) · ${m} dk`,
+        title: direction === "up" ? "Ekonomik dalga başladı" : "Piyasa çöküşü başladı",
+        sub: `${direction === "up" ? "+" : "-"}%${surgeV} · ${m} dk${permanent ? " · kalıcı" : ""}`,
       });
       coinDing();
       return { ok: true };
@@ -2366,15 +2398,21 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   );
 
   const cancelEconomyWave = useCallback(() => {
+    const w = dbRef.current.economyWave;
+    if (w?.permanent) {
+      foldWaveIntoPrices(w);
+      pushToast({ kind: "info", title: "Dalga durduruldu", sub: "Yeni seviye kalıcı olarak korundu" });
+      return;
+    }
     mutate((draft) => {
       if (!draft.economyWave) return;
       draft.economyWave = { ...draft.economyWave, cancelled: true, ts: Date.now(), endsAt: Date.now() };
     });
     pushToast({ kind: "info", title: "Ekonomik dalga durduruldu", sub: "Fiyatlar normale döndü" });
-  }, [mutate, pushToast]);
+  }, [mutate, pushToast, foldWaveIntoPrices]);
 
   const setEconomyConfig = useCallback(
-    (p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin">>): { ok: boolean; error?: string } => {
+    (p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin" | "direction">>): { ok: boolean; error?: string } => {
       const me = dbRef.current.users[dbRef.current.session ?? ""];
       if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
       const clean = (v: number, min: number, max: number, def: number) =>
@@ -2389,6 +2427,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           surge: p.surge !== undefined ? clean(p.surge, 5, 2000, 50) : cur?.surge ?? 50,
           rareBoost: p.rareBoost !== undefined ? clean(p.rareBoost, 0, 1000, 150) : cur?.rareBoost ?? 150,
           durationMin: p.durationMin !== undefined ? clean(p.durationMin, 1, 1440, 30) : cur?.durationMin ?? 30,
+          direction: p.direction ?? cur?.direction ?? "up",
           lastAt: cur?.lastAt,
         };
       });
@@ -2410,6 +2449,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       if (now - (c.lastAt ?? 0) < c.intervalMin * 60000) return;
       const w = dbRef.current.economyWave;
       if (w && !w.cancelled && w.endsAt > now) return; /* aktif dalga sürüyor */
+      const dir =
+        c.direction === "down" || c.direction === "mix"
+          ? c.direction === "mix"
+            ? (Math.random() < 0.5 ? "up" : "down")
+            : "down"
+          : "up";
       mutate((draft) => {
         if (!draft.economyConfig) return;
         draft.economyWave = {
@@ -2419,6 +2464,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           surge: draft.economyConfig.surge,
           rareBoost: draft.economyConfig.rareBoost,
           endsAt: now + draft.economyConfig.durationMin * 60000,
+          direction: dir,
         };
         draft.economyConfig = { ...draft.economyConfig, ts: Date.now(), lastAt: now };
       });
