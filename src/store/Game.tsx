@@ -461,6 +461,8 @@ interface GameState {
   setEconomyConfig: (
     p: Partial<Pick<EconomyConfig, "enabled" | "intervalMin" | "surge" | "rareBoost" | "durationMin" | "direction" | "after" | "fadeMin">>
   ) => { ok: boolean; error?: string };
+  /** Tüm zam/indirimleri geri al: fiyatlar orijinal katalog değerine döner, dalga durur */
+  resetEconomy: () => { ok: boolean; error?: string };
 
   /* haftanın oyuncusu */
   weekWinner: { key: string; name: string; spent: number; opened: number } | null;
@@ -2470,6 +2472,54 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [mutate]
   );
 
+  /* ---------------- EKONOMİYİ ESKİ HALİNE DÖNDÜR ---------------- */
+  const resetEconomy = useCallback((): { ok: boolean; error?: string } => {
+    const me = dbRef.current.users[dbRef.current.session ?? ""];
+    if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+    const now = Date.now();
+    mutate((draft) => {
+      /* 1) tüm fiyat çarpanları %100'e — orijinal katalog fiyatları */
+      draft.priceSettings = { ts: now, by: me.name, global: 100, byRarity: {}, bySkin: {} };
+      /* 2) aktif dalga iptal (kalıcı bayrağı düşürülür — fold tetiklenmez) */
+      if (draft.economyWave) {
+        draft.economyWave = { ...draft.economyWave, cancelled: true, permanent: false, ts: now, endsAt: now };
+      }
+      /* 3) otomatik dalga kapanır, ayarlar varsayılana döner */
+      draft.economyConfig = {
+        ts: now,
+        by: me.name,
+        enabled: false,
+        intervalMin: 0,
+        surge: 100,
+        rareBoost: 200,
+        durationMin: 30,
+        direction: "up",
+        after: "temp",
+        fadeMin: 10,
+      };
+      /* denetim kaydı */
+      draft.adminLog = [
+        {
+          id: uid(),
+          actor: me.name,
+          targetKey: "*",
+          targetName: "EKONOMİ",
+          amount: 0,
+          reason: "Ekonomi eski haline döndürüldü — fiyatlar %100 (orijinal), dalga durduruldu",
+          ts: now,
+        },
+        ...(draft.adminLog ?? []),
+      ].slice(0, 300);
+    });
+    pushToast({
+      kind: "info",
+      title: "Ekonomi eski haline döndü",
+      sub: "Fiyatlar orijinal katalog değerlerinde — dalga ve otomatik ayar kapatıldı",
+    });
+    coinDing();
+    return { ok: true };
+  }, [mutate, pushToast]);
+
   /* otomatik dalga — yalnızca admin cihazı üretir, ayarlar sync ile yayılır */
   useEffect(() => {
     const cfg = db.economyConfig;
@@ -3800,6 +3850,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     startEconomyWave,
     cancelEconomyWave,
     setEconomyConfig,
+    resetEconomy,
 
     /* haftanın oyuncusu */
     weekWinner,

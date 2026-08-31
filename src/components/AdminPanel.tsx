@@ -15,6 +15,7 @@ import {
   Crown,
   Dices,
   Gift,
+  History as HistoryIcon,
   Medal,
   Megaphone,
   Minus,
@@ -178,6 +179,7 @@ export function AdminPanel() {
     startEconomyWave,
     cancelEconomyWave,
     setEconomyConfig,
+    resetEconomy,
   } = useGame();
 
   const [urlInput, setUrlInput] = useState(syncUrl ?? "");
@@ -1232,6 +1234,21 @@ export function AdminPanel() {
             <p className="mt-2 text-center text-[9px] text-white/30">
               Seçimler otomatik kaydedilir ve tüm cihazlara yayılır.
             </p>
+            <button
+              onClick={() => {
+                if (!window.confirm("Ekonomi gerçekten eski haline dönsün mü?\nTüm zam/indirimler (kalıcı seviyeler dahil) geri alınır, dalga durdurulur.")) return;
+                const res = resetEconomy();
+                if (res.ok) {
+                  setPriceGlobal("100");
+                  setPriceRar({});
+                  setPriceSkinVal("100");
+                  setPriceSkinId("");
+                } else pushToast({ kind: "lose", title: "Geri alınamadı", sub: res.error });
+              }}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-400/30 bg-amber-400/5 py-2 text-[10px] font-bold text-amber-300/80 transition hover:bg-amber-400/15"
+            >
+              <HistoryIcon className="h-3.5 w-3.5" /> Ekonomiyi tamamen eski haline döndür
+            </button>
           </div>
 
           {/* ============ HAFTANIN OYUNCUSU ============ */}
@@ -2062,6 +2079,39 @@ export function AdminPanel() {
                   </div>
                 )}
               </div>
+            </div>
+
+            {/* EKONOMİYİ ESKİ HALİNE DÖNDÜR */}
+            <div className="mt-4 rounded-xl border border-amber-400/25 bg-amber-400/5 p-4">
+              <div className="flex items-center gap-2">
+                <HistoryIcon className="h-4 w-4 text-amber-300" />
+                <span className="font-display text-xs font-black uppercase tracking-widest text-amber-300">
+                  Ekonomiyi Eski Haline Döndür
+                </span>
+                <span className="ml-auto rounded-full bg-ink-600 px-2 py-0.5 text-[9px] font-black uppercase text-white/40">
+                  Tam geri al
+                </span>
+              </div>
+              <p className="mt-1.5 text-[10px] leading-relaxed text-white/45">
+                Tüm zam/indirim çarpanları (global, nadirlik, skin bazlı, kalıcı "yeni seviye" dahil){" "}
+                <span className="font-bold text-amber-300">orijinal katalog fiyatlarına</span> döner. Aktif
+                ekonomik dalga durdurulur, otomatik dalga kapanır. Bu işlem tüm cihazlara yayılır.
+              </p>
+              <button
+                onClick={() => {
+                  if (!window.confirm("Ekonomi gerçekten eski haline dönsün mü?\nTüm zam/indirimler (kalıcı seviyeler dahil) geri alınır, dalga durdurulur.")) return;
+                  const res = resetEconomy();
+                  if (res.ok) {
+                    setPriceGlobal("100");
+                    setPriceRar({});
+                    setPriceSkinVal("100");
+                    setPriceSkinId("");
+                  } else pushToast({ kind: "lose", title: "Geri alınamadı", sub: res.error });
+                }}
+                className="mt-3 flex h-11 w-full items-center justify-center gap-1.5 rounded-xl border border-amber-400/40 bg-amber-400/10 font-display text-sm font-black uppercase tracking-wider text-amber-300 transition hover:bg-amber-400/20"
+              >
+                <HistoryIcon className="h-4 w-4" /> Ekonomiyi Eski Haline Döndür
+              </button>
             </div>
           </div>
 
