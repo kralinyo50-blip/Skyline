@@ -217,9 +217,12 @@ function xpCum(level: number): number {
   return 40 * SCALE * Math.pow(level - 1, 1.6);
 }
 
+/** Maksimum seviye — efsanevi slot (İlahi unvanı 999+ için kalır) */
+export const MAX_LEVEL = 1999;
+
 export function levelFromSpent(spent: number): number {
   let lvl = 1;
-  while (xpCum(lvl + 1) <= spent && lvl < 999) lvl++;
+  while (xpCum(lvl + 1) <= spent && lvl < MAX_LEVEL) lvl++;
   return lvl;
 }
 
@@ -2435,28 +2438,31 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db.economyWave, db.priceSettings, applyPricing]);
 
-  /** Dalga sonlandığında kademe çarpanlarını fiyat ayarlarına işle.
-   *  ÖNEMLİ: tepe (peak) çarpanı değil, İPTAL ANINDAKİ çarpan işlenir —
-   *  fade-in ortasında durdurulursa fiyatlar tam o anki seviyede kalır,
-   *  zıplama olmaz (GRADUAL kuralı). */
+  /** Dalga seviyesini fiyat ayarlarına işleyen saf yardımcı.
+   *  doğal bitişte tepe (endsAt), manuel durdurmada o anki seviye işlenir —
+   *  fade-in ortasında durdurulursa tam o anki seviyede kalır (GRADUAL). */
+  const foldWaveIntoSettings = useCallback((ps: PriceSettings | null | undefined, wave: EconomyWave): PriceSettings => {
+    const base = ps ?? { ts: Date.now(), by: wave.by, global: 100, byRarity: {}, bySkin: {} };
+    const byRarity: NonNullable<PriceSettings["byRarity"]> = { ...(base.byRarity ?? {}) };
+    const at = Math.min(Date.now(), wave.endsAt ?? Date.now());
+    (["consumer", "industrial", "milspec", "restricted", "classified", "covert", "rare"] as const).forEach((r) => {
+      const cur = byRarity[r] ?? 100;
+      const f = waveMultiplierAt(r, wave, at);
+      byRarity[r] = Math.max(10, Math.min(1000, Math.round(cur * f * 10) / 10));
+    });
+    return { ts: Date.now(), by: wave.by, global: base.global ?? 100, byRarity, bySkin: { ...(base.bySkin ?? {}) } };
+  }, []);
+
+  /** Dalga sonlandığında kademe çarpanlarını fiyat ayarlarına işle */
   const foldWaveIntoPrices = useCallback((wave: EconomyWave) => {
     mutate((draft) => {
       if (!draft.economyWave || draft.economyWave.id !== wave.id) return;
-      const ps = draft.priceSettings ?? { ts: Date.now(), by: wave.by, global: 100, byRarity: {}, bySkin: {} };
-      const byRarity: NonNullable<PriceSettings["byRarity"]> = { ...(ps.byRarity ?? {}) };
-      /* doğal bitişte tepe (endsAt), manuel durdurmada o anki seviye işlenir */
-      const at = Math.min(Date.now(), wave.endsAt ?? Date.now());
-      (["consumer", "industrial", "milspec", "restricted", "classified", "covert", "rare"] as const).forEach((r) => {
-        const cur = byRarity[r] ?? 100;
-        const f = waveMultiplierAt(r, wave, at);
-        byRarity[r] = Math.max(10, Math.min(1000, Math.round(cur * f * 10) / 10));
-      });
-      draft.priceSettings = { ts: Date.now(), by: wave.by, global: ps.global ?? 100, byRarity, bySkin: { ...(ps.bySkin ?? {}) } };
-      /* permanent:false → işlendi bayrağı; gözlemci bir daha fold etmez */
+      draft.priceSettings = foldWaveIntoSettings(draft.priceSettings, wave);
+      /* cancelled bayrağı: gözlemci bir daha fold etmez */
       draft.economyWave = { ...draft.economyWave, cancelled: true, permanent: false, ts: Date.now() };
       pushPriceSnap(draft, "Kalıcı seviye işlendi");
     });
-  }, [mutate, pushPriceSnap]);
+  }, [mutate, foldWaveIntoSettings, pushPriceSnap]);
 
   useEffect(() => {
     const iv = window.setInterval(() => {
@@ -2494,6 +2500,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       const fin = Math.min(Math.max(0, Math.round(fadeInMin ?? 0)), m);
       const fout = Math.max(0, Math.round(fadeOutMin ?? fin));
       mutate((draft) => {
+        /* önceki dalga bitti ama gözlemci daha fold etmediyse (10 sn'lik pencere)
+           seviyesi kaybolmasın: yeni dalga KALDIĞI YERDEN devam eder */
+        const prev = draft.economyWave;
+        if (prev && !prev.cancelled) {
+          draft.priceSettings = foldWaveIntoSettings(draft.priceSettings, prev);
+          draft.economyWave = { ...prev, cancelled: true, permanent: false, ts: Date.now() };
+          pushPriceSnap(draft, "Önceki seviye korundu");
+        }
         draft.economyWave = {
           id: uid(),
           ts: Date.now(),
@@ -2519,7 +2533,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       coinDing();
       return { ok: true };
     },
-    [mutate, pushToast]
+    [mutate, foldWaveIntoSettings, pushToast]
   );
 
   const cancelEconomyWave = useCallback(() => {
@@ -2628,6 +2642,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           : "up";
       mutate((draft) => {
         if (!draft.economyConfig) return;
+        /* önceki dalga bitmiş ama fold edilmemişse seviyeyi koru */
+        const prev = draft.economyWave;
+        if (prev && !prev.cancelled) {
+          draft.priceSettings = foldWaveIntoSettings(draft.priceSettings, prev);
+          draft.economyWave = { ...prev, cancelled: true, permanent: false, ts: Date.now() };
+          pushPriceSnap(draft, "Önceki seviye korundu (otomatik)");
+        }
         const fade = Math.max(0, Math.min(draft.economyConfig.durationMin, draft.economyConfig.fadeMin ?? 0));
         draft.economyWave = {
           id: uid(),
@@ -2645,7 +2666,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       });
     }, 20000);
     return () => clearInterval(iv);
-  }, [db.economyConfig, mutate, pushPriceSnap]);
+  }, [db.economyConfig, mutate, foldWaveIntoSettings, pushPriceSnap]);
 
   /* ---------------- ÖZEL KASA: BOTLAR DA SATIN ALIR ---------------- */
   useEffect(() => {
