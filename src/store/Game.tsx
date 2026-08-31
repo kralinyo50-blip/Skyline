@@ -2638,8 +2638,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       if (!me?.isAdmin) return;
       const acts = (dbRef.current.customCases ?? []).filter((x) => x.active && x.stock > 0);
       if (acts.length === 0) return;
-      /* ortalama ~45 sn'de bir bot alımı (stok hızla erimez) */
-      if (Math.random() > 0.55) return;
+      /* ortalama ~28 sn'de bir bot alımı (canlı ama stok hızla bitmez) */
+      if (Math.random() > 0.6) return;
       const cc = acts[Math.floor(Math.random() * acts.length)];
       mutate((draft) => {
         const cur = draft.customCases?.find((x) => x.id === cc.id);
@@ -2648,7 +2648,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           x.id === cc.id ? { ...x, stock: x.stock - 1, ts: Date.now() } : x
         );
       });
-    }, 20000);
+    }, 15000);
     return () => clearInterval(iv);
   }, [mutate]);
 

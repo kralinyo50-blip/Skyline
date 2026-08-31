@@ -1087,6 +1087,15 @@ export const FEED_USERS = [
   "pushw_34", "donkJr", "silentD3ath", "kripto_efe", "VandalBaron55",
   "zort_", "osi_official", "TapTapGoKill", "BeyazBarel", "nix0x",
   "MirageMusa", "InfernoIbo", "CacheCeto", "OverpassOzi", "AncientArda",
+  "SniperSerkan", "KasaAvcisi", "ButterflyBay", "AWP_Fatihi", "RushB_Reis",
+  "NadeAtanNecmi", "FlashGarda", "EkonomiEfe", "SkinSaticisi", "Bastik2",
+  "JumpPeekJale", "SmitinSami", "ClutchCengiz", "DropDeniz", "HavuzHakan",
+  "KasaKral62", "PaparaPasa", "NoobSens", "BicakciBurak", "StatTrakSelin",
+  "VitrinVolkan", "MarketMurat", "TakasTayfun", "JackpotJale", "UpgradeUmut",
+  "QuickScopeQt", "WastedWeronika", "PeekPoyraz", "AimAli", "GloveGazi",
+  "OyunOzan", "RutinRecep", "TurboTolga", "KnifeKemal", "HazineHilal",
+  "Dust2Deniz", "FragFurkan", "S1mpleSafak", "DropDilan", "PazarPelin",
+  "LootLeyla", "SpinSefa", "ReelReyiz", "KasaKrali", "SlotSuat",
 ];
 
 export const FEED_ACTIONS: { tier: RarityKey; weight: number }[] = [

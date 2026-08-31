@@ -83,7 +83,7 @@ export function LiveTicker() {
   const ccDefs = useMemo(() => customCases.filter((c) => c.stock > 0).map(toCaseDef), [customCases]);
   const items = useMemo(() => {
     const out: Drop[] = [];
-    for (let i = 0; i < 16; i++) out.push(rollDrop(Date.now() - randInt(10, 900) * 1000, ccDefs));
+    for (let i = 0; i < 24; i++) out.push(rollDrop(Date.now() - randInt(10, 900) * 1000, ccDefs));
     return out;
   }, [ccDefs]);
 
@@ -116,12 +116,12 @@ export function FeedRail() {
   const ccDefs = useMemo(() => customCases.filter((c) => c.stock > 0).map(toCaseDef), [customCases]);
   const [items, setItems] = useState<Drop[]>(() => {
     const now = Date.now();
-    return Array.from({ length: 8 }, (_, i) =>
-      rollDrop(now - randInt(8, 220) * 1000 - i * 5000, customCases.filter((c) => c.stock > 0).map(toCaseDef))
+    return Array.from({ length: 14 }, (_, i) =>
+      rollDrop(now - randInt(8, 220) * 1000 - i * 3500, customCases.filter((c) => c.stock > 0).map(toCaseDef))
     ).sort((a, b) => b.ts - a.ts);
   });
   const [now, setNow] = useState(Date.now());
-  const [online, setOnline] = useState(2847);
+  const [online, setOnline] = useState(3745);
   const alive = useRef(true);
 
   useEffect(() => {
@@ -130,14 +130,16 @@ export function FeedRail() {
     const loop = () => {
       t = window.setTimeout(() => {
         if (!alive.current) return;
-        setItems((prev) => [rollDrop(undefined, ccDefs), ...prev].slice(0, 9));
+        const burst = 1 + (Math.random() < 0.45 ? 1 : 0);
+        const fresh = Array.from({ length: burst }, () => rollDrop(undefined, ccDefs));
+        setItems((prev) => [...fresh, ...prev].slice(0, 18));
         loop();
-      }, randInt(2800, 6800));
+      }, randInt(1500, 3800));
     };
     loop();
     const tickNow = window.setInterval(() => setNow(Date.now()), 5000);
     const tickOnline = window.setInterval(
-      () => setOnline((o) => Math.min(3900, Math.max(2200, o + randInt(-70, 75)))),
+      () => setOnline((o) => Math.min(5200, Math.max(3200, o + randInt(-95, 105)))),
       4000
     );
     return () => {
