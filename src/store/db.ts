@@ -206,6 +206,18 @@ export interface RaffleState {
   cancelled?: boolean;
   winner?: { key: string; name: string; ts: number };
   participants?: Record<string, { name: string; ts: number }>;
+  /** skin çekilişi — varsa ödül para değil, bu skin olur */
+  skinId?: string;
+  skinName?: string;
+  skinOpts?: { float?: number; stickers?: string[] };
+}
+
+/** Admin'in başlattığı toplu bakiye sıfırlama — tüm cihazlara yayılır (ts bazlı) */
+export interface MoneyReset {
+  id: string;
+  ts: number;
+  by: string;
+  reason: string;
 }
 
 export interface FirstLoginEvent {
@@ -337,6 +349,8 @@ export interface DB {
   celebration?: Celebration | null;
   /** canlı jackpot */
   jackpot?: JackpotState | null;
+  /** toplu bakiye sıfırlama olayı — en yeni ts kazanır */
+  moneyReset?: MoneyReset | null;
 }
 
 const LS_KEY = "skyline:v1";
@@ -358,6 +372,7 @@ export function emptyDB(): DB {
     adminLog: [],
     celebration: null,
     jackpot: null,
+    moneyReset: null,
   };
 }
 
@@ -389,6 +404,7 @@ export function loadDB(): DB {
       adminLog: parsed.adminLog ?? [],
       celebration: parsed.celebration ?? null,
       jackpot: parsed.jackpot ?? null,
+      moneyReset: parsed.moneyReset ?? null,
     };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.

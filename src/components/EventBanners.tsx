@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Gift, Megaphone, Ticket } from "lucide-react";
 import { money } from "../config";
+import { SKIN_MAP } from "../data/skins";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
 
@@ -59,7 +60,9 @@ export function EventBanners() {
           <Gift className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
           <div className="min-w-0 flex-1">
             <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">
-              Otomatik çekiliş — {money(raffle.prize)}
+              {raffle.skinId
+                ? `Skin çekilişi — ${SKIN_MAP[raffle.skinId]?.weapon ?? ""} ${SKIN_MAP[raffle.skinId]?.name ?? ""}`
+                : `Otomatik çekiliş — ${money(raffle.prize)}`}
             </div>
             <div className="truncate text-xs text-white/75">
               {Object.keys(raffle.participants ?? {}).length} katılımcı · bitişe{" "}

@@ -101,9 +101,32 @@ export function CommunityView() {
           {raffle && (
             <>
               <div className="mt-4 flex items-end justify-between gap-3">
-                <div>
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-white/35">Ödül</div>
-                  <div className="font-display text-3xl font-black text-brand-300">{money(raffle.prize)}</div>
+                <div className="flex min-w-0 items-center gap-3">
+                  {raffle.skinId &&
+                    (() => {
+                      const s = SKIN_MAP[raffle.skinId!];
+                      return s ? (
+                        <img
+                          src={s.img}
+                          alt={s.name}
+                          className="h-12 w-12 shrink-0 rounded-lg border border-line bg-ink-950/60 object-contain p-1"
+                        />
+                      ) : null;
+                    })()}
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-white/35">
+                      {raffle.skinId ? "Ödül Skin" : "Ödül"}
+                    </div>
+                    <div className="font-display text-3xl font-black text-brand-300">
+                      {raffle.skinId ? (
+                        <span className="block truncate">
+                          {SKIN_MAP[raffle.skinId]?.weapon ?? ""} {SKIN_MAP[raffle.skinId]?.name ?? ""}
+                        </span>
+                      ) : (
+                        money(raffle.prize)
+                      )}
+                    </div>
+                  </div>
                 </div>
                 <div className="text-right">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-white/35">
@@ -148,12 +171,16 @@ export function CommunityView() {
               {raffleDone && (
                 <div className="mt-4 flex items-center gap-2.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3">
                   <Crown className="h-5 w-5 text-emerald-400" />
-                  <div>
+                  <div className="min-w-0">
                     <div className="font-display text-sm font-black uppercase text-emerald-400">
                       {raffle.winner?.name ?? "Katılımcı yok"}
                     </div>
                     <div className="text-[10px] text-white/45">
-                      {raffle.winner?.name ? `${money(raffle.prize)} ödülü kazandı!` : "Çekiliş ödülsüz tamamlandı"}
+                      {raffle.winner?.name
+                        ? raffle.skinId
+                          ? `"${raffle.skinName ?? `${SKIN_MAP[raffle.skinId]?.weapon ?? ""} ${SKIN_MAP[raffle.skinId]?.name ?? ""}`}" skinini kazandı!`
+                          : `${money(raffle.prize)} ödülü kazandı!`
+                        : "Çekiliş ödülsüz tamamlandı"}
                     </div>
                   </div>
                 </div>

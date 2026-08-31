@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  AlertTriangle,
   BadgeCheck,
   Banknote,
   Check,
@@ -21,6 +22,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Sparkles,
   Unplug,
   UserRoundCheck,
   Users,
@@ -123,6 +125,7 @@ export function AdminPanel() {
     approveDeposit,
     rejectDeposit,
     adminAdjust,
+    adminGiveSkin,
     pushToast,
     syncUrl,
     syncStatus,
@@ -144,6 +147,9 @@ export function AdminPanel() {
     adminLog,
     celebration,
     celebrate,
+    moneyReset,
+    resetAllMoney,
+    startSkinRaffle,
   } = useGame();
 
   const [urlInput, setUrlInput] = useState(syncUrl ?? "");
@@ -186,10 +192,19 @@ export function AdminPanel() {
   const [loginReward, setLoginReward] = useState(String(FIRST_LOGIN_REWARD));
   const [annText, setAnnText] = useState("");
   const [skinFor, setSkinFor] = useState<{ key: string; name: string } | null>(null);
+  /* skin seçici modu: "give" = oyuncuya hediye, "raffle" = çekiliş ödülü seç */
+  const [skinPickMode, setSkinPickMode] = useState<"give" | "raffle">("give");
   const [skinQuery, setSkinQuery] = useState("");
   const [skinRarity, setSkinRarity] = useState<string>("all");
   const [skinPageRaw, setSkinPageRaw] = useState(0);
   const [skinDetail, setSkinDetail] = useState<SkinDraft | null>(null);
+  /* skin çekilişi durumu */
+  const [raffleSkin, setRaffleSkin] = useState<SkinDraft | null>(null);
+  const [skinRaffleMin, setSkinRaffleMin] = useState("60");
+  /* toplu bakiye sıfırlama onayı */
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetReason, setResetReason] = useState("");
+  const [resetTyped, setResetTyped] = useState("");
 
   const skinResults = useMemo(() => {
     const qq = skinQuery.trim().toLowerCase();
@@ -652,6 +667,181 @@ export function AdminPanel() {
             <p className="mt-3 text-[10px] leading-relaxed text-white/35">
               Süre bitince sistem her cihazda aynı seed ile kazananı belirler; ödül kazananın hesabına otomatik
               eklenir. Varsayılan: {Math.round(RAFFLE_FREQ_MS / 60000)} dk / {money(RAFFLE_PRIZE)}.
+            </p>
+          </div>
+
+          {/* ============ SKİN ÇEKİLİŞİ ============ */}
+          <div className="rounded-2xl border border-amber-400/30 bg-gradient-to-b from-amber-400/8 to-ink-900/70 p-5">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-amber-300" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Skin Çekilişi
+              </span>
+              {raffle && !raffle.drawn && !raffle.cancelled && raffle.skinId && (
+                <span className="ml-auto rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-400">
+                  Aktif
+                </span>
+              )}
+            </div>
+
+            {raffle?.skinId && (
+              <div className="mt-3 flex items-center gap-3 rounded-xl border border-line bg-ink-900/70 px-4 py-3">
+                {(() => {
+                  const s = SKIN_MAP[raffle.skinId!];
+                  return s ? (
+                    <img src={s.img} alt={s.name} className="h-12 w-12 shrink-0 object-contain" />
+                  ) : null;
+                })()}
+                <div className="min-w-0 flex-1 text-[11px] text-white/55">
+                  {raffle.drawn ? (
+                    <>
+                      <span className="font-bold text-white/80">Kazanan:</span> {raffle.winner?.name ?? "—"}
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-bold text-white/80">{raffle.skinName}</span> ·{" "}
+                      {Math.max(0, Math.round((raffle.endsAt - Date.now()) / 60000))} dk kaldı
+                    </>
+                  )}
+                  <div className="text-white/35">
+                    {Object.keys(raffle.participants ?? {}).length} katılımcı
+                    {raffle.winner?.name && raffle.drawn ? ` · ödül: ${raffle.skinName}` : ""}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* seçilen ödül */}
+            <div className="mt-4 rounded-xl border border-amber-400/25 bg-ink-900/70 p-3">
+              <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-white/45">
+                Çekiliş Ödülü (skin)
+              </div>
+              {raffleSkin ? (
+                (() => {
+                  const baseId = raffleSkin.id.replace(/-(st|sv)$/, "");
+                  const finalId =
+                    raffleSkin.version === "st"
+                      ? baseId + "-st"
+                      : raffleSkin.version === "sv"
+                        ? baseId + "-sv"
+                        : baseId;
+                  const s = SKIN_MAP[finalId] ?? SKIN_MAP[baseId];
+                  if (!s) return null;
+                  const r = RARITY[s.rarity];
+                  return (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div
+                        className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg"
+                        style={{ background: `radial-gradient(100% 80% at 50% 0%, ${r.color}1a, #0a0d16)` }}
+                      >
+                        <img src={s.img} alt={s.name} className="h-full w-full object-contain p-1" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-bold text-white/85">
+                          {s.weapon} | {s.name}
+                        </div>
+                        <div className="text-[10px] text-white/45">
+                          {s.id.includes("-st") ? "StatTrak™ · " : s.id.includes("-sv") ? "Hatıra · " : ""}
+                          {raffleSkin.wear !== "random" && raffleSkin.wear ? `${WEARS[raffleSkin.wear].tr} · ` : ""}
+                          <span style={{ color: r.color }}>{r.tr}</span> · {money(s.price)}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSkinPickMode("raffle");
+                          setSkinFor({ key: "", name: "" });
+                          setSkinQuery("");
+                          setSkinRarity("all");
+                          setSkinPageRaw(0);
+                          setSkinDetail(null);
+                          click();
+                        }}
+                        className="flex h-9 items-center gap-1 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 text-[11px] font-bold text-amber-300 transition hover:bg-amber-400/20"
+                      >
+                        <RefreshCcw className="h-3.5 w-3.5" /> Değiştir
+                      </button>
+                    </div>
+                  );
+                })()
+              ) : (
+                <button
+                  onClick={() => {
+                    setSkinPickMode("raffle");
+                    setSkinFor({ key: "", name: "" });
+                    setSkinQuery("");
+                    setSkinRarity("all");
+                    setSkinPageRaw(0);
+                    setSkinDetail(null);
+                    click();
+                  }}
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-amber-400/40 bg-amber-400/5 text-xs font-bold text-amber-300 transition hover:bg-amber-400/10"
+                >
+                  <Gift className="h-4 w-4" /> Ödül skinini seç
+                </button>
+              )}
+            </div>
+
+            <label className="mt-4 block">
+              <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                Süre (dakika)
+              </span>
+              <input
+                value={skinRaffleMin}
+                onChange={(e) => setSkinRaffleMin(e.target.value.replace(/\D/g, ""))}
+                inputMode="numeric"
+                className="h-11 w-full rounded-xl border border-line bg-ink-900 px-3 font-display text-base font-bold text-white focus:border-amber-400/60 focus:outline-none"
+              />
+            </label>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => {
+                  if (!raffleSkin) {
+                    pushToast({ kind: "lose", title: "Önce ödül skinini seç", sub: "Çekiliş ödülü olmadan başlatılamaz" });
+                    return;
+                  }
+                  const baseId = raffleSkin.id.replace(/-(st|sv)$/, "");
+                  const finalId =
+                    raffleSkin.version === "st"
+                      ? baseId + "-st"
+                      : raffleSkin.version === "sv"
+                        ? baseId + "-sv"
+                        : baseId;
+                  const m = Math.max(1, Number(skinRaffleMin) || 60);
+                  const opts: { float?: number; stickers?: string[] } = {};
+                  if (raffleSkin.wear !== "random") opts.float = raffleSkin.float;
+                  if (raffleSkin.stickers.length) opts.stickers = raffleSkin.stickers;
+                  const res = startSkinRaffle(m, finalId, opts);
+                  if (!res.ok) {
+                    pushToast({ kind: "lose", title: "Çekiliş başlatılamadı", sub: res.error ?? "Bilinmeyen hata" });
+                    return;
+                  }
+                  coinDing();
+                  pushToast({
+                    kind: "money",
+                    title: "Skin çekilişi başlatıldı 🎲",
+                    sub: `${m} dk — ödül: ${SKIN_MAP[finalId]?.weapon ?? ""} ${SKIN_MAP[finalId]?.name ?? ""}`,
+                  });
+                }}
+                disabled={!!(raffle && !raffle.drawn && !raffle.cancelled)}
+                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-amber-400 to-amber-600 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110 disabled:opacity-40"
+              >
+                <Sparkles className="h-4 w-4" /> Çekilişi Başlat
+              </button>
+              <button
+                onClick={() => {
+                  cancelRaffle();
+                  pushToast({ kind: "info", title: "Çekiliş iptal edildi", sub: "Katılımcılar boşa çıktı" });
+                }}
+                disabled={!raffle || !raffle.skinId}
+                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-lose/40 bg-lose/10 font-display text-sm font-bold text-lose transition hover:bg-lose/20 disabled:opacity-40"
+              >
+                <X className="h-4 w-4" /> İptal Et
+              </button>
+            </div>
+            <p className="mt-3 text-[10px] leading-relaxed text-white/35">
+              Aktifken oyuncular Topluluk sayfasından ücretsiz katılır; süre bitince kazananın envanterine otomatik
+              eklenir. Para değil, gerçek skin ödülü çekilir.
             </p>
           </div>
 
@@ -1128,6 +1318,88 @@ export function AdminPanel() {
 
       {/* ---------------- OYUNCULAR ---------------- */}
       {sec === "players" && (
+        <>
+        {/* hızlı araçlar */}
+        <div className="mb-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-brand-500/25 bg-brand-500/5 p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-500/15 text-brand-300">
+              <Dices className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-display text-sm font-bold uppercase tracking-wider text-white/85">
+                Rastgele Skin Hediye
+              </div>
+              <p className="text-[11px] leading-relaxed text-white/40">
+                Şanslı bir oyuncuya popüler bir skin (nadirlik ağırlıklı) gönderir.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                const candidates = Object.values(SKIN_MAP).filter(
+                  (s) =>
+                    !s.sticker &&
+                    !s.id.endsWith("-st") &&
+                    !s.id.endsWith("-sv") &&
+                    !/-(fn|mw|ft|ww|bs)$/.test(s.id) &&
+                    (s.rarity === "covert" || s.rarity === "classified" || s.rarity === "rare")
+                );
+                const players = allUsers.filter((u) => u.status === "approved" && !u.isAdmin);
+                if (!players.length || !candidates.length) {
+                  pushToast({ kind: "lose", title: "Uygun oyuncu/skin bulunamadı" });
+                  return;
+                }
+                const u = players[Math.floor(Math.random() * players.length)];
+                const s = candidates[Math.floor(Math.random() * candidates.length)];
+                const res = adminGiveSkin(u.key, s.id, { float: rollFloat() });
+                if (!res.ok) {
+                  pushToast({ kind: "lose", title: "Hediye gönderilemedi", sub: res.error ?? "Bilinmeyen hata" });
+                  return;
+                }
+                coinDing();
+                pushToast({
+                  kind: "win",
+                  title: "🎁 Rastgele hediye gönderildi",
+                  sub: `${u.name} → ${s.weapon} | ${s.name} (${money(s.price)})`,
+                });
+              }}
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 px-4 font-display text-xs font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110"
+            >
+              <Gift className="h-4 w-4" /> Hediye Et
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-lose/30 bg-lose/5 p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-lose/15 text-lose">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-display text-sm font-bold uppercase tracking-wider text-white/85">
+                Tehlikeli Bölge
+              </div>
+              <p className="text-[11px] leading-relaxed text-white/40">
+                {approvedCount} hesap · toplam {money(totalBalance)} —{" "}
+                <span className="font-bold text-lose">admin dahil herkesin bakiyesi 0$ olur.</span>
+                {moneyReset && (
+                  <span className="block pt-0.5 text-white/30">
+                    Son sıfırlama: {ago(moneyReset.ts)} ({moneyReset.reason.slice(0, 40)})
+                  </span>
+                )}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setConfirmReset(true);
+                setResetReason("");
+                setResetTyped("");
+                click();
+              }}
+              className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-lose/50 bg-lose/15 px-4 font-display text-xs font-black uppercase tracking-wider text-lose transition hover:bg-lose/25"
+            >
+              <AlertTriangle className="h-4 w-4" /> Hepsi 0$
+            </button>
+          </div>
+        </div>
+
         <div className="overflow-hidden rounded-2xl border border-line bg-ink-900/70">
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
             <Users className="h-4 w-4 text-brand-400" />
@@ -1228,6 +1500,7 @@ export function AdminPanel() {
                     </button>
                     <button
                       onClick={() => {
+                        setSkinPickMode("give");
                         setSkinFor({ key: u.key, name: u.name });
                         setSkinQuery("");
                         setSkinRarity("all");
@@ -1261,6 +1534,7 @@ export function AdminPanel() {
             </div>
           )}
         </div>
+        </>
       )}
 
       {/* ---------------- DENETİM KAYDI ---------------- */}
@@ -1403,6 +1677,111 @@ export function AdminPanel() {
         )}
       </AnimatePresence>
 
+      {/* ---------------- TOPLU BAKİYE SIFIRLAMA ONAY MODALI ---------------- */}
+      <AnimatePresence>
+        {confirmReset && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[95] flex items-center justify-center bg-ink-950/90 p-4 backdrop-blur"
+            onClick={() => setConfirmReset(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 12 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 260, damping: 22 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md rounded-2xl border border-lose/40 bg-ink-900 p-5"
+            >
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-lose" />
+                <span className="font-display text-base font-bold uppercase tracking-wider text-lose">
+                  Tüm Bakiyeleri Sıfırla
+                </span>
+              </div>
+              <div className="mt-3 rounded-xl border border-lose/30 bg-lose/10 px-4 py-3 text-sm">
+                <div className="flex justify-between text-white/60">
+                  <span>Etkilenecek hesap</span>
+                  <span className="font-bold text-white">{approvedCount} onaylı oyuncu</span>
+                </div>
+                <div className="mt-1.5 flex justify-between text-white/60">
+                  <span>Toplam sıfırlanacak</span>
+                  <span className="font-display font-black text-lose">{money(totalBalance)}</span>
+                </div>
+                <div className="mt-1.5 flex justify-between text-white/60">
+                  <span>Sen dahil</span>
+                  <span className="font-bold text-white">✅ {ADMIN_NAME} hesabı da 0$ olur</span>
+                </div>
+              </div>
+              <p className="mt-3 text-[11px] leading-relaxed text-white/40">
+                Bu işlem <span className="font-bold text-white/70">geri alınamaz</span> ve tüm cihazlara yayılır —
+                envanterler silinmez, yalnızca paralar sıfırlanır. Ekonomicide kalan para geri çekilir.
+              </p>
+
+              <label className="mt-4 block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Sıfırlama Gerekçesi (denetim kaydı — zorunlu)
+                </span>
+                <textarea
+                  value={resetReason}
+                  onChange={(e) => setResetReason(e.target.value)}
+                  rows={2}
+                  maxLength={140}
+                  placeholder="Örn: Yeni sezon ekonomisi — tüm bakiyeler 0'dan başlıyor"
+                  autoFocus
+                  className="w-full resize-none rounded-xl border border-line bg-ink-800 px-3 py-2.5 text-sm text-white placeholder:text-white/25 focus:border-lose/60 focus:outline-none"
+                />
+              </label>
+
+              <label className="mt-3 block">
+                <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  Onay için <span className="text-lose">SUPR</span> yaz
+                </span>
+                <input
+                  value={resetTyped}
+                  onChange={(e) => setResetTyped(e.target.value)}
+                  placeholder="SUPR"
+                  className="h-11 w-full rounded-xl border border-line bg-ink-800 px-3 font-display text-sm font-bold uppercase text-white placeholder:text-white/20 focus:border-lose/60 focus:outline-none"
+                />
+              </label>
+
+              <div className="mt-4 flex gap-2">
+                <button
+                  onClick={() => setConfirmReset(false)}
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-ink-800 font-display text-sm font-bold text-white/60 transition hover:text-white"
+                >
+                  Vazgeç
+                </button>
+                <button
+                  onClick={() => {
+                    const reason = resetReason.trim();
+                    if (reason.length < 3) {
+                      pushToast({ kind: "lose", title: "Gerekçe yaz", sub: "En az 3 karakter — denetim kaydı için zorunlu" });
+                      return;
+                    }
+                    if (resetTyped.trim().toUpperCase() !== "SUPR") {
+                      pushToast({ kind: "lose", title: "Onay için SUPR yaz", sub: "Yanlışlıkla sıfırlamayı önlemek için zorunlu" });
+                      return;
+                    }
+                    const res = resetAllMoney(reason);
+                    if (!res.ok) {
+                      pushToast({ kind: "lose", title: "Sıfırlama başarısız", sub: res.error ?? "Bilinmeyen hata" });
+                      return;
+                    }
+                    setConfirmReset(false);
+                  }}
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-lose to-red-700 font-display text-sm font-black uppercase tracking-wider text-white transition hover:brightness-110"
+                >
+                  <AlertTriangle className="h-4 w-4" /> Hepsini Sıfırla
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ---------------- SKİN HEDİYE MODALI (TAM EKRAN) ---------------- */}
       <AnimatePresence>
         {skinFor && (
@@ -1425,10 +1804,22 @@ export function AdminPanel() {
               <Gift className="h-5 w-5 text-brand-400" />
               <div className="min-w-0 flex-1">
                 <div className="font-display text-lg font-bold leading-tight">
-                  {skinDetail ? "Skin Detayı" : "Skin Hediye Et"}
+                  {skinDetail
+                    ? "Skin Detayı"
+                    : skinPickMode === "raffle"
+                      ? "Çekiliş Ödülü Seç"
+                      : "Skin Hediye Et"}
                 </div>
                 <div className="truncate text-[11px] text-white/40">
-                  Oyuncu: <span className="font-bold text-white/70">{skinFor.name}</span>
+                  {skinPickMode === "raffle" ? (
+                    <span>
+                      Ödül olacak skin — <span className="font-bold text-white/70">çekilişe katılan kazanır</span>
+                    </span>
+                  ) : (
+                    <>
+                      Oyuncu: <span className="font-bold text-white/70">{skinFor.name}</span>
+                    </>
+                  )}
                   {!skinDetail && ` · ${skinResults.length.toLocaleString("tr-TR")} skin`}
                 </div>
               </div>
@@ -1544,6 +1935,7 @@ export function AdminPanel() {
                 setDraft={setSkinDetail}
                 playerName={skinFor.name}
                 playerKey={skinFor.key}
+                mode={skinPickMode}
                 onClose={() => {
                   setSkinFor(null);
                   setSkinDetail(null);
@@ -1553,6 +1945,17 @@ export function AdminPanel() {
                     kind: "money",
                     title: `Skin gönderildi: ${SKIN_MAP[skinDetail.id]?.weapon ?? ""} ${SKIN_MAP[skinDetail.id]?.name ?? ""}`,
                     sub: `${skinFor.name} envanterine eklenecek`,
+                  });
+                  coinDing();
+                  setSkinFor(null);
+                  setSkinDetail(null);
+                }}
+                onPick={(draft) => {
+                  setRaffleSkin(draft);
+                  pushToast({
+                    kind: "win",
+                    title: "Çekiliş ödülü seçildi 🎁",
+                    sub: `${SKIN_MAP[skinDetail.id]?.weapon ?? ""} ${SKIN_MAP[skinDetail.id]?.name ?? ""} — çekilişi başlatabilirsin`,
                   });
                   coinDing();
                   setSkinFor(null);
@@ -1573,15 +1976,19 @@ function SkinDetailPanel({
   setDraft,
   playerName,
   playerKey,
+  mode,
   onClose,
   onSent,
+  onPick,
 }: {
   draft: SkinDraft;
   setDraft: (d: SkinDraft) => void;
   playerName: string;
   playerKey: string;
+  mode: "give" | "raffle";
   onClose: () => void;
   onSent: () => void;
+  onPick: (d: SkinDraft) => void;
 }) {
   const { adminGiveSkin, pushToast } = useGame();
   const baseId = draft.id.replace(/-(st|sv)$/, "");
@@ -1591,12 +1998,16 @@ function SkinDetailPanel({
   const stExists = !!SKIN_MAP[baseId + "-st"];
   const svExists = !!SKIN_MAP[baseId + "-sv"];
   const wear = draft.wear === "random" ? null : WEARS[draft.wear];
+  const finalId = draft.version === "st" ? baseId + "-st" : draft.version === "sv" ? baseId + "-sv" : baseId;
 
   function send() {
-    const finalId = draft.version === "st" ? baseId + "-st" : draft.version === "sv" ? baseId + "-sv" : baseId;
     const opts: { float?: number; stickers?: string[] } = {};
     if (draft.wear !== "random") opts.float = draft.float;
     if (draft.stickers.length) opts.stickers = draft.stickers;
+    if (mode === "raffle") {
+      onPick(draft);
+      return;
+    }
     const res = adminGiveSkin(playerKey, finalId, opts);
     if (!res.ok) {
       pushToast({ kind: "lose", title: "Skin gönderilemedi", sub: res.error ?? "Bilinmeyen hata" });
@@ -1785,12 +2196,18 @@ function SkinDetailPanel({
             </div>
           </div>
 
-          {/* gönder */}
+          {/* gönder / ödül olarak seç */}
           <button
             onClick={send}
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-emerald-400 to-emerald-600 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110"
+            className={cn(
+              "flex h-12 w-full items-center justify-center gap-2 rounded-xl font-display text-sm font-black uppercase tracking-wider transition hover:brightness-110",
+              mode === "raffle"
+                ? "bg-gradient-to-b from-amber-400 to-amber-600 text-ink-950"
+                : "bg-gradient-to-b from-emerald-400 to-emerald-600 text-ink-950"
+            )}
           >
-            <Gift className="h-4 w-4" /> {playerName} kişisine gönder
+            <Gift className="h-4 w-4" />
+            {mode === "raffle" ? "Çekiliş ödülü olarak seç" : `${playerName} kişisine gönder`}
           </button>
           <button
             onClick={onClose}

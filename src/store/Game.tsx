@@ -391,6 +391,15 @@ interface GameState {
   adminAdjust: (key: string, delta: number, reason?: string) => { ok: boolean; error?: string };
   adminLog: AdminLogEntry[];
   resetAll: () => void;
+  /** tüm hesapların bakiyesini sıfırla (admin dahil) — tüm cihazlara yayılır */
+  moneyReset: DB["moneyReset"];
+  resetAllMoney: (reason: string) => { ok: boolean; error?: string };
+  /** skin ödüllü çekiliş başlat */
+  startSkinRaffle: (
+    minutes: number,
+    skinId: string,
+    opts?: { float?: number; stickers?: string[] }
+  ) => { ok: boolean; error?: string };
 
   syncUrl: string | null;
   syncStatus: SyncStatus;
@@ -1894,6 +1903,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const rng = seededRng(seed, "draw");
     const winnerKey = ids[Math.floor(rng() * ids.length)];
     const winnerName = r.participants![winnerKey].name;
+    const isSkin = !!r.skinId && !!SKIN_MAP[r.skinId];
     mutate((draft) => {
       if (!draft.raffle || draft.raffle.endsAt !== r.endsAt) return;
       draft.raffle.drawn = true;
@@ -1902,18 +1912,37 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         id: `raffle:${r.id}`,
         userKey: winnerKey,
         userName: winnerName,
-        amount: r.prize,
-        method: "Çekiliş Ödülü",
+        amount: isSkin ? 0 : r.prize,
+        method: isSkin ? "Skin Çekilişi Ödülü" : "Çekiliş Ödülü",
         status: "approved",
         ts: Date.now(),
         decidedTs: Date.now(),
         decidedBy: "Sistem",
+        skinId: isSkin ? r.skinId : undefined,
+        skinName: isSkin ? r.skinName : undefined,
+        skinOpts: isSkin ? r.skinOpts : undefined,
       });
+      draft.adminLog = [
+        {
+          id: `raffle:${r.id}`,
+          actor: "Sistem",
+          targetKey: winnerKey,
+          targetName: winnerName,
+          amount: isSkin ? 0 : r.prize,
+          reason: isSkin
+            ? `Skin çekilişi ödülü: ${r.skinName ?? r.skinId}`
+            : `Çekiliş ödülü: ${money(r.prize)}`,
+          ts: Date.now(),
+        },
+        ...(draft.adminLog ?? []),
+      ].slice(0, 300);
     });
     pushToastSafe.current({
       kind: "win",
       title: "Çekiliş tamamlandı! 🎉",
-      sub: `${winnerName} ${money(r.prize)} kazandı`,
+      sub: isSkin
+        ? `${winnerName} "${r.skinName ?? r.skinId}" kazandı`
+        : `${winnerName} ${money(r.prize)} kazandı`,
     });
   }, [mutate]);
 
@@ -1940,6 +1969,48 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         title: "Çekiliş başlatıldı",
         sub: `${minutes} dk — ${money(p)} ödül`,
       });
+    },
+    [mutate, pushToast]
+  );
+
+  /* ---------------- ADMIN: SKİN ÖDÜLLÜ ÇEKİLİŞ ---------------- */
+  const startSkinRaffle = useCallback(
+    (
+      minutes: number,
+      skinId: string,
+      opts?: { float?: number; stickers?: string[] }
+    ): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const skin = SKIN_MAP[skinId];
+      if (!skin || skin.sticker) return { ok: false, error: "Geçersiz skin — ödül seç" };
+      const fine: { float?: number; stickers?: string[] } = {};
+      if (typeof opts?.float === "number" && Number.isFinite(opts.float)) {
+        fine.float = Math.min(1, Math.max(0, Math.round(opts.float * 1000) / 1000));
+      }
+      if (Array.isArray(opts?.stickers)) {
+        const st = opts.stickers.filter((s) => STICKER_MAP[s]).slice(0, 4);
+        if (st.length) fine.stickers = st;
+      }
+      mutate((draft) => {
+        draft.raffle = {
+          id: uid(),
+          prize: 0,
+          endsAt: Date.now() + Math.max(1, minutes) * 60000,
+          startedBy: ADMIN_NAME,
+          participants: {},
+          skinId: skin.id,
+          skinName: `${skin.weapon} | ${skin.name}`,
+          skinOpts: Object.keys(fine).length ? fine : undefined,
+        };
+      });
+      pushToast({
+        kind: "money",
+        title: "Skin çekilişi başlatıldı",
+        sub: `${minutes} dk — ödül: ${skin.weapon} | ${skin.name}`,
+      });
+      coinDing();
+      return { ok: true };
     },
     [mutate, pushToast]
   );
@@ -2956,6 +3027,65 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     pushToast({ kind: "info", title: "Hesap sıfırlandı", sub: "Bakiye ve envanter 0'a çekildi" });
   }, [mutate, pushToast]);
 
+  /* ---------------- ADMIN: TÜM BAKİYELERİ SIFIRLA ---------------- */
+  const resetAllMoney = useCallback(
+    (reason: string): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const note = reason.trim();
+      if (note.length < 3) return { ok: false, error: "Sıfırlama gerekçesi en az 3 karakter olmalı" };
+      const total = Object.values(dbRef.current.users).reduce((a, u) => a + (u.balance ?? 0), 0);
+      const ev = { id: uid(), ts: Date.now(), by: me.name, reason: note } as const;
+      mutate((draft) => {
+        /* olay kaydı */
+        draft.moneyReset = ev;
+        /* admin cihazında anında uygula — diğer cihazlara buluttan yayılır */
+        Object.values(draft.users).forEach((u) => {
+          u.balance = 0;
+        });
+        /* denetim kaydı */
+        draft.adminLog = [
+          {
+            id: ev.id,
+            actor: me.name,
+            targetKey: "*",
+            targetName: "TÜM OYUNCULAR",
+            amount: -total,
+            reason: `Toplu bakiye sıfırlama: ${note}`,
+            ts: ev.ts,
+          },
+          ...(draft.adminLog ?? []),
+        ].slice(0, 300);
+      });
+      pushToast({
+        kind: "info",
+        title: "Tüm bakiyeler sıfırlandı",
+        sub: `${total} ekonomiciden çıkarıldı — ${ADMIN_NAME} dahil herkes 0$`,
+      });
+      return { ok: true };
+    },
+    [mutate, pushToast]
+  );
+
+  /* Uzak cihazlarda sıfırlamayı uygula — her cihaz kendi yerel bakiyesini sıfırlar */
+  useEffect(() => {
+    const ev = db.moneyReset;
+    if (!ev) return;
+    const key = `skyline:mreset:${ev.id}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      mutate((draft) => {
+        if (!draft.moneyReset || draft.moneyReset.id !== ev.id) return;
+        Object.values(draft.users).forEach((u) => {
+          u.balance = 0;
+        });
+      });
+      localStorage.setItem(key, String(Date.now()));
+    } catch {
+      /* yoksay */
+    }
+  }, [db.moneyReset, mutate]);
+
   const inventory = user?.inventory ?? [];
   const inventoryValue = useMemo(
     () => inventory.reduce((acc, i) => acc + itemValue(i), 0),
@@ -3137,6 +3267,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     adminAdjust,
     adminLog: db.adminLog ?? [],
     resetAll,
+    moneyReset: db.moneyReset ?? null,
+    resetAllMoney,
+    startSkinRaffle,
 
     syncUrl,
     syncStatus,

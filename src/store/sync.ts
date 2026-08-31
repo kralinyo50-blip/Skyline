@@ -45,6 +45,8 @@ export interface CloudDoc {
   celebration?: DB["celebration"];
   /** canlı jackpot — herkes aynı potu görür */
   jackpot?: JackpotState | null;
+  /** toplu bakiye sıfırlama — en yeni ts kazanır */
+  moneyReset?: DB["moneyReset"];
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -77,6 +79,7 @@ export function toCloudDoc(db: DB): CloudDoc {
     celebration: db.celebration ?? undefined,
     /* jackpot: yerel görünüm bayrakları (me) kaldırılır — userId esas alınır */
     jackpot: db.jackpot ? jackpotToCloud(db.jackpot) : null,
+    moneyReset: db.moneyReset ?? undefined,
   };
 }
 
@@ -210,6 +213,11 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
   if (cloud.celebration && (!out.celebration || cloud.celebration.ts > out.celebration.ts))
     out.celebration = cloud.celebration;
   else if (!cloud.celebration && !out.celebration) out.celebration = undefined;
+
+  /* toplu bakiye sıfırlama — en yeni olay her yerde geçerli */
+  if (cloud.moneyReset && (!out.moneyReset || cloud.moneyReset.ts > out.moneyReset.ts))
+    out.moneyReset = cloud.moneyReset;
+  else if (!cloud.moneyReset && !out.moneyReset) out.moneyReset = undefined;
 
   /* jackpot — herkese aynı pot, eksik senkron korumalı birleşim */
   out.jackpot = mergeJackpot(local.jackpot ?? null, cloud.jackpot ?? null, local.session);
