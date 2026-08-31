@@ -56,6 +56,29 @@ import { CASES, previewCasePrice } from "../data/cases";
 import { MAX_STICKERS, STICKERS } from "../data/stickers";
 import { WEARS, rollFloat, type WearKey } from "../data/wear";
 import { FloatBar } from "./WearUi";
+
+/* özel kasa şablonları için deterministik skin seçimi */
+function tplPicks(rarity: string, n: number): string[] {
+  return Object.values(SKIN_MAP)
+    .filter((x) => !x.st && !x.sv && x.rarity === rarity)
+    .sort((a, b) => b.price - a.price)
+    .slice(0, n)
+    .map((x) => x.id);
+}
+function tplWeaponPicks(weapon: string, n: number): string[] {
+  return Object.values(SKIN_MAP)
+    .filter((x) => !x.st && !x.sv && x.weapon === weapon)
+    .sort((a, b) => b.price - a.price)
+    .slice(0, n)
+    .map((x) => x.id);
+}
+function tplRarePicks(n: number): string[] {
+  return Object.values(SKIN_MAP)
+    .filter((x) => !x.st && !x.sv && x.rarity === "rare" && x.price < 600000)
+    .sort((a, b) => b.price - a.price)
+    .slice(0, n)
+    .map((x) => x.id);
+}
 import { cn } from "../utils/cn";
 
 type Sec = "users" | "deposits" | "players" | "sync" | "events" | "settings";
@@ -242,6 +265,8 @@ export function AdminPanel() {
   const [ccTier, setCcTier] = useState("covert");
   const [ccSkinId, setCcSkinId] = useState("");
   const [ccContents, setCcContents] = useState<Partial<Record<string, string[]>>>({});
+  const [ccTpl, setCcTpl] = useState<string | null>(null);
+  const [ccEdit, setCcEdit] = useState(false);
   const ccTotal = Object.values(ccContents).reduce((a, ids) => a + (ids?.length ?? 0), 0);
 
   const [urlInput, setUrlInput] = useState(syncUrl ?? "");
@@ -2574,123 +2599,243 @@ export function AdminPanel() {
               </span>
             </div>
             <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
-              İçeriğini sen seçtiğin kasa mağazada "Sınırlı" rozetiyle görünür. Her açılışta stok düşer,
-              stok bitince satıştan kalkar. Fiyat, skin fiyat dalgalarıyla birlikte otomatik ölçeklenir.
+              3 adımda kasa yayınla: <span className="font-bold text-white/70">şablon seç → ad ver → fiyat/stok seç</span>.
+              Kasa mağazada "Sınırlı" rozetiyle görünür, stok bitince satıştan kalkar.
             </p>
 
-            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <input
-                value={ccName}
-                onChange={(e) => setCcName(e.target.value)}
-                placeholder="Kasa adı (örn. Kaan Özel Kasa)"
-                maxLength={40}
-                className="h-10 rounded-lg border border-line bg-ink-900 px-3 text-sm font-bold text-white placeholder:text-white/25 focus:border-sky-500/60 focus:outline-none"
-              />
-              <div className="flex h-10 items-center gap-1 overflow-x-auto rounded-lg border border-line bg-ink-900 px-2">
-                <span className="shrink-0 text-[9px] font-bold uppercase text-white/30">Fiyat</span>
-                {[2500, 5000, 10000, 25000, 50000, 100000].map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => setCcPrice(p)}
-                    className={cn(
-                      "shrink-0 rounded px-1.5 py-1 text-[10px] font-black",
-                      ccPrice === p ? "bg-sky-500 text-ink-950" : "bg-ink-700 text-white/45 hover:text-white"
-                    )}
-                  >
-                    {p >= 1000 ? p / 1000 + "k" : p}
-                  </button>
-                ))}
+            {/* 1 · ŞABLON */}
+            <div className="mt-4">
+              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">
+                1 · Hazır içerik seç
               </div>
-              <div className="flex h-10 items-center gap-1 overflow-x-auto rounded-lg border border-line bg-ink-900 px-2">
-                <span className="shrink-0 text-[9px] font-bold uppercase text-white/30">Stok</span>
-                {[5, 10, 25, 50, 100, 250].map((n) => (
-                  <button
-                    key={n}
-                    onClick={() => setCcStock(n)}
-                    className={cn(
-                      "shrink-0 rounded px-1.5 py-1 text-[10px] font-black",
-                      ccStock === n ? "bg-sky-500 text-ink-950" : "bg-ink-700 text-white/45 hover:text-white"
-                    )}
-                  >
-                    {n}
-                  </button>
-                ))}
+              <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+                <button
+                  onClick={() => {
+                    setCcTpl("mix");
+                    setCcName("Hızlı Karışım Kasası");
+                    setCcPrice(10000);
+                    setCcStock(25);
+                    setCcContents({
+                      milspec: tplPicks("milspec", 2),
+                      restricted: tplPicks("restricted", 2),
+                      classified: tplPicks("classified", 2),
+                      covert: tplPicks("covert", 1),
+                    });
+                    setCcEdit(false);
+                  }}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition",
+                    ccTpl === "mix" ? "border-sky-400 bg-sky-500/15" : "border-line bg-ink-900/70 hover:bg-ink-800"
+                  )}
+                >
+                  <div className="text-lg">🎁</div>
+                  <div className="mt-1 text-xs font-bold text-white/85">Hızlı Karışım</div>
+                  <div className="mt-0.5 text-[9px] leading-relaxed text-white/40">7 skin · her kademeden · 10k</div>
+                </button>
+                <button
+                  onClick={() => {
+                    setCcTpl("ak");
+                    setCcName("AK-47 Efsanesi");
+                    setCcPrice(12000);
+                    setCcStock(25);
+                    setCcContents({
+                      milspec: tplWeaponPicks("AK-47", 2),
+                      restricted: tplWeaponPicks("AK-47", 2),
+                      classified: tplWeaponPicks("AK-47", 2),
+                      covert: tplWeaponPicks("AK-47", 1),
+                    });
+                    setCcEdit(false);
+                  }}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition",
+                    ccTpl === "ak" ? "border-sky-400 bg-sky-500/15" : "border-line bg-ink-900/70 hover:bg-ink-800"
+                  )}
+                >
+                  <div className="text-lg">🔫</div>
+                  <div className="mt-1 text-xs font-bold text-white/85">AK-47 Efsanesi</div>
+                  <div className="mt-0.5 text-[9px] leading-relaxed text-white/40">7 AK skin · en iyiler · 12k</div>
+                </button>
+                <button
+                  onClick={() => {
+                    setCcTpl("knife");
+                    setCcName("Bıçak & Eldiven");
+                    setCcPrice(50000);
+                    setCcStock(5);
+                    setCcContents({ rare: tplRarePicks(5) });
+                    setCcEdit(false);
+                  }}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition",
+                    ccTpl === "knife" ? "border-sky-400 bg-sky-500/15" : "border-line bg-ink-900/70 hover:bg-ink-800"
+                  )}
+                >
+                  <div className="text-lg">🗡️</div>
+                  <div className="mt-1 text-xs font-bold text-white/85">Bıçak & Eldiven</div>
+                  <div className="mt-0.5 text-[9px] leading-relaxed text-white/40">5 değerli · 50k · stok 5</div>
+                </button>
+                <button
+                  onClick={() => {
+                    setCcTpl("legend");
+                    setCcName("Efsane Paketi");
+                    setCcPrice(25000);
+                    setCcStock(10);
+                    setCcContents({ covert: tplPicks("covert", 4) });
+                    setCcEdit(false);
+                  }}
+                  className={cn(
+                    "rounded-xl border p-3 text-left transition",
+                    ccTpl === "legend" ? "border-sky-400 bg-sky-500/15" : "border-line bg-ink-900/70 hover:bg-ink-800"
+                  )}
+                >
+                  <div className="text-lg">⭐</div>
+                  <div className="mt-1 text-xs font-bold text-white/85">Efsane Paketi</div>
+                  <div className="mt-0.5 text-[9px] leading-relaxed text-white/40">4 gizli · 25k · stok 10</div>
+                </button>
               </div>
             </div>
 
-            <div className="mt-3 rounded-xl border border-line bg-ink-900/60 p-3">
-              <div className="mb-2 flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">
-                  Kasa içeriği · {ccTotal} skin
-                </span>
-                <button
-                  onClick={() => setCcContents({})}
-                  className="rounded bg-ink-700 px-2 py-1 text-[9px] font-bold text-white/40 hover:text-white"
-                >
-                  Temizle
-                </button>
-              </div>
-              <div className="max-h-44 space-y-1.5 overflow-y-auto pr-1">
-                {(["consumer", "industrial", "milspec", "restricted", "classified", "covert", "rare"] as const).map((t) => (
-                  <div key={t} className="flex items-center gap-1.5">
-                    <span className="w-24 shrink-0 text-[10px] font-bold" style={{ color: RARITY[t].color }}>
-                      {RARITY[t].tr} ({ccContents[t]?.length ?? 0})
-                    </span>
-                    <select
-                      value={ccTier === t ? ccSkinId : ""}
-                      onChange={(e) => {
-                        setCcTier(t);
-                        setCcSkinId(e.target.value);
-                      }}
-                      className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-ink-800 px-1.5 text-[10px] font-bold text-white/60 focus:outline-none"
+            {/* 2 · AD */}
+            <div className="mt-4">
+              <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">2 · Kasa adı</div>
+              <input
+                value={ccName}
+                onChange={(e) => {
+                  setCcName(e.target.value);
+                  setCcTpl(null);
+                }}
+                placeholder="örn. Kaan Özel Kasa"
+                maxLength={40}
+                className="h-11 w-full rounded-xl border border-line bg-ink-900 px-4 text-sm font-bold text-white placeholder:text-white/25 focus:border-sky-500/60 focus:outline-none"
+              />
+            </div>
+
+            {/* 3 · FİYAT + STOK */}
+            <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div>
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">3 · Fiyat</div>
+                <div className="flex h-11 items-center gap-1 overflow-x-auto rounded-xl border border-line bg-ink-900 px-2">
+                  {[2500, 5000, 10000, 25000, 50000, 100000].map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setCcPrice(p)}
+                      className={cn(
+                        "shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-black",
+                        ccPrice === p ? "bg-sky-500 text-ink-950" : "bg-ink-700 text-white/45 hover:text-white"
+                      )}
                     >
-                      <option value="">Skin seç…</option>
-                      {ccSkinsByTier[t].map((sk) => (
-                        <option key={sk.id} value={sk.id}>
-                          {sk.weapon} | {sk.name}
-                        </option>
-                      ))}
-                    </select>
+                      {p >= 1000 ? p / 1000 + "k" : p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/40">Stok (adet)</div>
+                <div className="flex h-11 items-center gap-1 overflow-x-auto rounded-xl border border-line bg-ink-900 px-2">
+                  {[5, 10, 25, 50, 100, 250].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => setCcStock(n)}
+                      className={cn(
+                        "shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-black",
+                        ccStock === n ? "bg-sky-500 text-ink-950" : "bg-ink-700 text-white/45 hover:text-white"
+                      )}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* içerik özeti + gelişmiş düzenleme */}
+            <div className="mt-4 rounded-xl border border-line bg-ink-900/60 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+                  İçerik: {ccTotal} skin
+                </span>
+                {Object.entries(ccContents).flatMap(([, ids]) =>
+                  (ids ?? []).slice(0, 6).map((id) => (
+                    <span
+                      key={id}
+                      className="rounded bg-ink-700 px-1.5 py-0.5 text-[9px] font-bold text-white/55"
+                    >
+                      {SKIN_MAP[id]?.weapon} | {SKIN_MAP[id]?.name}
+                    </span>
+                  ))
+                )}
+                {ccTotal > 6 && <span className="text-[9px] text-white/30">+{ccTotal - 6} daha…</span>}
+                <div className="ml-auto flex gap-1.5">
+                  <button
+                    onClick={() => setCcEdit((v) => !v)}
+                    className="rounded-lg bg-ink-700 px-2.5 py-1.5 text-[10px] font-bold text-white/60 transition hover:text-white"
+                  >
+                    {ccEdit ? "Kapat" : "Skinleri düzenle"}
+                  </button>
+                  {ccTotal > 0 && (
                     <button
                       onClick={() => {
-                        if (!ccSkinId || ccTier !== t) return;
-                        setCcContents((prev) => {
-                          const all = Object.values(prev).flat();
-                          if (all.includes(ccSkinId)) return prev;
-                          return { ...prev, [t]: [...(prev[t] ?? []), ccSkinId] };
-                        });
-                        setCcSkinId("");
+                        setCcContents({});
+                        setCcTpl(null);
                       }}
-                      className="h-8 shrink-0 rounded-lg bg-sky-500/15 px-2 text-[10px] font-black text-sky-300 hover:bg-sky-500/25"
+                      className="rounded-lg bg-lose/10 px-2.5 py-1.5 text-[10px] font-bold text-lose transition hover:bg-lose/20"
                     >
-                      + Ekle
+                      Temizle
                     </button>
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
-              {ccTotal > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1 border-t border-line pt-2">
-                  {Object.entries(ccContents).flatMap(([t, ids]) =>
-                    (ids ?? []).map((id) => (
-                      <span
-                        key={id}
-                        className="flex items-center gap-1 rounded bg-ink-700 px-1.5 py-0.5 text-[9px] font-bold text-white/55"
+
+              {ccEdit && (
+                <div className="mt-3 max-h-44 space-y-1.5 overflow-y-auto border-t border-line pt-3 pr-1">
+                  {(["consumer", "industrial", "milspec", "restricted", "classified", "covert", "rare"] as const).map((t) => (
+                    <div key={t} className="flex items-center gap-1.5">
+                      <span className="w-24 shrink-0 text-[10px] font-bold" style={{ color: RARITY[t].color }}>
+                        {RARITY[t].tr} ({ccContents[t]?.length ?? 0})
+                      </span>
+                      <select
+                        value={ccTier === t ? ccSkinId : ""}
+                        onChange={(e) => {
+                          setCcTier(t);
+                          setCcSkinId(e.target.value);
+                          setCcTpl(null);
+                        }}
+                        className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-ink-800 px-1.5 text-[10px] font-bold text-white/60 focus:outline-none"
                       >
-                        {SKIN_MAP[id]?.weapon} | {SKIN_MAP[id]?.name}
+                        <option value="">Skin seç…</option>
+                        {ccSkinsByTier[t].map((sk) => (
+                          <option key={sk.id} value={sk.id}>
+                            {sk.weapon} | {sk.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => {
+                          if (!ccSkinId || ccTier !== t) return;
+                          setCcContents((prev) => {
+                            const all = Object.values(prev).flat();
+                            if (all.includes(ccSkinId)) return prev;
+                            return { ...prev, [t]: [...(prev[t] ?? []), ccSkinId] };
+                          });
+                          setCcSkinId("");
+                          setCcTpl(null);
+                        }}
+                        className="h-8 shrink-0 rounded-lg bg-sky-500/15 px-2 text-[10px] font-black text-sky-300 hover:bg-sky-500/25"
+                      >
+                        + Ekle
+                      </button>
+                      {ccContents[t] && ccContents[t]!.length > 0 && (
                         <button
-                          onClick={() =>
-                            setCcContents((prev) => ({
-                              ...prev,
-                              [t]: (prev[t] ?? []).filter((x) => x !== id),
-                            }))
-                          }
+                          onClick={() => {
+                            setCcContents((prev) => ({ ...prev, [t]: [] }));
+                            setCcTpl(null);
+                          }}
                           className="text-white/30 hover:text-lose"
                         >
-                          <X className="h-2.5 w-2.5" />
+                          <X className="h-3 w-3" />
                         </button>
-                      </span>
-                    ))
-                  )}
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -2707,16 +2852,19 @@ export function AdminPanel() {
                 else {
                   setCcName("");
                   setCcContents({});
+                  setCcTpl(null);
+                  setCcEdit(false);
                 }
               }}
               disabled={ccTotal === 0 || ccName.trim().length < 3}
-              className="mt-3 flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-sky-400 to-sky-600 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110 disabled:opacity-40"
+              className="mt-4 flex h-12 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-sky-400 to-sky-600 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110 disabled:opacity-40"
             >
-              <Package className="h-4 w-4" /> Özel Kasayı Yayınla ({ccTotal} skin · {money(ccPrice)} · {ccStock} adet)
+              <Package className="h-4 w-4" /> Özel Kasayı Yayınla · {ccTotal} skin · {money(ccPrice)} · {ccStock} adet
             </button>
 
             {customCases.length > 0 && (
-              <div className="mt-3 space-y-1.5">
+              <div className="mt-4 space-y-1.5">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-white/40">Yayındaki kasalar</div>
                 {customCases.map((c) => (
                   <div key={c.id} className="flex items-center gap-2 rounded-lg border border-line bg-ink-900/70 px-3 py-2">
                     <img src={c.img} alt="" className="h-8 w-8 rounded object-contain" />
