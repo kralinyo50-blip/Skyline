@@ -163,6 +163,100 @@ export const SHOP_PRODUCT_MAP: Record<string, ShopProductDef> = Object.fromEntri
   SHOP_PRODUCTS.map((p) => [p.id, p])
 );
 
+/* ------------------------------------------------------------------
+   BOT DÜKKANLAR — oyuncu dükkanlarıyla AYNI SİSTEMDE çalışır:
+   vitrinlerine ilan koyar, stokları tazelenir, bot müşteriler ve
+   oyuncular buralardan alışveriş yapar. İlanlar shopListings'te
+   olduğu için sync ile tüm cihazlara yayınlanır.
+------------------------------------------------------------------ */
+export interface ShopBotStore {
+  id: string;
+  name: string;
+  emoji: string;
+  desc: string;
+  /** vitrini bu kategorilerden doldurur */
+  cats: ShopCategory[];
+  /** kaç ürün çeşidi bulundurur */
+  slots: number;
+  /** ürün başına stok aralığı */
+  stockMin: number;
+  stockMax: number;
+  /** fiyat çarpanı: önerilen satış fiyatının (list) alt/üstü */
+  priceMin: number;
+  priceMax: number;
+}
+
+export const SHOP_BOT_STORES: ShopBotStore[] = [
+  {
+    id: "bot-giyim",
+    name: "Trend Giyim",
+    emoji: "🧥",
+    desc: "Sezonun modası — kıyafet ve aksesuar",
+    cats: ["giyim", "aksesuar"],
+    slots: 6,
+    stockMin: 4,
+    stockMax: 12,
+    priceMin: 0.95,
+    priceMax: 1.15,
+  },
+  {
+    id: "bot-lezzet",
+    name: "Lezzet Durağı",
+    emoji: "🍽️",
+    desc: "Sıcacık yemekler, demli çaylar",
+    cats: ["yemek", "icecek"],
+    slots: 6,
+    stockMin: 6,
+    stockMax: 15,
+    priceMin: 0.9,
+    priceMax: 1.1,
+  },
+  {
+    id: "bot-tekno",
+    name: "Tekno Dünya",
+    emoji: "💻",
+    desc: "Elektronik ve aksesuar — güncel ürünler",
+    cats: ["elektronik", "aksesuar"],
+    slots: 6,
+    stockMin: 2,
+    stockMax: 6,
+    priceMin: 1.0,
+    priceMax: 1.2,
+  },
+  {
+    id: "bot-ev",
+    name: "Ev Dekor",
+    emoji: "🛋️",
+    desc: "Evinize konfor ve şıklık katan ürünler",
+    cats: ["ev", "giyim"],
+    slots: 5,
+    stockMin: 3,
+    stockMax: 8,
+    priceMin: 0.95,
+    priceMax: 1.12,
+  },
+  {
+    id: "bot-butik",
+    name: "Butik Karma",
+    emoji: "🛍️",
+    desc: "Her kategoriden seçilmiş ürünler",
+    cats: ["giyim", "yemek", "icecek", "ev", "elektronik", "aksesuar"],
+    slots: 7,
+    stockMin: 4,
+    stockMax: 9,
+    priceMin: 1.0,
+    priceMax: 1.18,
+  },
+];
+
+export const SHOP_BOT_STORE_MAP: Record<string, ShopBotStore> = Object.fromEntries(
+  SHOP_BOT_STORES.map((s) => [s.id, s])
+);
+
+export function botStoreKey(id: string): string {
+  return "botstore-" + id;
+}
+
 /** Özel ürün üretiminde kategori başına gereken malzemeler */
 export const CUSTOM_RECIPES: Record<ShopCategory, { mat: string; qty: number }[]> = {
   giyim: [{ mat: "kumas", qty: 2 }, { mat: "iplik", qty: 2 }, { mat: "dugme", qty: 1 }],

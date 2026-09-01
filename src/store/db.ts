@@ -142,6 +142,8 @@ export interface ShopListing {
   removed?: boolean;
   /** bot müşteri son alışverişi (gaz kelebeği) */
   botAt?: number;
+  /** bot dükkan ilanı (oyuncu dükkanlarıyla aynı sistemde) */
+  botStore?: boolean;
 }
 
 /** Dükkan satışı — satıcının bakiyesini doldurmak için kayıt */

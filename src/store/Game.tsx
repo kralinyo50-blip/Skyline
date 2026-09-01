@@ -126,9 +126,12 @@ import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
 import { CASES, rollCaseSeeded, rollCasePity, casePrice, expectedValue, type CaseDef } from "../data/cases";
 import {
+  SHOP_PRODUCTS,
   SHOP_PRODUCT_MAP,
   SHOP_MATERIAL_MAP,
   SHOP_CATEGORIES,
+  SHOP_BOT_STORES,
+  botStoreKey,
   CUSTOM_RECIPES,
   recipeText,
   type ShopCategory,
@@ -626,6 +629,46 @@ interface ShopperProfile {
   /** önerilen satış fiyatının kaç katına kadar razı olur */
   maxRatio: number;
 }
+/* Bot dükkan vitrinlerini doldur/tazele — oyuncu dükkanlarıyla aynı
+   shopListings sistemine ilan yazar (sync ile her cihaza yayılır). */
+function restockBotStores(fresh: DB, now: number): void {
+  const listings = (fresh.shopListings ??= []);
+  for (const s of SHOP_BOT_STORES) {
+    const key = botStoreKey(s.id);
+    const mine = listings.filter((l) => l.sellerKey === key && !l.removed && (l.qty ?? 0) > 0);
+    /* eksik slotları doldur — kategorisinden rastgele ürün */
+    let missing = Math.max(0, s.slots - mine.length);
+    while (missing-- > 0) {
+      const pool = SHOP_PRODUCTS.filter((p) => s.cats.includes(p.category));
+      if (!pool.length) break;
+      const def = pool[Math.floor(Math.random() * pool.length)];
+      if (listings.some((l) => l.sellerKey === key && !l.removed && l.productId === def.id)) continue;
+      const unitPrice = Math.max(
+        100,
+        Math.round((def.list * (s.priceMin + Math.random() * (s.priceMax - s.priceMin))) / 100) * 100
+      );
+      listings.push({
+        id: uid(),
+        sellerKey: key,
+        sellerName: s.name,
+        shopName: s.name,
+        productId: def.id,
+        unitPrice,
+        qty: s.stockMin + Math.floor(Math.random() * (s.stockMax - s.stockMin + 1)),
+        ts: now,
+        botAt: now,
+        botStore: true,
+      });
+    }
+    /* stok azalan vitrinleri tazele (müşteri hep ürün bulsun) */
+    for (const l of mine) {
+      if (l.qty >= s.stockMin) continue;
+      l.qty += 1 + Math.floor(Math.random() * 4);
+      l.ts = now;
+    }
+  }
+}
+
 const SHOPPER_PROFILES: ShopperProfile[] = [
   { cats: ["giyim", "aksesuar"], minUnit: 0, maxRatio: 1.3 },
   { cats: ["yemek", "icecek"], minUnit: 0, maxRatio: 1.3 },
@@ -2065,6 +2108,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       /* diğer cihaz daha yeni yazdıysa bu turu o kazanır — çekil */
       fresh = loadDB();
       if (fresh.shopBotAt !== claim) return;
+      /* BOT DÜKKANLAR: eksik ürünleri koy + stokları tazele (tek cihaz üretir,
+         ilanlar sync ile herkesin dükkan listesine düşer) */
+      restockBotStores(fresh, now);
       const act = (fresh.shopListings ?? []).filter((l) => !l.removed && (l.qty ?? 0) > 0);
       if (!act.length) return;
 

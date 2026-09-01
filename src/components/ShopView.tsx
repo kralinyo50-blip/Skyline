@@ -26,6 +26,7 @@ import {
   SHOP_MATERIAL_MAP,
   SHOP_PRODUCTS,
   SHOP_PRODUCT_MAP,
+  SHOP_BOT_STORE_MAP,
   CUSTOM_RECIPES,
   recipeText,
   recipeCost,
@@ -277,6 +278,36 @@ export function ShopView() {
 
   const activeListings = g.shopAllListings.filter((l) => !l.removed && l.qty > 0 && l.sellerKey !== g.user?.key);
 
+  /* seçili dükkan vitrini (bot + oyuncu) */
+  const [selStore, setSelStore] = useState<string | null>(null);
+  const storeGroups = useMemo(() => {
+    const map = new Map<string, { key: string; name: string; shopName: string; emoji: string; desc: string; isBot: boolean; count: number; stock: number }>();
+    for (const l of activeListings) {
+      const isBot = !!l.botStore || l.sellerKey.startsWith("botstore-");
+      let e = map.get(l.sellerKey);
+      if (!e) {
+        const bot = isBot ? SHOP_BOT_STORE_MAP[l.sellerKey.replace(/^botstore-/, "")] : undefined;
+        const info = itemLabel(l.productId, l.custom);
+        e = {
+          key: l.sellerKey,
+          name: l.shopName || l.sellerName,
+          shopName: l.sellerName,
+          emoji: bot?.emoji ?? info.emoji,
+          desc: bot?.desc ?? "Oyuncu dükkanı",
+          isBot,
+          count: 0,
+          stock: 0,
+        };
+        map.set(l.sellerKey, e);
+      }
+      e.count++;
+      e.stock += l.qty;
+    }
+    return [...map.values()].sort((a, b) => Number(b.isBot) - Number(a.isBot) || b.stock - a.stock);
+  }, [activeListings]);
+  const listingPool = selStore ? activeListings.filter((l) => l.sellerKey === selStore) : activeListings;
+  const selStoreInfo = selStore ? storeGroups.find((s) => s.key === selStore) : null;
+
   /* ---------- yardımcılar ---------- */
   const toNum = (s: string, def = 1) => {
     const n = Math.round(Number(s.replace(/[^\d.]/g, "")));
@@ -337,7 +368,7 @@ export function ShopView() {
         {tabs.map(({ key, label, Icon }) => (
           <button
             key={key}
-            onClick={() => { setSub(key); click(); }}
+            onClick={() => { setSub(key); setSelStore(null); click(); }}
             className={cn(
               "flex h-10 items-center gap-1.5 rounded-xl border px-3.5 text-xs font-bold transition",
               sub === key ? "border-brand-500 bg-brand-500/15 text-brand-300" : "border-line bg-ink-800 text-white/50 hover:text-white"
@@ -380,12 +411,83 @@ export function ShopView() {
             </div>
           </div>
 
+          {/* dükkanlar — bot + oyuncu, senkronize tek sistem */}
+          {!selStore && (
+            <>
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="font-display text-sm font-black text-white/80">🗂️ Dükkanlar</h2>
+                <span className="text-[10px] text-white/30">{storeGroups.length} dükkan · {activeListings.length} ilan</span>
+              </div>
+              {storeGroups.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-line bg-ink-900/40 py-8 text-center">
+                  <div className="text-3xl">🏪</div>
+                  <div className="mt-1 text-xs text-white/50">Dükkanlar hazırlanıyor — az sonra bot vitrinleri açılır.</div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {storeGroups.slice(0, 24).map((s) => (
+                    <button
+                      key={s.key}
+                      onClick={() => setSelStore(s.key)}
+                      className="group rounded-2xl border border-line bg-ink-800/80 p-3.5 text-left transition hover:border-brand-500/50 hover:bg-ink-800"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-ink-900 text-2xl transition group-hover:scale-105">
+                          {s.emoji}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate font-display text-sm font-black text-white">{s.name}</span>
+                            <span className={cn(
+                              "rounded-md px-1.5 py-0.5 text-[8px] font-black uppercase",
+                              s.isBot ? "bg-sky-400/15 text-sky-300" : "bg-emerald-400/15 text-emerald-300"
+                            )}>
+                              {s.isBot ? "🤖 Bot" : "👤 Oyuncu"}
+                            </span>
+                          </div>
+                          <div className="mt-0.5 line-clamp-1 text-[10px] text-white/40">{s.desc}</div>
+                        </div>
+                      </div>
+                      <div className="mt-2.5 flex items-center justify-between border-t border-line/60 pt-2 text-[10px] font-bold text-white/45">
+                        <span>{s.count} ürün</span>
+                        <span className="text-brand-300">{s.stock} adet stok</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {selStore && (
+            <div className="mb-3 flex items-center gap-2.5">
+              <button
+                onClick={() => setSelStore(null)}
+                className="flex h-9 items-center gap-1 rounded-lg border border-line bg-ink-800 px-3 text-xs font-bold text-white/60 transition hover:text-white"
+              >
+                <ChevronLeft className="h-4 w-4" /> Tümü
+              </button>
+              <span className="text-xl">{selStoreInfo?.emoji ?? "🏪"}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate font-display text-sm font-black text-white">{selStoreInfo?.name ?? "Dükkan"}</span>
+                  {selStoreInfo?.isBot && (
+                    <span className="rounded-md bg-sky-400/15 px-1.5 py-0.5 text-[8px] font-black uppercase text-sky-300">🤖 Bot</span>
+                  )}
+                </div>
+                <div className="truncate text-[10px] text-white/40">
+                  {selStoreInfo?.desc} · {listingPool.length} ürün · {selStoreInfo?.stock ?? 0} stok
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* canlı ilanlar */}
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-display text-sm font-black text-white/80">🔥 Canlı vitrinler</h2>
-            <span className="text-[10px] text-white/30">{activeListings.length} aktif ilan</span>
+            <span className="text-[10px] text-white/30">{listingPool.length} aktif ilan</span>
           </div>
-          {activeListings.length === 0 ? (
+          {listingPool.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-line bg-ink-900/40 py-12 text-center">
               <div className="text-4xl">🏪</div>
               <div className="mt-2 text-sm font-bold text-white/60">Henüz vitrinde ürün yok</div>
@@ -393,7 +495,7 @@ export function ShopView() {
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-              {activeListings.slice(0, 18).map((l) => {
+              {listingPool.slice(0, 18).map((l) => {
                 const info = itemLabel(l.productId, l.custom);
                 const def = SHOP_PRODUCT_MAP[l.productId];
                 return (
@@ -419,7 +521,7 @@ export function ShopView() {
                           {info.name}
                         </button>
                         <div className="mt-0.5 truncate text-[10px] text-white/40">
-                          {l.sellerName} · {l.shopName} · {l.qty} adet
+                          {l.botStore ? "🤖 " : ""}{l.sellerName} · {l.shopName} · {l.qty} adet
                         </div>
                       </div>
                     </div>
