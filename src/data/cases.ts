@@ -1,4 +1,5 @@
 import { SKIN_MAP, BASE_SKINS, RARITY, currentPriceRev, hypotheticalSkinPrice, type EconomyWaveLike, type Skin, type RarityKey, TIER_ORDER } from "./skins";
+import { NEW_SKINS } from "./newSkins";
 import type { CaseSale, CustomCase, PriceSettings } from "../store/db";
 import { EXTRA_SKINS } from "./extraSkins";
 import { LEGEND_SKINS, LEGEND_IDS } from "./legends";
@@ -60,7 +61,7 @@ export function toCaseDef(c: CustomCase): CaseDef {
    Aynı id'ye sahip skinler tekilleştirilir (efsane fiyatı kazanır).
 ------------------------------------------------------------------ */
 const GLOBAL_BY_ID = new Map<string, Skin>();
-[...BASE_SKINS, ...EXTRA_SKINS, ...LEGEND_SKINS].forEach((s) => GLOBAL_BY_ID.set(s.id, s));
+[...BASE_SKINS, ...EXTRA_SKINS, ...NEW_SKINS, ...LEGEND_SKINS].forEach((s) => GLOBAL_BY_ID.set(s.id, s));
 const GLOBAL_RAW: Skin[] = [...GLOBAL_BY_ID.values()];
 
 const GLOBAL_TIER: Record<RarityKey, Skin[]> = {

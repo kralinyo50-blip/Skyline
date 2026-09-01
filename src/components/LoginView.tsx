@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, ArrowRight, Gift, ShieldCheck, Sparkles, UserRound } from "lucide-react";
+import { AlertTriangle, ArrowRight, Gift, Megaphone, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import {
   ADMIN_NAME,
   BRAND,
@@ -15,6 +15,7 @@ import { click } from "../lib/audio";
 import { useGame } from "../store/Game";
 import { SyncCodeBox } from "./SyncCodeBox";
 import { cn } from "../utils/cn";
+import { UPDATE_LOG } from "../data/updateLog";
 
 export function LoginView() {
   const { login } = useGame();
@@ -22,6 +23,8 @@ export function LoginView() {
   const [ref, setRef] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState("");
+  const [reportOpen, setReportOpen] = useState(true);
+  const latest = UPDATE_LOG[0];
 
   const valid = isValidMcName(name);
   const refValid = ref.trim() === "" || isValidMcName(ref);
@@ -167,6 +170,53 @@ export function LoginView() {
           <div className="mt-5">
             <SyncCodeBox />
           </div>
+
+          {/* güncelleme raporu */}
+          {latest && (
+            <div className="mt-4 rounded-2xl border border-brand-500/25 bg-gradient-to-br from-brand-500/10 to-transparent">
+              <button
+                onClick={() => setReportOpen((v) => !v)}
+                className="flex w-full items-center gap-2.5 px-4 py-3 text-left"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-ink-950">
+                  <Megaphone className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} strokeWidth={2.4} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="font-display text-sm font-black text-white">Güncelleme Raporu</span>
+                    <span className="rounded-md bg-brand-500/25 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-brand-300">
+                      {latest.version}
+                    </span>
+                  </span>
+                  <span className="block truncate text-[10px] text-white/40">
+                    {latest.tag} · {latest.items.length} yenilik
+                  </span>
+                </span>
+                <span
+                  className={cn(
+                    "text-[10px] font-bold text-brand-300 transition-transform",
+                    reportOpen && "rotate-180"
+                  )}
+                >
+                  ▼
+                </span>
+              </button>
+              {reportOpen && (
+                <div className="space-y-2 px-4 pb-4">
+                  {latest.items.map((it) => (
+                    <div key={it.title} className="flex items-start gap-2.5 rounded-xl bg-ink-900/60 p-2.5">
+                      <span className="mt-0.5 text-base leading-none">{it.emoji}</span>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-bold text-white/85">{it.title}</div>
+                        <div className="mt-0.5 text-[10px] leading-relaxed text-white/40">{it.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="text-[9px] text-white/25">Tarih: {latest.date}</div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="mt-4 flex flex-wrap items-center gap-2 text-[10px] font-semibold">
             <span className="rounded border border-line bg-ink-800 px-2 py-1 text-white/40">

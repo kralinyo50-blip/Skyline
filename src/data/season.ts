@@ -86,11 +86,11 @@ const PREM_FINAL: SeasonReward = {
  *  40'ta final paket; kalan seviyelerde yüksek para (toplam ~13,7M₺). */
 export const SEASON_TIERS: SeasonTier[] = (() => {
   const skins: Record<number, { free: SeasonReward; prem?: SeasonReward }> = {
-    5: { free: { kind: "skin", skinId: "ak-47-asiimov", label: "AK-47 | Asiimov" }, prem: { kind: "skin", skinId: "karambit-fade", label: "Karambit | Fade" } },
+    5: { free: { kind: "skin", skinId: "ak-47-asiimov", label: "AK-47 | Asiimov" }, prem: { kind: "skin", skinId: "ex-kukri-void-viper", label: "Kukri Knife | Void Viper ✨" } },
     10: { free: { kind: "skin", skinId: "awp-asiimov", label: "AWP | Asiimov" }, prem: { kind: "skin", skinId: "butterfly-knife-fade", label: "Butterfly Knife | Fade" } },
-    15: { free: { kind: "skin", skinId: "ak-47-vulcan", label: "AK-47 | Vulcan" }, prem: { kind: "skin", skinId: "m9-bayonet-doppler", label: "M9 Bayonet | Doppler" } },
+    15: { free: { kind: "skin", skinId: "ak-47-vulcan", label: "AK-47 | Vulcan" }, prem: { kind: "skin", skinId: "ex-talon-emerald-queen", label: "Talon Knife | Emerald Queen ✨" } },
     20: { free: { kind: "skin", skinId: "awp-wildfire", label: "AWP | Wildfire" }, prem: { kind: "skin", skinId: "sport-gloves-vice", label: "Sport Gloves | Vice" } },
-    25: { free: { kind: "skin", skinId: "awp-containment-breach", label: "AWP | Containment Breach" }, prem: { kind: "skin", skinId: "karambit-doppler", label: "Karambit | Doppler" } },
+    25: { free: { kind: "skin", skinId: "awp-containment-breach", label: "AWP | Containment Breach" }, prem: { kind: "skin", skinId: "ex-skeleton-ghost", label: "Skeleton Knife | Ghost ✨" } },
     30: { free: { kind: "skin", skinId: "ak-47-bloodsport", label: "AK-47 | Bloodsport" }, prem: { kind: "skin", skinId: "awp-gungnir", label: "AWP | Gungnir" } },
     35: { free: { kind: "skin", skinId: "awp-atheris", label: "AWP | Atheris" }, prem: { kind: "skin", skinId: "awp-medusa", label: "AWP | Medusa" } },
     40: { free: { kind: "money", amount: 100_000, label: "100.000₺" }, prem: PREM_FINAL },
