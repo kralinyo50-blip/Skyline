@@ -1,5 +1,6 @@
 import { money, priceOf, MIN_PRICE } from "../config";
 import { STICKERS } from "./stickers";
+import { img } from "./skinImages";
 
 export type RarityKey =
   | "consumer"
@@ -91,37 +92,37 @@ const BASE: Skin[] = [
   { id: "usp-dark-water", weapon: "USP-S", name: "Dark Water", img: CDN + A + "kjYbf7itX6vytbbZSIf2sFGKS0-9JtOB7RBa_nBovp3OHy9v8J3vFbgIhC5UmQ7UIsxm7wNDnNr_rswOMiNlGmCWoiH9Juis9_a9cBl2xnYuj", rarity: "restricted", price: 9.2 },
   { id: "m4a1s-dark-water", weapon: "M4A1-S", name: "Dark Water", img: CDN + A + "8ypexwjFS4_ega6F_H_GeMX2Vw_x3j-VoXSKMmRQguynLzI6td3-TPQAlD5slR-EJ5hDux9XmMe7i71CI2t8UzSuthi9OvSlo6vFCD_TltxSe0A", rarity: "restricted", price: 12.4 },
 
-  { id: "mp9-galaxy-runner", weapon: "MP9", name: "Galaxy Runner", img: "/images/skins/mp9-galaxy-runner.jpg", rarity: "restricted", price: 14, ai: true },
-  { id: "p90-beehive", weapon: "P90", name: "Beehive", img: "/images/skins/p90-beehive.jpg", rarity: "restricted", price: 7.5, ai: true },
-  { id: "galil-radioactive", weapon: "Galil AR", name: "Radioactive", img: "/images/skins/galil-radioactive.jpg", rarity: "restricted", price: 11, ai: true },
-  { id: "fiveseven-night-owl", weapon: "Five-SeveN", name: "Night Owl", img: "/images/skins/fiveseven-night-owl.jpg", rarity: "restricted", price: 16, ai: true },
+  { id: "mp9-galaxy-runner", weapon: "MP9", name: "Galaxy Runner", img: img("mp9-galaxy-runner"), rarity: "restricted", price: 14, ai: true },
+  { id: "p90-beehive", weapon: "P90", name: "Beehive", img: img("p90-beehive"), rarity: "restricted", price: 7.5, ai: true },
+  { id: "galil-radioactive", weapon: "Galil AR", name: "Radioactive", img: img("galil-radioactive"), rarity: "restricted", price: 11, ai: true },
+  { id: "fiveseven-night-owl", weapon: "Five-SeveN", name: "Night Owl", img: img("fiveseven-night-owl"), rarity: "restricted", price: 16, ai: true },
 
   /* ---------- CLASSIFIED ---------- */
   { id: "m4a1s-atomic-alloy", weapon: "M4A1-S", name: "Atomic Alloy", img: CDN + A + "8ypexwjFS4_ega6F_H_GeMWrEwL87o95oQyW8jCIooTyLnYrGLSLANkI-D5d2FrENtRG7wNDvZe-3slfci9pFmHj8jSof6yZjtugEB6QtrKTXhxaBb-PhITXxPA", rarity: "classified", price: 22 },
-  { id: "ak-redline", weapon: "AK-47", name: "Redline", img: "/images/skins/ak-redline.jpg", rarity: "classified", price: 46, ai: true },
-  { id: "usp-kill-confirmed", weapon: "USP-S", name: "Kill Confirmed", img: "/images/skins/usp-kill-confirmed.jpg", rarity: "classified", price: 54, ai: true },
+  { id: "ak-redline", weapon: "AK-47", name: "Redline", img: img("ak-redline"), rarity: "classified", price: 46, ai: true },
+  { id: "usp-kill-confirmed", weapon: "USP-S", name: "Kill Confirmed", img: img("usp-kill-confirmed"), rarity: "classified", price: 54, ai: true },
   { id: "ak-case-hardened", weapon: "AK-47", name: "Case Hardened", img: CDN + A + "wlcK3wiNK0P2nZKFpH_yaCW-Ej7sk5bE8Sn-2lEpz4zndzoyvdHuUPwFzWZYiE7EK4Bi4k9TlY-y24FbAy9USGSiZd5Q", rarity: "classified", price: 68 },
-  { id: "m4a1s-hyper-beast", weapon: "M4A1-S", name: "Hyper Beast", img: "/images/skins/m4a1s-hyper-beast.jpg", rarity: "classified", price: 74, ai: true },
+  { id: "m4a1s-hyper-beast", weapon: "M4A1-S", name: "Hyper Beast", img: img("m4a1s-hyper-beast"), rarity: "classified", price: 74, ai: true },
   { id: "deagle-hypnotic", weapon: "Desert Eagle", name: "Hypnotic", img: CDN + A + "1m5fn8Sdk7vORfqF_NPmUAVicyOl-pK9qSyyywxgjtmnVytyocnLGPA4iWcYmRLYIu0S-xtbuMLjg51DXjoJC02yg2VjGnh4J", rarity: "classified", price: 84 },
-  { id: "awp-asiimov", weapon: "AWP", name: "Asiimov", img: "/images/skins/awp-asiimov.jpg", rarity: "classified", price: 98, ai: true },
-  { id: "m4a1s-nebula-storm", weapon: "M4A1-S", name: "Nebula Storm", img: "/images/skins/m4a1s-nebula-storm.jpg", rarity: "classified", price: 190, ai: true },
-  { id: "glock-frostbite", weapon: "Glock-18", name: "Frostbite", img: "/images/skins/glock-frostbite.jpg", rarity: "classified", price: 38, ai: true },
-  { id: "usp-cyber-pulse", weapon: "USP-S", name: "Cyber Pulse", img: "/images/skins/usp-cyber-pulse.jpg", rarity: "classified", price: 62, ai: true },
-  { id: "aug-top-gun-ace", weapon: "AUG", name: "Top Gun Ace", img: "/images/skins/aug-top-gun-ace.jpg", rarity: "classified", price: 88, ai: true },
-  { id: "sg553-matriarch", weapon: "SG 553", name: "Matriarch", img: "/images/skins/sg553-matriarch.jpg", rarity: "classified", price: 120, ai: true },
-  { id: "deagle-blaze", weapon: "Desert Eagle", name: "Blaze", img: "/images/skins/deagle-blaze.jpg", rarity: "classified", price: 545, ai: true },
+  { id: "awp-asiimov", weapon: "AWP", name: "Asiimov", img: img("awp-asiimov"), rarity: "classified", price: 98, ai: true },
+  { id: "m4a1s-nebula-storm", weapon: "M4A1-S", name: "Nebula Storm", img: img("m4a1s-nebula-storm"), rarity: "classified", price: 190, ai: true },
+  { id: "glock-frostbite", weapon: "Glock-18", name: "Frostbite", img: img("glock-frostbite"), rarity: "classified", price: 38, ai: true },
+  { id: "usp-cyber-pulse", weapon: "USP-S", name: "Cyber Pulse", img: img("usp-cyber-pulse"), rarity: "classified", price: 62, ai: true },
+  { id: "aug-top-gun-ace", weapon: "AUG", name: "Top Gun Ace", img: img("aug-top-gun-ace"), rarity: "classified", price: 88, ai: true },
+  { id: "sg553-matriarch", weapon: "SG 553", name: "Matriarch", img: img("sg553-matriarch"), rarity: "classified", price: 120, ai: true },
+  { id: "deagle-blaze", weapon: "Desert Eagle", name: "Blaze", img: img("deagle-blaze"), rarity: "classified", price: 545, ai: true },
 
   /* ---------- COVERT ---------- */
   { id: "awp-lightning-strike", weapon: "AWP", name: "Lightning Strike", img: CDN + A + "wiYbf_C9k4_upYLBjKf6UMWaH0dF6ueZhW2frwU1_sW2EmNyvc32RZwMpCpcjQ-EJ4xbtmt3gYezk4wzb3tpAy3mrkGoXubsGIfVN", rarity: "covert", price: 118 },
-  { id: "deagle-anubis-oath", weapon: "Desert Eagle", name: "Anubis Oath", img: "/images/skins/deagle-anubis-oath.jpg", rarity: "covert", price: 620, ai: true },
-  { id: "famas-dragon-breath", weapon: "FAMAS", name: "Dragon Breath", img: "/images/skins/famas-dragon-breath.jpg", rarity: "covert", price: 240, ai: true },
-  { id: "ssg-golden-hour", weapon: "SSG 08", name: "Golden Hour", img: "/images/skins/ssg-golden-hour.jpg", rarity: "covert", price: 320, ai: true },
-  { id: "awp-skyfall", weapon: "AWP", name: "Skyfall", img: "/images/skins/awp-skyfall.jpg", rarity: "covert", price: 1180, ai: true },
-  { id: "m4a4-phoenix-rising", weapon: "M4A4", name: "Phoenix Rising", img: "/images/skins/m4a4-phoenix-rising.jpg", rarity: "covert", price: 760, ai: true },
-  { id: "ak-thunderwolf", weapon: "AK-47", name: "Thunderwolf", img: "/images/skins/ak-thunderwolf.jpg", rarity: "covert", price: 880, ai: true },
-  { id: "ak-fire-serpent", weapon: "AK-47", name: "Fire Serpent", img: "/images/skins/ak-fire-serpent.jpg", rarity: "covert", price: 1450, ai: true },
-  { id: "awp-dragon-lore", weapon: "AWP", name: "Dragon Lore", img: "/images/skins/awp-dragon-lore.jpg", rarity: "covert", price: 3250, ai: true },
-  { id: "m4a4-howl", weapon: "M4A4", name: "Howl", img: "/images/skins/m4a4-howl.jpg", rarity: "covert", price: 3400, ai: true },
+  { id: "deagle-anubis-oath", weapon: "Desert Eagle", name: "Anubis Oath", img: img("deagle-anubis-oath"), rarity: "covert", price: 620, ai: true },
+  { id: "famas-dragon-breath", weapon: "FAMAS", name: "Dragon Breath", img: img("famas-dragon-breath"), rarity: "covert", price: 240, ai: true },
+  { id: "ssg-golden-hour", weapon: "SSG 08", name: "Golden Hour", img: img("ssg-golden-hour"), rarity: "covert", price: 320, ai: true },
+  { id: "awp-skyfall", weapon: "AWP", name: "Skyfall", img: img("awp-skyfall"), rarity: "covert", price: 1180, ai: true },
+  { id: "m4a4-phoenix-rising", weapon: "M4A4", name: "Phoenix Rising", img: img("m4a4-phoenix-rising"), rarity: "covert", price: 760, ai: true },
+  { id: "ak-thunderwolf", weapon: "AK-47", name: "Thunderwolf", img: img("ak-thunderwolf"), rarity: "covert", price: 880, ai: true },
+  { id: "ak-fire-serpent", weapon: "AK-47", name: "Fire Serpent", img: img("ak-fire-serpent"), rarity: "covert", price: 1450, ai: true },
+  { id: "awp-dragon-lore", weapon: "AWP", name: "Dragon Lore", img: img("awp-dragon-lore"), rarity: "covert", price: 3250, ai: true },
+  { id: "m4a4-howl", weapon: "M4A4", name: "Howl", img: img("m4a4-howl"), rarity: "covert", price: 3400, ai: true },
 
   /* ---------- RARE SPECIAL ---------- */
   { id: "bayonet-vanilla", weapon: "★ Bayonet", name: "Vanilla", img: CDN + B + "ni_DtU4fe6Jv07IfTDDT_JkL4htLI7HCvmwE9z42_Vzov4ci2Wa1IgWMN3R7IMuxCm0oqwYUAZNBA", rarity: "rare", price: 560 },
@@ -134,13 +135,13 @@ const BASE: Skin[] = [
   { id: "gloves-overprint", weapon: "★ Hand Wraps", name: "Overprint", img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu4vx603vRA_Olpfu-TVJ7uK9V6xsLvSEHGaA_uJzsfVhSjuqqhsmsS-MmbD-JCTKO0JiU8EfF7tP53_ky4O_c_Ti4wTe3t4Uy3j6jSxM5ic-4usBA6Mj-qTejAzJMbc14MRWd_v0SE-PRlxR734mHNkv", rarity: "rare", price: 1480 },
   { id: "gloves-caution", weapon: "★ Hand Wraps", name: "CAUTION!", img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu4vx603vRA_Olpfu-TVJ7uK9V6xsLvSEHGaA_uJzsfVhSjuqqh4mpimMlYHGLSLANkI-CcBxQeIMtEHsl4CyNOjm4QDa3dgTniWvjnhJ7Hk54bsEV_Ak-KWE3BaBb-Pt8HWajg", rarity: "rare", price: 1720 },
   { id: "gloves-cobalt", weapon: "★ Hand Wraps", name: "Cobalt Skulls", img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGIGz3UqlXOLrxM-vMGmW8VNxu4vx603vRA_Olpfu-TVJ7uK9V6xsLvSEHGaA_uJzsfVhSjuqqhsmsS-MmbD7LT7CAUV7T84sBohW60fg1srnZb6zsw2Ng41MmST43C1L7is9574CBKIh_q2Big_IMOdutcNRd_iuU13QD7PQAmaY", rarity: "rare", price: 1850 },
-  { id: "shadow-shattered", weapon: "★ Shadow Daggers", name: "Shattered", img: "/images/skins/shadow-shattered.jpg", rarity: "rare", price: 1600, ai: true },
-  { id: "gut-inferno", weapon: "★ Gut Knife", name: "Inferno", img: "/images/skins/gut-inferno.jpg", rarity: "rare", price: 1900, ai: true },
-  { id: "classic-abyss", weapon: "★ Classic Knife", name: "Abyss", img: "/images/skins/classic-abyss.jpg", rarity: "rare", price: 2400, ai: true },
-  { id: "karambit-doppler", weapon: "★ Karambit", name: "Doppler", img: "/images/skins/karambit-doppler.jpg", rarity: "rare", price: 3850, ai: true },
-  { id: "skeleton-ghost", weapon: "★ Skeleton Knife", name: "Ghost", img: "/images/skins/skeleton-ghost.jpg", rarity: "rare", price: 4300, ai: true },
-  { id: "butterfly-fade", weapon: "★ Butterfly Knife", name: "Fade", img: "/images/skins/butterfly-fade.jpg", rarity: "rare", price: 4900, ai: true },
-  { id: "talon-emerald-queen", weapon: "★ Talon Knife", name: "Emerald Queen", img: "/images/skins/talon-emerald-queen.jpg", rarity: "rare", price: 5200, ai: true },
+  { id: "shadow-shattered", weapon: "★ Shadow Daggers", name: "Shattered", img: img("shadow-shattered"), rarity: "rare", price: 1600, ai: true },
+  { id: "gut-inferno", weapon: "★ Gut Knife", name: "Inferno", img: img("gut-inferno"), rarity: "rare", price: 1900, ai: true },
+  { id: "classic-abyss", weapon: "★ Classic Knife", name: "Abyss", img: img("classic-abyss"), rarity: "rare", price: 2400, ai: true },
+  { id: "karambit-doppler", weapon: "★ Karambit", name: "Doppler", img: img("karambit-doppler"), rarity: "rare", price: 3850, ai: true },
+  { id: "skeleton-ghost", weapon: "★ Skeleton Knife", name: "Ghost", img: img("skeleton-ghost"), rarity: "rare", price: 4300, ai: true },
+  { id: "butterfly-fade", weapon: "★ Butterfly Knife", name: "Fade", img: img("butterfly-fade"), rarity: "rare", price: 4900, ai: true },
+  { id: "talon-emerald-queen", weapon: "★ Talon Knife", name: "Emerald Queen", img: img("talon-emerald-queen"), rarity: "rare", price: 5200, ai: true },
 ];
 
 /* ------------------------------------------------------------------ */
