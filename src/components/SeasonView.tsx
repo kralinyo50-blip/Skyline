@@ -18,6 +18,13 @@ function rewardText(r: SeasonReward): { emoji: string; text: string; sub: string
   if (r.kind === "money") {
     return { emoji: "💵", text: money(r.amount ?? 0), sub: "hemen bakiyene" };
   }
+  if (r.kind === "bundle") {
+    return {
+      emoji: "👑",
+      text: r.label ?? "Final Paketi",
+      sub: `${(r.skins ?? []).length} efsane + ${money(r.amount ?? 0)}`,
+    };
+  }
   const s = r.skinId ? SKIN_MAP[r.skinId] : undefined;
   return {
     emoji: "🔫",
@@ -253,10 +260,11 @@ export function SeasonView() {
               <Crown className="h-3.5 w-3.5" /> Premium Öne Çıkanlar
             </div>
             <ul className="space-y-1 text-[10px] text-white/50">
-              <li>• Ücretsiz yolun <b className="text-white/75">2 katı</b> para ödülleri</li>
-              <li>• 5, 10, 15, 20, 25, 30, 35. seviye efsane skinler</li>
-              <li>• 40. seviye: <b className="text-fuchsia-300">AWP | Dragon Lore</b></li>
-              <li>• Sıralı zorunluluk yok — anında açılır</li>
+              <li>• Toplam <b className="text-white/75">~13,7M₺</b> para ödülü (seviyeyle artar)</li>
+              <li>• 5: Karambit Fade · 10: Butterfly Fade · 15: M9 Doppler</li>
+              <li>• 20: Sport Gloves Vice · 25: Karambit Doppler · 30: AWP Gungnir · 35: AWP Medusa</li>
+              <li>• 40. seviye final: <b className="text-fuchsia-300">AWP Dragon Lore + Karambit Fade + 2M₺</b></li>
+              <li>• 5.500.000₺ — sıralı zorunluluk yok, anında açılır</li>
             </ul>
           </div>
 

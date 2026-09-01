@@ -1968,6 +1968,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       if (rew.kind === "money") {
         me.balance = Math.round(me.balance + (rew.amount ?? 0));
         label = `${money(rew.amount ?? 0)}`;
+      } else if (rew.kind === "bundle") {
+        /* final paketi: para + birden fazla skin */
+        if (rew.amount) me.balance = Math.round(me.balance + rew.amount);
+        const names: string[] = [];
+        for (const sid of rew.skins ?? []) {
+          const item = makeSkinItem(sid);
+          me.inventory.unshift(item);
+          const s = SKIN_MAP[sid];
+          names.push(s ? `${s.weapon} | ${s.name}` : sid);
+        }
+        label = `${names.join(" + ")}${rew.amount ? ` + ${money(rew.amount)}` : ""}`;
       } else if (rew.skinId) {
         const item = makeSkinItem(rew.skinId);
         me.inventory.unshift(item);

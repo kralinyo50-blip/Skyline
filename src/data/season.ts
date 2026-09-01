@@ -2,15 +2,15 @@
    SEZON YOLU (Season Pass) — veri katmanı
    Her sezon 14 gün. XP: kasa +60, bahis 1/1000₺, dükkan satışı
    1/2000₺, günlük +25. 40 seviye · Free + Premium yol.
-   Premium: sezon başına 75.000₺ — istenen an doğrudan alınır
-   (VIP kademeleri gibi sıralı zorunluluk yok).
+   Premium: sezon başına 5.500.000₺ — yüksek yatırım, efsane
+   ödüller (bıçak/eldiven serisi + finalde Dragon Lore paketi).
 ============================================================ */
 
 export const SEASON_LEN_MS = 14 * 24 * 3600 * 1000;
 /** Sezon 1 başlangıcı: 2026-01-01 00:00 UTC */
 export const SEASON_ANCHOR = 1767225600000;
 /** Premium yol fiyatı (sezon başına) */
-export const SEASON_PREMIUM_PRICE = 75_000;
+export const SEASON_PREMIUM_PRICE = 5_500_000;
 /** Seviye sayısı */
 export const SEASON_MAX_LEVEL = 40;
 
@@ -53,13 +53,15 @@ export function seasonInto(xp: number, level: number): number {
   return Math.max(0, xp - acc);
 }
 
-export type SeasonRewardKind = "money" | "skin";
+export type SeasonRewardKind = "money" | "skin" | "bundle";
 
 export interface SeasonReward {
   kind: SeasonRewardKind;
-  /** money: tutar · skin: skinId */
+  /** money: tutar · bundle: bonus para · skin: — */
   amount?: number;
   skinId?: string;
+  /** bundle: birden fazla skin (final ödülü) */
+  skins?: string[];
   label?: string;
 }
 
@@ -71,26 +73,34 @@ export interface SeasonTier {
   prem?: SeasonReward;
 }
 
-/** Sezon sonu premium büyük ödülü */
-const PREM_FINAL: SeasonReward = { kind: "skin", skinId: "awp-dragon-lore", label: "AWP | Dragon Lore" };
+/** Sezon sonu premium büyük ödülü — Dragon Lore + Karambit Fade + 2M₺ */
+const PREM_FINAL: SeasonReward = {
+  kind: "bundle",
+  amount: 2_000_000,
+  skins: ["awp-dragon-lore", "karambit-fade"],
+  label: "AWP | Dragon Lore + Karambit | Fade + 2.000.000₺",
+};
 
-/** 40 seviyeli ödül yolu — deterministik üretilir */
+/** 40 seviyeli ödül yolu — deterministik üretilir.
+ *  Premium: 5, 10, 15, 20, 25, 30, 35'te efsane bıçak/eldiven serisi,
+ *  40'ta final paket; kalan seviyelerde yüksek para (toplam ~13,7M₺). */
 export const SEASON_TIERS: SeasonTier[] = (() => {
   const skins: Record<number, { free: SeasonReward; prem?: SeasonReward }> = {
-    5: { free: { kind: "skin", skinId: "ak-47-asiimov", label: "AK-47 | Asiimov" }, prem: { kind: "money", amount: 20_000, label: "20.000₺" } },
-    10: { free: { kind: "skin", skinId: "awp-asiimov", label: "AWP | Asiimov" }, prem: { kind: "money", amount: 35_000, label: "35.000₺" } },
-    15: { free: { kind: "skin", skinId: "ak-47-vulcan", label: "AK-47 | Vulcan" }, prem: { kind: "money", amount: 55_000, label: "55.000₺" } },
-    20: { free: { kind: "skin", skinId: "awp-wildfire", label: "AWP | Wildfire" }, prem: { kind: "money", amount: 80_000, label: "80.000₺" } },
-    25: { free: { kind: "skin", skinId: "awp-containment-breach", label: "AWP | Containment Breach" }, prem: { kind: "money", amount: 110_000, label: "110.000₺" } },
-    30: { free: { kind: "skin", skinId: "ak-47-bloodsport", label: "AK-47 | Bloodsport" }, prem: { kind: "money", amount: 150_000, label: "150.000₺" } },
-    35: { free: { kind: "skin", skinId: "awp-atheris", label: "AWP | Atheris" }, prem: { kind: "money", amount: 200_000, label: "200.000₺" } },
+    5: { free: { kind: "skin", skinId: "ak-47-asiimov", label: "AK-47 | Asiimov" }, prem: { kind: "skin", skinId: "karambit-fade", label: "Karambit | Fade" } },
+    10: { free: { kind: "skin", skinId: "awp-asiimov", label: "AWP | Asiimov" }, prem: { kind: "skin", skinId: "butterfly-knife-fade", label: "Butterfly Knife | Fade" } },
+    15: { free: { kind: "skin", skinId: "ak-47-vulcan", label: "AK-47 | Vulcan" }, prem: { kind: "skin", skinId: "m9-bayonet-doppler", label: "M9 Bayonet | Doppler" } },
+    20: { free: { kind: "skin", skinId: "awp-wildfire", label: "AWP | Wildfire" }, prem: { kind: "skin", skinId: "sport-gloves-vice", label: "Sport Gloves | Vice" } },
+    25: { free: { kind: "skin", skinId: "awp-containment-breach", label: "AWP | Containment Breach" }, prem: { kind: "skin", skinId: "karambit-doppler", label: "Karambit | Doppler" } },
+    30: { free: { kind: "skin", skinId: "ak-47-bloodsport", label: "AK-47 | Bloodsport" }, prem: { kind: "skin", skinId: "awp-gungnir", label: "AWP | Gungnir" } },
+    35: { free: { kind: "skin", skinId: "awp-atheris", label: "AWP | Atheris" }, prem: { kind: "skin", skinId: "awp-medusa", label: "AWP | Medusa" } },
     40: { free: { kind: "money", amount: 100_000, label: "100.000₺" }, prem: PREM_FINAL },
   };
   const out: SeasonTier[] = [];
   for (let lvl = 1; lvl <= SEASON_MAX_LEVEL; lvl++) {
     const sp = skins[lvl];
     const moneyAmt = 1_500 + (lvl - 1) * 1_200 + lvl * lvl * 15;
-    const premMoney = Math.round(moneyAmt * 2);
+    /* premium para: ~13,7M₺ toplam, seviyeyle hızla büyür */
+    const premMoney = 10_000 + (lvl - 1) * 10_000 + lvl * lvl * 250;
     out.push({
       level: lvl,
       need: seasonNeedXp(lvl),
