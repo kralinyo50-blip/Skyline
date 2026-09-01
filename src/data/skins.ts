@@ -3,6 +3,7 @@ import { STICKERS } from "./stickers";
 import { EXTRA_SKINS } from "./extraSkins";
 import { NEW_SKINS } from "./newSkins";
 import { MARIN_SKINS } from "./marinSkins";
+import { SKETCH_SKINS } from "./sketchSkins";
 import { LEGEND_SKINS } from "./legends";
 
 export type RarityKey =
@@ -290,6 +291,7 @@ export const SKINS: Skin[] = [
   ...EXTRA_SKINS.map(scaled),
   ...NEW_SKINS.map(scaled),
   ...MARIN_SKINS.map(scaled),
+  ...SKETCH_SKINS.map(scaled),
   ...BASE_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeSt),
   ...BASE_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeSv),
   ...EXTRA_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeSt),
@@ -298,6 +300,8 @@ export const SKINS: Skin[] = [
   ...NEW_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeSv),
   ...MARIN_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeSt),
   ...MARIN_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeSv),
+  ...SKETCH_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeSt),
+  ...SKETCH_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeSv),
   ...LEGEND_SKINS,
   ...LEGEND_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeLegendSt),
   ...LEGEND_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeLegendSv),
