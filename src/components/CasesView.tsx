@@ -33,7 +33,12 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
         backgroundImage: `radial-gradient(130% 90% at 50% -10%, ${def.accent}16 0%, transparent 55%), linear-gradient(to bottom, var(--color-ink-700), var(--color-ink-900))`,
       }}
     >
-      {def.hot && (
+      {def.id === "sketch-case" && (
+        <span className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-ink-950 shadow-lg">
+          ✏️ El Çizimi Özel
+        </span>
+      )}
+      {def.hot && def.id !== "sketch-case" && (
         <span className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full bg-lose/90 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-lg">
           <Flame className="h-3 w-3" /> Popüler
         </span>

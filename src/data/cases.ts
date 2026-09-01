@@ -1,6 +1,7 @@
 import { SKIN_MAP, BASE_SKINS, RARITY, currentPriceRev, hypotheticalSkinPrice, type EconomyWaveLike, type Skin, type RarityKey, TIER_ORDER } from "./skins";
 import { NEW_SKINS } from "./newSkins";
 import { MARIN_SKINS } from "./marinSkins";
+import { SKETCH_SKINS } from "./sketchSkins";
 import type { CaseSale, CustomCase, PriceSettings } from "../store/db";
 import { EXTRA_SKINS } from "./extraSkins";
 import { LEGEND_SKINS, LEGEND_IDS } from "./legends";
@@ -62,7 +63,7 @@ export function toCaseDef(c: CustomCase): CaseDef {
    Aynı id'ye sahip skinler tekilleştirilir (efsane fiyatı kazanır).
 ------------------------------------------------------------------ */
 const GLOBAL_BY_ID = new Map<string, Skin>();
-[...BASE_SKINS, ...EXTRA_SKINS, ...NEW_SKINS, ...MARIN_SKINS, ...LEGEND_SKINS].forEach((s) => GLOBAL_BY_ID.set(s.id, s));
+[...BASE_SKINS, ...EXTRA_SKINS, ...NEW_SKINS, ...MARIN_SKINS, ...SKETCH_SKINS, ...LEGEND_SKINS].forEach((s) => GLOBAL_BY_ID.set(s.id, s));
 const GLOBAL_RAW: Skin[] = [...GLOBAL_BY_ID.values()];
 
 const GLOBAL_TIER: Record<RarityKey, Skin[]> = {
@@ -86,13 +87,13 @@ GLOBAL_TIER.covert.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id))
 GLOBAL_TIER.rare.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id));
 
 /* kategoriye göre havuz — yeni temalı kasalar için */
-function catsOf(ids: string[], opts?: { includeMarin?: boolean }): Skin[] {
-  const includeMarin = opts?.includeMarin ?? false;
-  return GLOBAL_RAW.filter((s) => (includeMarin || !isMarinSkin(s.id)) && ids.includes(WEAPON_CAT[s.weapon] ?? ""));
+function catsOf(ids: string[], opts?: { includeSpecial?: boolean }): Skin[] {
+  const includeSpecial = opts?.includeSpecial ?? false;
+  return GLOBAL_RAW.filter((s) => (includeSpecial || !isSpecialExclusiveSkin(s.id)) && ids.includes(WEAPON_CAT[s.weapon] ?? ""));
 }
-function tierOf(pool: Skin[], tier: RarityKey, opts?: { includeMarin?: boolean }): string[] {
-  const includeMarin = opts?.includeMarin ?? false;
-  return pool.filter((s) => (includeMarin || !isMarinSkin(s.id)) && s.rarity === tier).map((s) => s.id);
+function tierOf(pool: Skin[], tier: RarityKey, opts?: { includeSpecial?: boolean }): string[] {
+  const includeSpecial = opts?.includeSpecial ?? false;
+  return pool.filter((s) => (includeSpecial || !isSpecialExclusiveSkin(s.id)) && s.rarity === tier).map((s) => s.id);
 }
 
 /* CS gerçek oranlarına yakın ağırlıklar (toplam 100.000) —
@@ -117,21 +118,21 @@ const W_CASE: Partial<Record<RarityKey, number>> = {
   rare: 1,
 };
 
-function isMarinSkin(id: string): boolean {
-  return id.startsWith("marin-");
+function isSpecialExclusiveSkin(id: string): boolean {
+  return id.startsWith("marin-") || id.startsWith("sketch-");
 }
 
-function byTier(tier: RarityKey, opts?: { includeMarin?: boolean }): string[] {
-  const includeMarin = opts?.includeMarin ?? false;
+function byTier(tier: RarityKey, opts?: { includeSpecial?: boolean }): string[] {
+  const includeSpecial = opts?.includeSpecial ?? false;
   return GLOBAL_TIER[tier]
-    .filter((s) => includeMarin || !isMarinSkin(s.id))
+    .filter((s) => includeSpecial || !isSpecialExclusiveSkin(s.id))
     .map((s) => s.id);
 }
 
 /* --- temalı kasa havuzları --- */
 const KNIFE_POOL = catsOf(["Knives", "Gloves"]);
-const AK_POOL = GLOBAL_RAW.filter((s) => s.weapon === "AK-47");
-const AWP_POOL = GLOBAL_RAW.filter((s) => s.weapon === "AWP");
+const AK_POOL = GLOBAL_RAW.filter((s) => !isSpecialExclusiveSkin(s.id) && s.weapon === "AK-47");
+const AWP_POOL = GLOBAL_RAW.filter((s) => !isSpecialExclusiveSkin(s.id) && s.weapon === "AWP");
 const PISTOL_POOL = catsOf(["Pistols"]);
 
 const CASES_RAW: CaseDef[] = [
@@ -447,6 +448,48 @@ const CASES_RAW: CaseDef[] = [
         "marin-karambit-lace",
         "marin-butterfly-charm",
         "marin-talon-gyaru-queen",
+      ],
+    },
+  },
+  {
+    id: "sketch-case",
+    name: "El Çizimi Sanat Kasası",
+    img: "/images/skins/sketch-case.png",
+    price: 0,
+    accent: "#e5c07b",
+    tagline: "Karakalem & eskiz şaheserleri — 20 özel el çizimi skin! ✏️ Şeffaf",
+    hot: true,
+    sealed: true,
+    contents: {
+      milspec: [
+        "sketch-mp9-scribble",
+        "sketch-mp7-graphite-mesh",
+        "sketch-ump-charcoal-paw",
+        "sketch-nova-blueprint",
+        "sketch-mac10-sketchy",
+      ],
+      restricted: [
+        "sketch-glock-doodle-chaos",
+        "sketch-ssg-falcon-lines",
+        "sketch-galil-pencil-storm",
+        "sketch-famas-lotus-ink",
+        "sketch-p90-crosshatch-viper",
+      ],
+      classified: [
+        "sketch-m4a4-howl-sketch",
+        "sketch-m4a1s-ink-samurai",
+        "sketch-deagle-hand-skull",
+        "sketch-usp-blueprint",
+      ],
+      covert: [
+        "sketch-ak47-dragon-pen",
+        "sketch-awp-charcoal-beast",
+      ],
+      rare: [
+        "sketch-butterfly-graphite",
+        "sketch-karambit-blueprint",
+        "sketch-skeleton-phantom",
+        "sketch-huntsman-pencil",
       ],
     },
   },
@@ -894,8 +937,8 @@ function enrichCase(c: CaseDef): CaseDef {
   ) as CaseDef["contents"];
   (Object.keys(contents) as RarityKey[]).forEach((t) => {
     const existing = contents[t] ?? [];
-    // Marin kasası hariç, marin skinleri başka kasalara eklenmesin
-    const pool = byTier(t).filter((id) => !existing.includes(id) && (c.id === "marin-kitagawa" || !isMarinSkin(id)));
+    // Özel kasalar (Marin, Sketch vb.) hariç, bu skinler genel kasalara dağıtılmaz
+    const pool = byTier(t).filter((id) => !existing.includes(id) && !isSpecialExclusiveSkin(id));
     const cap = ENRICH_CAPS[t] ?? 30;
     if (existing.length >= cap || pool.length === 0) return;
     const start = hashStr(c.id + "::" + t) % pool.length;
@@ -907,7 +950,7 @@ function enrichCase(c: CaseDef): CaseDef {
 }
 
 function ensureSkinCount(c: CaseDef): CaseDef {
-  /* sealed kasalar (gift, zeus-case vb.) içerikleri korunur — tamamlayıcı eklenmez */
+  /* sealed kasalar (gift, zeus-case, marin, sketch vb.) içerikleri korunur — tamamlayıcı eklenmez */
   if (c.sealed) return c;
   const contents: CaseDef["contents"] = Object.fromEntries(
     Object.entries(c.contents).map(([k, v]) => [k, [...(v ?? [])]])
@@ -921,7 +964,7 @@ function ensureSkinCount(c: CaseDef): CaseDef {
     let added = false;
     for (const t of tiers) {
       if (total() >= MIN_CASE_SKINS) break;
-      const pool = byTier(t).filter((id) => !(contents[t] ?? []).includes(id) && (c.id === "marin-kitagawa" || !isMarinSkin(id)));
+      const pool = byTier(t).filter((id) => !(contents[t] ?? []).includes(id) && !isSpecialExclusiveSkin(id));
       if (pool.length) {
         contents[t] = [...(contents[t] ?? []), pool[0]];
         added = true;
