@@ -4256,6 +4256,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         .map((p) => ({
           amount: Math.max(100, Math.min(10_000_000, Math.round(p.amount) || 0)),
           bonus: Math.max(0, Math.min(200, Math.round(p.bonus) || 0)),
+          /* hediyeler korunur — eskiden burada siliniyordu, bu yüzden panelden
+             eklenen kasa/skin hediyeleri hiç kaydedilmiyordu */
+          gifts: (p.gifts ?? [])
+            .filter((g) =>
+              g && (g.kind === "case" ? !!CASES.find((c) => c.id === g.id) : !!SKIN_MAP[g.id])
+            )
+            .map((g) => ({
+              kind: g.kind,
+              id: g.id,
+              count: Math.max(1, Math.min(10, Math.round(g.count) || 1)),
+            }))
+            .slice(0, 4),
         }))
         .filter((p) => p.amount > 0)
         .sort((a, b) => a.amount - b.amount);
@@ -4529,7 +4541,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             if (d.status === "rejected" && d.held) {
               me.balance = Math.round(me.balance + d.amount); // iade
             } else if (d.status === "approved" && !d.held) {
-              me.balance = Math.max(0, Math.round(me.balance - d.amount));
+              me.balance = Math.max(0, Math.round(me.balance - (d.offered ?? d.amount)));
             }
           } else if (d.status === "approved") {
             /* Yetkili skin hediyesi — envantere ekle */
@@ -4548,7 +4560,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
             } else {
               /* Eski sürümden kalan başlangıç bonusları artık uygulanmaz. */
               const bonus = d.method === "Başlangıç Bonusu" ? 0 : Math.max(0, d.bonus ?? 0);
-              const delta = d.method === "Başlangıç Bonusu" ? 0 : d.amount + Math.round((d.amount * bonus) / 100);
+              /* Yetkilinin onayladığı tutar + komisyon dikkate alınır:
+                 karşı teklif (offered) ve komisyon (commissionPct) yoksayılıyordu. */
+              const comm = Math.min(90, Math.max(0, d.commissionPct ?? 0));
+              const base = typeof d.offered === "number" ? d.offered : d.amount;
+              const net = base < 0 ? base : Math.round((base * (100 - comm)) / 100);
+              const delta = d.method === "Başlangıç Bonusu" ? 0 : net + Math.round((net * bonus) / 100);
               me.balance = Math.max(0, Math.round(me.balance + delta));
             }
 
@@ -4601,15 +4618,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
                   ? `Skin hediyesi: ${d.skinName ?? d.skinId}`
                   : d.amount >= 0
                     ? `${money(
-                        Math.max(
-                          0,
-                          Math.round(((d.offered ?? d.amount) * (100 - Math.min(90, Math.max(0, d.commissionPct ?? 0)))) / 100)
-                        ) + Math.round((d.amount * Math.max(0, d.bonus ?? 0)) / 100)
+                        (() => {
+                          const net = Math.max(
+                            0,
+                            Math.round(((d.offered ?? d.amount) * (100 - Math.min(90, Math.max(0, d.commissionPct ?? 0)))) / 100)
+                          );
+                          return net + Math.round((net * Math.max(0, d.bonus ?? 0)) / 100);
+                        })()
                       )} hesabına eklendi${
                         (d.commissionPct ?? 0) > 0
                           ? ` (%${d.commissionPct} komisyon)`
                           : (d.bonus ?? 0) > 0
-                            ? ` (+${money(Math.round((d.amount * d.bonus!) / 100))} bonus)`
+                            ? ` (+${money(Math.round(((d.offered ?? d.amount) * d.bonus!) / 100))} bonus)`
                             : ""
                       }`
                     : `${money(Math.abs(d.amount))} hesabından silindi`,
@@ -4641,8 +4661,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   /* --------- profil yayını (diğerleri görsün diye) --------- */
   useEffect(() => {
-    if (!syncUrl || !user || user.status !== "approved") return;
-    const iv = window.setInterval(() => {
+    /* Sunucu kodu (MQTT) modunda da yayınla — eskiden yalnızca URL modunda
+       çalışıyordu, bu yüzden admin paneli/liderlik/topluluk canlı veriyi
+       göremiyordu (bakiye 0, seviye 1, 0 kasa görünüyordu). */
+    if ((!syncUrl && !syncCode) || !user || user.status !== "approved") return;
+    const publish = () => {
       updateMe((me) => {
         const wk = weekKey();
         if (me.weekBase?.key !== wk) {
@@ -4653,6 +4676,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           opened: me.stats.opened,
           invCount: me.inventory.length,
           level: levelFromSpent(me.stats.spent),
+          /* liderlik tabloları bunları okuyordu ama hiç yayınlanmıyordu */
+          spent: me.stats.spent,
+          bestDrop: me.stats.bestDrop,
           vip: (me.vipLevel ?? 0) > 0,
           vipLevel: me.vipLevel ?? 0,
           showcase: (me.showcase ?? [])
@@ -4668,9 +4694,12 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           ts: Date.now(),
         };
       });
-    }, 6000);
+    };
+    /* bağlanır bağlanmaz bir kez yayınla — 6 sn beklemeden görünür ol */
+    publish();
+    const iv = window.setInterval(publish, 6000);
     return () => clearInterval(iv);
-  }, [syncUrl, user?.key, user?.status, updateMe]);
+  }, [syncUrl, syncCode, user?.key, user?.status, updateMe]);
 
   /* --------- admin: üyelik onayı — tüm hesaplar 0 bakiye ile başlar --------- */
   const approveUser = useCallback(

@@ -52,7 +52,7 @@ import {
 import { click, coinDing } from "../lib/audio";
 import { useGame, levelFromSpent, weeklyStats } from "../store/Game";
 import { SKIN_MAP, RARITY, hypotheticalSkinPrice, type Skin } from "../data/skins";
-import { DEFAULT_DEPOSIT_PACKS, type DepositReq } from "../store/db";
+import { DEFAULT_DEPOSIT_PACKS, type Account, type DepositReq } from "../store/db";
 import { CASES, previewCasePrice, toCaseDef } from "../data/cases";
 import { MAX_STICKERS, STICKERS } from "../data/stickers";
 import { WEARS, rollFloat, type WearKey } from "../data/wear";
@@ -496,7 +496,19 @@ export function AdminPanel() {
   /* başka cihazdan/sync'ten gelen global çarpanı panele yansıt */
   useEffect(() => {
     setPriceGlobal(String(priceSettings?.global ?? 100));
+    /* nadirlik/skin kutularındaki eski taslak değerler de tazelensin —
+       aksi halde panel senkron sonrası eski yüzdeleri gösteriyordu */
+    setPriceRar({});
+    setPriceSkinVal((v) => (priceSkinId ? String(priceSettings?.bySkin?.[priceSkinId] ?? 100) : v));
   }, [priceSettings?.ts]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* senkron ayarları başka bir sekmeden/cihazdan değişirse kutuları tazele */
+  useEffect(() => {
+    setUrlInput(syncUrl ?? "");
+  }, [syncUrl]);
+  useEffect(() => {
+    setCodeInput(syncCode ?? "");
+  }, [syncCode]);
 
   /* dalga ayarları sync'ten geldiğinde panele yansıt */
   useEffect(() => {
@@ -662,15 +674,33 @@ export function AdminPanel() {
     setConfirmAdj(null);
   }
 
+  /* Uzak oyuncuların bakiye/istatistikleri bu cihazda tutulmaz; buluttan gelen
+     genel profil (pub) tek gerçek kaynaktır. Yerel kayıt boşsa ya da pub
+     tazeyse pub kazanır — aksi halde panelde herkes "0 ₺ / Seviye 1" görünür. */
+  const liveOf = useCallback((u: Account) => {
+    const pub = u.pub;
+    const online = !!pub && admNow - pub.ts < 90000;
+    const localEmpty = u.balance === 0 && u.stats.opened === 0 && u.inventory.length === 0;
+    const usePub = !!pub && (online || localEmpty);
+    return {
+      online,
+      fromCloud: usePub,
+      balance: usePub ? pub!.balance : u.balance,
+      opened: usePub ? (pub!.opened ?? 0) : u.stats.opened,
+      invCount: usePub ? (pub!.invCount ?? 0) : u.inventory.length,
+      level: usePub ? (pub!.level ?? levelFromSpent(pub!.spent ?? 0)) : levelFromSpent(u.stats.spent),
+    };
+  }, [admNow]);
+
   const players = useMemo(
     () =>
       allUsers
         .filter((u) => u.name.toLowerCase().includes(q.trim().toLowerCase()))
-        .sort((a, b) => b.balance - a.balance),
-    [allUsers, q]
+        .sort((a, b) => liveOf(b).balance - liveOf(a).balance),
+    [allUsers, q, liveOf]
   );
 
-  const totalBalance = allUsers.reduce((a, u) => a + u.balance, 0);
+  const totalBalance = allUsers.reduce((a, u) => a + liveOf(u).balance, 0);
   const approvedCount = allUsers.filter((u) => u.status === "approved").length;
 
   const SECTIONS: { key: Sec; label: string; Icon: typeof Users; badge: number }[] = [
@@ -3718,25 +3748,31 @@ export function AdminPanel() {
                       </span>
                     </div>
                     <div className="text-[11px] text-white/35">
-                      Seviye {levelFromSpent(u.stats.spent)} • {u.stats.opened} kasa • {u.inventory.length} eşya
+                      Seviye {liveOf(u).level} • {liveOf(u).opened} kasa • {liveOf(u).invCount} eşya
                     </div>
                   </div>
 
                   <div className="text-right">
                     {(() => {
-                      const fresh = u.pub && Date.now() - u.pub.ts < 60000;
+                      const live = liveOf(u);
                       return (
-                        <div className="flex items-center justify-end gap-1.5 font-display text-base font-black text-emerald-400">
-                          {fresh && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="Çevrimiçi" />}
-                          {money(fresh ? u.pub!.balance : u.balance)}
-                        </div>
+                        <>
+                          <div className="flex items-center justify-end gap-1.5 font-display text-base font-black text-emerald-400">
+                            {live.online && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" title="Çevrimiçi" />
+                            )}
+                            {money(live.balance)}
+                          </div>
+                          <div className="text-[9px] text-white/25">
+                            {live.online
+                              ? "canlı bakiye"
+                              : live.fromCloud
+                                ? `son görülme ${ago(u.pub!.ts)}`
+                                : "yerel kayıt"}
+                          </div>
+                        </>
                       );
                     })()}
-                    {u.pub && Date.now() - u.pub.ts < 60000 ? (
-                      <div className="text-[9px] text-white/25">canlı bakiye</div>
-                    ) : (
-                      <div className="text-[9px] text-white/25">yerel kayıt</div>
-                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-1.5">

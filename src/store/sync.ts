@@ -15,6 +15,7 @@ import {
   type DepositPackSettings,
   type CouponSettings,
   type CustomCase,
+  type AdminLogEntry,
 } from "./db";
 
 /* -------------------------------------------------------------
@@ -83,6 +84,8 @@ export interface CloudDoc {
   shopBotAt?: number;
   /** admin reklamları — id birleşimi (removed damgası yayılır) */
   ads?: AdBanner[];
+  /** yetkili denetim kaydı — id birleşimi (tüm admin cihazları aynı kaydı görür) */
+  adminLog?: AdminLogEntry[];
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -133,6 +136,7 @@ export function toCloudDoc(db: DB): CloudDoc {
       .slice(0, 300),
     shopPayments: [...(db.shopPayments ?? [])].sort((a, b) => a.ts - b.ts).slice(-400),
     shopBotAt: db.shopBotAt,
+    adminLog: [...(db.adminLog ?? [])].sort((a, b) => b.ts - a.ts).slice(0, 300),
     ads: (db.ads ?? [])
       .filter((a) => !a.removed || Date.now() - a.ts < 7 * 24 * 3600 * 1000)
       .sort((a, b) => b.ts - a.ts)
@@ -177,7 +181,11 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     settings: local.settings,
     /* etkinlik alanlarını yerelden başlat — silme/iptal (ts) bulutun eski halinden önce gelir */
     announcement: local.announcement,
-    raffle: local.raffle,
+    /* çekiliş kopyalanır: aşağıdaki katılımcı birleşimi yerel nesneyi
+       mutasyona uğratıyordu → değişiklik "fark yok" sanılıp kaydedilmiyordu */
+    raffle: local.raffle
+      ? { ...local.raffle, participants: { ...(local.raffle.participants ?? {}) } }
+      : local.raffle,
     firstLogin: local.firstLogin,
     /* pazar: kimliğe göre birleş — en yeni durum (removed dahil) kazanır */
     marketListings: mergeMarket(local.marketListings ?? [], cloud.market ?? []),
@@ -190,6 +198,16 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     ads: mergeMarket(local.ads ?? [], cloud.ads ?? []),
     /* jackpot yerel tur durumu — bulut yalnızca meta paylaşır (durum korunur) */
     jackpot: local.jackpot,
+    /* --- YEREL DURUM ALANLARI ---
+       Bunlar birleşimde MUTLAKA yerelden başlatılmalı; aksi halde her senkron
+       turunda sıfırlanır (kutlama/sıfırlama olayları yayılmaz, denetim kaydı
+       silinir, sezon penceresi ve VIP damgası kaybolur). */
+    adminLog: [...(local.adminLog ?? [])],
+    celebration: local.celebration,
+    moneyReset: local.moneyReset,
+    shopBotAt: local.shopBotAt,
+    vipResetAt: local.vipResetAt,
+    season: local.season,
     chat: [...(local.chat ?? [])].slice(-200),
     chatReset: local.chatReset,
     caseSale: local.caseSale,
@@ -385,6 +403,18 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     out.customCases = [...cmap.values()].sort((a, b) => a.ts - b.ts);
   }
 
+  /* denetim kaydı — id birleşimi, en yeni 300 kayıt */
+  {
+    const lmap = new Map<string, AdminLogEntry>();
+    (out.adminLog ?? []).forEach((l) => {
+      if (l && l.id) lmap.set(l.id, l);
+    });
+    (cloud.adminLog ?? []).forEach((l) => {
+      if (l && l.id && !lmap.has(l.id)) lmap.set(l.id, l);
+    });
+    out.adminLog = [...lmap.values()].sort((a, b) => b.ts - a.ts).slice(0, 300);
+  }
+
   /* bot müşteri damgası — en yeni ts kazanır (çift tur engeli) */
   if (cloud.shopBotAt && cloud.shopBotAt > (out.shopBotAt ?? 0)) out.shopBotAt = cloud.shopBotAt;
 
@@ -548,11 +578,17 @@ let forceFlag = false;
 let inFlight = false;
 let lastPushedJson = "";
 let lastSeenJson = "";
+let forceHandler: (() => void) | null = null;
 
 export function stopSync() {
   if (timer !== null) {
     clearInterval(timer);
     timer = null;
+  }
+  /* dinleyici birikmesin — her startSync yenisini ekliyordu */
+  if (forceHandler) {
+    window.removeEventListener("skyline:sync-force", forceHandler);
+    forceHandler = null;
   }
 }
 
@@ -611,12 +647,13 @@ export function startSync(url: string, h: SyncHandlers) {
 
   void tick();
   timer = window.setInterval(() => void tick(), 4000);
-  window.addEventListener("skyline:sync-force", () => {
+  forceHandler = () => {
     if (!forceFlag) {
       forceFlag = true;
       void tick();
     }
-  });
+  };
+  window.addEventListener("skyline:sync-force", forceHandler);
 }
 
 export function forceSync() {
