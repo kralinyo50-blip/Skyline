@@ -278,5 +278,11 @@ body {
 
 /* skin image blend — unify CDN transparent pngs + AI dark-bg renders */
 .skin-img-mask {
-  mask-image: radial-gradient(120% 120% at 50% 46%, #000 62%, transparent 98%);
+  mask-image: radial-gradient(120% 120% at 50% 46%, #000 72%, transparent 98%);
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: crisp-edges;
+  image-rendering: high-quality;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform;
 }

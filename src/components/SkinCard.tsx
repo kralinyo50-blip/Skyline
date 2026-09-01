@@ -37,8 +37,11 @@ export function SkinImg({
       loading="lazy"
       draggable={false}
       onError={() => setErr(true)}
-      className={cn("skin-img-mask select-none object-cover", className)}
-      style={{ filter: `drop-shadow(0 10px 18px rgba(0,0,0,0.55))` }}
+      className={cn("skin-img-mask select-none object-contain", className)}
+      style={{
+        filter: `drop-shadow(0 10px 18px rgba(0,0,0,0.55))`,
+        imageRendering: "auto",
+      }}
     />
   );
 }
