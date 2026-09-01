@@ -934,7 +934,7 @@ export function MarketView() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.94 }}
-                  className="flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800"
+                  className="group flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800 hover:overflow-visible hover:z-20 transition-all duration-200"
                   style={{
                     backgroundImage: `radial-gradient(120% 80% at 50% 0%, ${r.color}14, transparent 55%)`,
                   }}
@@ -975,7 +975,7 @@ export function MarketView() {
                         HATIRA
                       </span>
                     )}
-                    <SkinImg skin={s} className="mx-auto h-20 w-full" />
+                    <SkinImg skin={s} className="mx-auto h-20 w-full transition-transform duration-300 ease-out group-hover:scale-[1.35]" />
                     {l.stickers && l.stickers.length > 0 && (
                       <div className="absolute bottom-1 left-2 flex gap-0.5">
                         {l.stickers.slice(0, 4).map((sid, i) => {
@@ -1173,7 +1173,7 @@ export function MarketView() {
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.94 }}
-                      className="flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800"
+                      className="group flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800 hover:overflow-visible hover:z-20 transition-all duration-200"
                       style={{
                         backgroundImage: `radial-gradient(120% 80% at 50% 0%, ${r.color}14, transparent 55%)`,
                       }}
@@ -1198,7 +1198,7 @@ export function MarketView() {
                             <Boxes className="h-3 w-3" /> {maxQty} ADET
                           </span>
                         )}
-                        <SkinImg skin={s} className="mx-auto h-20 w-full" />
+                        <SkinImg skin={s} className="mx-auto h-20 w-full transition-transform duration-300 ease-out group-hover:scale-[1.35]" />
                         <div className="mt-1 truncate text-[10px] uppercase tracking-wider text-white/40">
                           {s.weapon}
                         </div>
@@ -1293,13 +1293,13 @@ export function MarketView() {
                   {invPageItems.map(({ item, skin, val }) => (
                     <div
                       key={item.uid}
-                      className="flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800"
+                      className="group flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800 hover:overflow-visible hover:z-20 transition-all duration-200"
                       style={{
                         backgroundImage: `radial-gradient(120% 80% at 50% 0%, ${RARITY[skin.rarity].color}14, transparent 55%)`,
                       }}
                     >
                       <div className="relative p-2.5">
-                        <SkinImg skin={skin} className="mx-auto h-16 w-full" />
+                        <SkinImg skin={skin} className="mx-auto h-16 w-full transition-transform duration-300 ease-out group-hover:scale-[1.35]" />
                         {(copyCounts[item.skinId] ?? 0) > 1 && (
                           <span className="absolute left-2 top-2 flex items-center gap-1 rounded bg-brand-500/20 px-1.5 py-0.5 text-[9px] font-black text-brand-300">
                             <Boxes className="h-3 w-3" /> x{copyCounts[item.skinId]} kopya

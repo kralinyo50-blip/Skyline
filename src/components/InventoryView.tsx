@@ -71,7 +71,7 @@ function ItemCard({
 
   return (
     <div
-      className="flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800"
+      className="group flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800 hover:overflow-visible hover:z-20 transition-all duration-200"
       style={{ backgroundImage: `radial-gradient(120% 80% at 50% 0%, ${color}16, transparent 55%)` }}
     >
       <div className="relative cursor-pointer p-2.5" onClick={onDetail}>
