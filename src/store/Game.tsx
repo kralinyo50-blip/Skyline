@@ -2456,7 +2456,10 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   /** Dalga sonlandığında kademe çarpanlarını fiyat ayarlarına işle */
   const foldWaveIntoPrices = useCallback((wave: EconomyWave) => {
     mutate((draft) => {
-      if (!draft.economyWave || draft.economyWave.id !== wave.id) return;
+      /* idempotent: başka sekme/cihaz bu dalgayı zaten işlediyse (cancelled)
+         tekrar fold ETME — aksi halde çarpan kendisiyle çarpılıp 10x clamp'e
+         sıçrar ve uygulanan seviye bozulur. */
+      if (!draft.economyWave || draft.economyWave.id !== wave.id || draft.economyWave.cancelled) return;
       draft.priceSettings = foldWaveIntoSettings(draft.priceSettings, wave);
       /* cancelled bayrağı: gözlemci bir daha fold etmez */
       draft.economyWave = { ...draft.economyWave, cancelled: true, permanent: false, ts: Date.now() };
@@ -2642,6 +2645,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           : "up";
       mutate((draft) => {
         if (!draft.economyConfig) return;
+        /* TAZE DURUM KONTROLÜ: interval başındaki dbRef eski olabilir (iki sekme/
+           cihaz). Başka sekme/cihaz az önce dalga ürettiyse onu ezme. */
+        if (draft.economyWave && !draft.economyWave.cancelled && draft.economyWave.endsAt > now) return;
         /* önceki dalga bitmiş ama fold edilmemişse seviyeyi koru */
         const prev = draft.economyWave;
         if (prev && !prev.cancelled) {
