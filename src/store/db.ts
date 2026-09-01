@@ -468,6 +468,10 @@ export interface PriceSettings {
   global?: number;
   byRarity?: Partial<Record<RarityKey, number>>;
   bySkin?: Record<string, number>;
+  /** Bu ayarlara en son işlenen (katlanan) dalga damgası.
+   *  Cross-device merge'de dalgadan habersiz STALE yazımların fold edilmiş
+   *  seviyeyi ezmesini engeller (17k→40k→17k revert). depth = zincir derinliği. */
+  foldOf?: { waveId: string; at: number; depth: number } | null;
 }
 
 /** Fiyat geçmişi karesi — fiyatı etkileyen her olayda bir kayıt düşer.

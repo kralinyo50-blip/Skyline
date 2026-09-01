@@ -3018,6 +3018,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           global: patch.global ?? draft.priceSettings?.global ?? 100,
           byRarity: patch.byRarity ?? draft.priceSettings?.byRarity ?? {},
           bySkin: patch.bySkin ?? draft.priceSettings?.bySkin ?? {},
+          /* dalga katlaması korunur — aksi halde bu yazım merge'de fold'u ezer */
+          foldOf: draft.priceSettings?.foldOf,
         };
         pushPriceSnap(draft, "Fiyat ayarı");
       });
@@ -3065,15 +3067,23 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
    *  doğal bitişte tepe (endsAt), manuel durdurmada o anki seviye işlenir —
    *  fade-in ortasında durdurulursa tam o anki seviyede kalır (GRADUAL). */
   const foldWaveIntoSettings = useCallback((ps: PriceSettings | null | undefined, wave: EconomyWave): PriceSettings => {
-    const base = ps ?? { ts: Date.now(), by: wave.by, global: 100, byRarity: {}, bySkin: {} };
-    const byRarity: NonNullable<PriceSettings["byRarity"]> = { ...(base.byRarity ?? {}) };
-    const at = Math.min(Date.now(), wave.endsAt ?? Date.now());
-    (["consumer", "industrial", "milspec", "restricted", "classified", "covert", "rare"] as const).forEach((r) => {
-      const cur = byRarity[r] ?? 100;
-      const f = waveMultiplierAt(r, wave, at);
-      byRarity[r] = Math.max(10, Math.min(1000, Math.round(cur * f * 10) / 10));
-    });
-    return { ts: Date.now(), by: wave.by, global: base.global ?? 100, byRarity, bySkin: { ...(base.bySkin ?? {}) } };
+      const base = ps ?? { ts: Date.now(), by: wave.by, global: 100, byRarity: {}, bySkin: {} };
+      const byRarity: NonNullable<PriceSettings["byRarity"]> = { ...(base.byRarity ?? {}) };
+      const at = Math.min(Date.now(), wave.endsAt ?? Date.now());
+      (["consumer", "industrial", "milspec", "restricted", "classified", "covert", "rare"] as const).forEach((r) => {
+        const cur = byRarity[r] ?? 100;
+        const f = waveMultiplierAt(r, wave, at);
+        byRarity[r] = Math.max(10, Math.min(1000, Math.round(cur * f * 10) / 10));
+      });
+      return {
+        ts: Date.now(),
+        by: wave.by,
+        global: base.global ?? 100,
+        byRarity,
+        bySkin: { ...(base.bySkin ?? {}) },
+        /* dalga damgası: merge'de stale yazımlar bu katlamayı EZEMEZ */
+        foldOf: { waveId: wave.id, at, depth: (base.foldOf?.depth ?? 0) + 1 },
+      };
   }, []);
 
   /** Dalga sonlandığında kademe çarpanlarını fiyat ayarlarına işle */
@@ -3205,7 +3215,15 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const now = Date.now();
     mutate((draft) => {
       /* 1) tüm fiyat çarpanları %100'e — orijinal katalog fiyatları */
-      draft.priceSettings = { ts: now, by: me.name, global: 100, byRarity: {}, bySkin: {} };
+      draft.priceSettings = {
+        ts: now,
+        by: me.name,
+        global: 100,
+        byRarity: {},
+        bySkin: {},
+        /* bilinçli sıfırlama damgası: daha eski fold'lu ayarlar merge'de bunu ezemez */
+        foldOf: { waveId: draft.economyWave?.id ?? "__reset__", at: now, depth: (draft.priceSettings?.foldOf?.depth ?? 0) + 1 },
+      };
       /* 2) aktif dalga iptal (kalıcı bayrağı düşürülür — fold tetiklenmez) */
       if (draft.economyWave) {
         draft.economyWave = { ...draft.economyWave, cancelled: true, permanent: false, ts: now, endsAt: now };

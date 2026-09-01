@@ -312,7 +312,7 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     out.caseSale = cloud.caseSale;
   else if (!cloud.caseSale && !out.caseSale) out.caseSale = undefined;
 
-  /* fiyat ayarları — en yeni ts kazanır */
+  /* fiyat ayarları — en yeni ts kazanır (dalga damga koruması aşağıda) */
   if (cloud.priceSettings && (!out.priceSettings || cloud.priceSettings.ts > out.priceSettings.ts))
     out.priceSettings = cloud.priceSettings;
   else if (!cloud.priceSettings && !out.priceSettings) out.priceSettings = undefined;
@@ -326,6 +326,28 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
   if (cloud.economyWave && (!out.economyWave || cloud.economyWave.ts > out.economyWave.ts))
     out.economyWave = cloud.economyWave;
   else if (!cloud.economyWave && !out.economyWave) out.economyWave = undefined;
+
+  /* DALGA KATLAMA KORUMASI — cross-device'de dalgadan habersiz (stale) bir
+     priceSettings yazımı, fold edilmiş kalıcı seviyeyi EZEMEZ (17k→40k→17k).
+     foldOf damgalı taraf, damgasız (base/stale) tarafa her zaman üstün gelir;
+     iki tarafta da damga varsa daha derin (sonra en geç) katlama kazanır. */
+  {
+    const localPS = local.priceSettings;
+    const cloudPS = cloud.priceSettings;
+    const localFold = localPS?.foldOf;
+    const cloudFold = cloudPS?.foldOf;
+    if (localFold || cloudFold) {
+      if (!localFold || !cloudFold) {
+        /* yalnızca bir taraf damgalı → damgalı kazanır (ts fark etmez) */
+        out.priceSettings = localFold ? localPS! : cloudPS!;
+      } else if (localFold.depth !== cloudFold.depth) {
+        out.priceSettings = localFold.depth > cloudFold.depth ? localPS! : cloudPS!;
+      } else if (localFold.at !== cloudFold.at) {
+        out.priceSettings = localFold.at > cloudFold.at ? localPS! : cloudPS!;
+      }
+      /* aynı derinlik + aynı at → ts kazananı zaten yukarıda seçildi */
+    }
+  }
 
   /* otomatik dalga ayarları — en yeni ts kazanır */
   if (cloud.economyConfig && (!out.economyConfig || cloud.economyConfig.ts > out.economyConfig.ts))
@@ -534,7 +556,6 @@ export function startSync(url: string, h: SyncHandlers) {
     if (inFlight) return;
     inFlight = true;
     try {
-      const local = h.getLocal();
       const res = await fetch(`${url}${url.includes("?") ? "&" : "?"}t=${Date.now()}`, {
         cache: "no-store",
       });
@@ -547,6 +568,9 @@ export function startSync(url: string, h: SyncHandlers) {
         cloud = raw as CloudDoc;
       }
 
+      /* local'i fetch'ten SONRA al — istek sürerken olan katlama/iptal gibi
+         yerel değişiklikler stale snapshot ile ezilmesin. */
+      const local = h.getLocal();
       const merged = mergeCloud(local, cloud);
       const localChanged = JSON.stringify(merged) !== JSON.stringify(local);
       if (localChanged) h.apply(merged);
