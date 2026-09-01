@@ -2,6 +2,7 @@ import { money, priceOf, MIN_PRICE } from "../config";
 import { STICKERS } from "./stickers";
 import { EXTRA_SKINS } from "./extraSkins";
 import { NEW_SKINS } from "./newSkins";
+import { MARIN_SKINS } from "./marinSkins";
 import { LEGEND_SKINS } from "./legends";
 
 export type RarityKey =
@@ -288,12 +289,15 @@ export const SKINS: Skin[] = [
   ...BASE_SKINS.map(scaled),
   ...EXTRA_SKINS.map(scaled),
   ...NEW_SKINS.map(scaled),
+  ...MARIN_SKINS.map(scaled),
   ...BASE_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeSt),
   ...BASE_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeSv),
   ...EXTRA_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeSt),
   ...EXTRA_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeSv),
   ...NEW_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeSt),
   ...NEW_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeSv),
+  ...MARIN_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeSt),
+  ...MARIN_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeSv),
   ...LEGEND_SKINS,
   ...LEGEND_SKINS.filter((s) => ST_TIERS.includes(s.rarity)).map(makeLegendSt),
   ...LEGEND_SKINS.filter((s) => SV_TIERS.includes(s.rarity)).map(makeLegendSv),

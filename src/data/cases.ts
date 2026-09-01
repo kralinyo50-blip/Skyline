@@ -1,5 +1,6 @@
 import { SKIN_MAP, BASE_SKINS, RARITY, currentPriceRev, hypotheticalSkinPrice, type EconomyWaveLike, type Skin, type RarityKey, TIER_ORDER } from "./skins";
 import { NEW_SKINS } from "./newSkins";
+import { MARIN_SKINS } from "./marinSkins";
 import type { CaseSale, CustomCase, PriceSettings } from "../store/db";
 import { EXTRA_SKINS } from "./extraSkins";
 import { LEGEND_SKINS, LEGEND_IDS } from "./legends";
@@ -61,7 +62,7 @@ export function toCaseDef(c: CustomCase): CaseDef {
    Aynı id'ye sahip skinler tekilleştirilir (efsane fiyatı kazanır).
 ------------------------------------------------------------------ */
 const GLOBAL_BY_ID = new Map<string, Skin>();
-[...BASE_SKINS, ...EXTRA_SKINS, ...NEW_SKINS, ...LEGEND_SKINS].forEach((s) => GLOBAL_BY_ID.set(s.id, s));
+[...BASE_SKINS, ...EXTRA_SKINS, ...NEW_SKINS, ...MARIN_SKINS, ...LEGEND_SKINS].forEach((s) => GLOBAL_BY_ID.set(s.id, s));
 const GLOBAL_RAW: Skin[] = [...GLOBAL_BY_ID.values()];
 
 const GLOBAL_TIER: Record<RarityKey, Skin[]> = {
@@ -397,6 +398,47 @@ const CASES_RAW: CaseDef[] = [
       ],
       classified: ["ak-47-searing-rage", "glock-18-shinobu", "ump-45-k-o-factory"],
       covert: ["famas-bad-trip", "awp-printstream"],
+    },
+  },
+  {
+    id: "marin-kitagawa",
+    name: "Marin Kitagawa Kasası",
+    img: "/images/skins/marin-case.jpg",
+    price: 0,
+    accent: "#ff8ad4",
+    tagline: "My Dress-Up Darling — 18 özel anime skin! 💖",
+    hot: true,
+    anime: true,
+    sealed: true,
+    contents: {
+      milspec: [
+        "marin-mp9-kawaii",
+        "marin-p90-lolita-dream",
+        "marin-famas-blush",
+        "marin-galil-gaze",
+        "marin-mp7-choker",
+        "marin-ump-black-rose",
+        "marin-nova-lace",
+      ],
+      restricted: [
+        "marin-deagle-gyaru-heart",
+        "marin-usp-dressup-darling",
+        "marin-glock-marin-smile",
+        "marin-ssg-shizuku-ink",
+      ],
+      classified: [
+        "marin-m4a4-pink-tips",
+        "marin-m4a1s-cosplay-queen",
+      ],
+      covert: [
+        "marin-ak47-black-lobelia",
+        "marin-awp-shizuku",
+      ],
+      rare: [
+        "marin-karambit-lace",
+        "marin-butterfly-charm",
+        "marin-talon-gyaru-queen",
+      ],
     },
   },
   {
