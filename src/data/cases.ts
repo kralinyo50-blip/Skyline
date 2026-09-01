@@ -403,10 +403,10 @@ const CASES_RAW: CaseDef[] = [
   {
     id: "marin-kitagawa",
     name: "Marin Kitagawa Kasası",
-    img: "/images/skins/marin-case.jpg",
+    img: "/images/skins/marin-case.png",
     price: 0,
     accent: "#ff8ad4",
-    tagline: "My Dress-Up Darling — 18 özel anime skin! 💖",
+    tagline: "My Dress-Up Darling — 18 özel anime skin! 💖 Şeffaf",
     hot: true,
     anime: true,
     sealed: true,
