@@ -221,6 +221,10 @@ export function AdminPanel() {
     customCases,
     createCustomCase,
     deleteCustomCase,
+    adsAll,
+    addAd,
+    toggleAd,
+    removeAd,
   } = useGame();
 
   const depositPackList = useMemo(
@@ -560,6 +564,13 @@ export function AdminPanel() {
     return () => clearInterval(iv);
   }, []);
   const saleActiveNow = !!caseSale && !caseSale.cancelled && caseSale.endsAt > admNow;
+
+  /* reklam yönetimi */
+  const [adEmoji, setAdEmoji] = useState("📣");
+  const [adTitle, setAdTitle] = useState("");
+  const [adText, setAdText] = useState("");
+  const [adLink, setAdLink] = useState("");
+  const adActiveCount = adsAll.filter((a) => a.active).length;
 
   /* ekonomik dalga — canlı durum + önizleme */
   const economyActive = !!economyWave && !economyWave.cancelled && economyWave.endsAt > admNow;
@@ -1399,6 +1410,109 @@ export function AdminPanel() {
             >
               <HistoryIcon className="h-3.5 w-3.5" /> Ekonomiyi tamamen eski haline döndür
             </button>
+          </div>
+
+          {/* ============ REKLAM ============ */}
+          <div className="rounded-2xl border border-yellow-400/30 bg-gradient-to-b from-yellow-400/8 to-ink-900/70 p-5">
+            <div className="flex items-center gap-2">
+              <Megaphone className="h-4 w-4 text-yellow-300" />
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
+                Reklam Yayını
+              </span>
+              <span className="ml-auto rounded-full bg-yellow-400/15 px-2.5 py-1 text-[10px] font-black uppercase text-yellow-300">
+                {adActiveCount} aktif
+              </span>
+            </div>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-white/45">
+              Ana menünün hemen altında dönen şerit olarak tüm cihazlara yayınlanır.
+              Aktif reklamlar dükkanınıza daha çok bot müşteri de çeker.
+            </p>
+
+            <div className="mt-3 grid grid-cols-[52px_1fr] gap-1.5">
+              <input
+                value={adEmoji}
+                onChange={(e) => setAdEmoji(e.target.value)}
+                maxLength={4}
+                className="h-10 rounded-xl border border-line bg-ink-900 px-2 text-center text-lg focus:border-yellow-400/60 focus:outline-none"
+              />
+              <input
+                value={adTitle}
+                onChange={(e) => setAdTitle(e.target.value)}
+                maxLength={80}
+                placeholder="Reklam başlığı — ör: Kış sezonu %50 indirim"
+                className="h-10 rounded-xl border border-line bg-ink-900 px-3 text-xs font-bold text-white placeholder:text-white/30 focus:border-yellow-400/60 focus:outline-none"
+              />
+            </div>
+            <textarea
+              value={adText}
+              onChange={(e) => setAdText(e.target.value)}
+              maxLength={200}
+              rows={2}
+              placeholder="Reklam metni — ör: Bu hafta tüm kasalarda %50 indirim, kaçırma!"
+              className="mt-1.5 w-full resize-none rounded-xl border border-line bg-ink-900 px-3 py-2 text-xs text-white placeholder:text-white/30 focus:border-yellow-400/60 focus:outline-none"
+            />
+            <input
+              value={adLink}
+              onChange={(e) => setAdLink(e.target.value)}
+              placeholder="Bağlantı (opsiyonel) — ör: https://site.com/kampanya"
+              className="mt-1.5 h-10 w-full rounded-xl border border-line bg-ink-900 px-3 text-xs text-white placeholder:text-white/30 focus:border-yellow-400/60 focus:outline-none"
+            />
+            <button
+              onClick={() => {
+                if (!adTitle.trim() || !adText.trim()) {
+                  pushToast({ kind: "lose", title: "Reklam boş olamaz", sub: "Başlık ve metin zorunlu" });
+                  return;
+                }
+                const res = addAd({ emoji: adEmoji, title: adTitle, text: adText, link: adLink });
+                if (res.ok) {
+                  setAdTitle("");
+                  setAdText("");
+                  setAdLink("");
+                  setAdEmoji("📣");
+                } else pushToast({ kind: "lose", title: "Yayınlanamadı", sub: res.error });
+              }}
+              className="mt-2 flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-yellow-300 to-amber-500 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110"
+            >
+              <Megaphone className="h-4 w-4" /> Reklamı Yayınla
+            </button>
+
+            {adsAll.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {adsAll.map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-center gap-2.5 rounded-xl border border-line bg-ink-900/70 px-3 py-2.5"
+                  >
+                    <span className="text-xl leading-none">{a.emoji || "📣"}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-black text-white/85">{a.title}</div>
+                      <div className="truncate text-[10px] text-white/40">
+                        {a.text}
+                        {a.link ? ` · ${a.link}` : ""}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => toggleAd(a.id)}
+                      className={
+                        a.active
+                          ? "rounded-lg bg-emerald-500/15 px-2.5 py-1.5 text-[10px] font-black uppercase text-emerald-400"
+                          : "rounded-lg bg-ink-700 px-2.5 py-1.5 text-[10px] font-black uppercase text-white/40"
+                      }
+                    >
+                      {a.active ? "Yayında" : "Kapalı"}
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm("Bu reklam kaldırılsın mı?")) removeAd(a.id);
+                      }}
+                      className="rounded-lg bg-lose/10 px-2.5 py-1.5 text-[10px] font-black uppercase text-lose transition hover:bg-lose/20"
+                    >
+                      Sil
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* ============ HAFTANIN OYUNCUSU ============ */}

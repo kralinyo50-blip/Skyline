@@ -25,14 +25,48 @@ function cd(ms: number): string {
 }
 
 export function EventBanners() {
-  const { announcement, raffle, raffleEntered, enterRaffle, setTab, caseSale, economyWave } = useGame();
+  const { announcement, raffle, raffleEntered, enterRaffle, setTab, caseSale, economyWave, ads } = useGame();
   const now = useNow();
   const active = raffle && !raffle.drawn && !raffle.cancelled && now < raffle.endsAt;
   const saleActive = !!caseSale && !caseSale.cancelled && now < caseSale.endsAt;
   const waveActive = !!economyWave && !economyWave.cancelled && now < waveFadeEnd(economyWave) && now >= (economyWave.ts ?? 0) - 1000;
 
+  /* admin reklam şeridi — ana menünün hemen altında döner */
+  const [adIx, setAdIx] = useState(0);
+  const adList = ads ?? [];
+  useEffect(() => {
+    if (adList.length < 2) return;
+    const iv = window.setInterval(() => setAdIx((i) => (i + 1) % adList.length), 6000);
+    return () => clearInterval(iv);
+  }, [adList.length]);
+  useEffect(() => {
+    if (adIx >= adList.length) setAdIx(0);
+  }, [adList.length, adIx]);
+  const ad = adList.length ? adList[Math.min(adIx, adList.length - 1)] : null;
+
   return (
     <div className="relative z-10 space-y-2 px-4 pt-3 md:px-6 xl:px-[292px]">
+      {ad && (
+        <a
+          href={ad.link || undefined}
+          target={ad.link ? "_blank" : undefined}
+          rel={ad.link ? "noopener noreferrer" : undefined}
+          onClick={ad.link ? undefined : () => setTab("shop")}
+          className="group flex w-full items-center gap-3 rounded-xl border border-yellow-400/35 bg-gradient-to-r from-yellow-400/12 via-amber-400/8 to-ink-900/70 px-4 py-2.5 text-left transition hover:border-yellow-400/70"
+        >
+          <span className="mt-0.5 shrink-0 text-lg leading-none">{ad.emoji || "📣"}</span>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[10px] font-black uppercase tracking-widest text-yellow-300">
+              {ad.title}
+            </div>
+            <div className="truncate text-xs text-white/75">{ad.text}</div>
+          </div>
+          <span className="shrink-0 rounded-lg bg-yellow-400/15 px-2.5 py-1.5 text-[10px] font-black uppercase text-yellow-300 transition group-hover:bg-yellow-400/25">
+            {ad.link ? "Bilgi Al →" : "Dükkana Git →"}
+          </span>
+        </a>
+      )}
+
       {announcement && (
         <button
           onClick={() => setTab("community")}

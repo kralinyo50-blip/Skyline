@@ -163,6 +163,8 @@ export interface ShopPayment {
 }
 
 /** Bot müşteri simülasyonu damgası — tüm cihazlarda tek elden yazılır */
+/* Bot müşteri akışı artık dinamik: popülerlik + aktif reklam + fiyat cazibesi
+   (Game.tsx shopBotGap). Eski sabit yalnızca belgeleme amaçlıdır. */
 export const SHOP_BOT_INTERVAL_MIN = 2;
 
 /* ---------------- SEZON YOLU (Season Pass) ---------------- */
@@ -707,8 +709,28 @@ export interface DB {
   claimedShop?: Record<string, string>;
   /** bot müşteri son turu (ts) — tek elden üretim */
   shopBotAt?: number;
+  /** admin reklamları — ana menü altında yayınlanır */
+  ads?: AdBanner[];
   /** aktif sezon penceresi */
   season?: SeasonState;
+}
+
+/** Admin reklam şeridi — ana menü altında döner, tüm cihazlara yayılır */
+export interface AdBanner {
+  id: string;
+  ts: number;
+  by: string;
+  /** emoji (opsiyonel, kısa) */
+  emoji?: string;
+  /** kısa başlık — şeritte kalın yazılır */
+  title: string;
+  /** açıklama metni */
+  text: string;
+  /** dış link (opsiyonel) */
+  link?: string;
+  active?: boolean;
+  /** silme damgası — sync'te yayılır */
+  removed?: boolean;
 }
 
 const LS_KEY = "skyline:v1";
@@ -747,6 +769,7 @@ export function emptyDB(): DB {
     shopPayments: [],
     claimedShop: {},
     shopBotAt: undefined,
+    ads: [],
     season: undefined,
   };
 }
@@ -796,6 +819,7 @@ export function loadDB(): DB {
     shopPayments: Array.isArray(parsed.shopPayments) ? [...parsed.shopPayments] : [],
     claimedShop: parsed.claimedShop ?? {},
     shopBotAt: parsed.shopBotAt,
+    ads: Array.isArray(parsed.ads) ? parsed.ads : [],
     season: parsed.season,
   };
 

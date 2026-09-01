@@ -18,6 +18,7 @@ import { InventoryView } from "./components/InventoryView";
 import { StatsView } from "./components/StatsView";
 import { CommunityView } from "./components/CommunityView";
 import { EventBanners } from "./components/EventBanners";
+import { SupportChat } from "./components/SupportChat";
 import { CasinoAmbience } from "./components/CasinoAmbience";
 import { CelebrationOverlay } from "./components/CelebrationOverlay";
 import { AdminPanel } from "./components/AdminPanel";
@@ -80,6 +81,7 @@ function Shell() {
       <CelebrationOverlay />
       <Toasts />
       <LiveToasts />
+      <SupportChat />
     </div>
   );
 }

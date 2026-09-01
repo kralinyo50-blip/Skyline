@@ -11,6 +11,7 @@ import {
   type PriceSnap,
   type ShopListing,
   type ShopPayment,
+  type AdBanner,
   type DepositPackSettings,
   type CouponSettings,
   type CustomCase,
@@ -80,6 +81,8 @@ export interface CloudDoc {
   shopPayments?: ShopPayment[];
   /** bot müşteri son turu — tek elden üretim damgası */
   shopBotAt?: number;
+  /** admin reklamları — id birleşimi (removed damgası yayılır) */
+  ads?: AdBanner[];
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -130,6 +133,10 @@ export function toCloudDoc(db: DB): CloudDoc {
       .slice(0, 300),
     shopPayments: [...(db.shopPayments ?? [])].sort((a, b) => a.ts - b.ts).slice(-400),
     shopBotAt: db.shopBotAt,
+    ads: (db.ads ?? [])
+      .filter((a) => !a.removed || Date.now() - a.ts < 7 * 24 * 3600 * 1000)
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 100),
   };
 }
 
@@ -180,6 +187,7 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     shopListings: mergeMarket(local.shopListings ?? [], cloud.shop ?? []),
     shopPayments: mergeById(local.shopPayments ?? [], cloud.shopPayments ?? []),
     claimedShop: local.claimedShop ?? {},
+    ads: mergeMarket(local.ads ?? [], cloud.ads ?? []),
     /* jackpot yerel tur durumu — bulut yalnızca meta paylaşır (durum korunur) */
     jackpot: local.jackpot,
     chat: [...(local.chat ?? [])].slice(-200),

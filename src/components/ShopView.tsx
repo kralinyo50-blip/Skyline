@@ -389,7 +389,7 @@ export function ShopView() {
             <div className="rounded-2xl border border-dashed border-line bg-ink-900/40 py-12 text-center">
               <div className="text-4xl">🏪</div>
               <div className="mt-2 text-sm font-bold text-white/60">Henüz vitrinde ürün yok</div>
-              <div className="mt-1 text-[11px] text-white/35">Dükkanım sekmesinden ilk ürününü koy — bot müşteriler 2 dakikada bir alışveriş yapar.</div>
+              <div className="mt-1 text-[11px] text-white/35">Dükkanım sekmesinden ürün koy — bot müşteriler popülerliğe göre gelir; reklam yayınlarsan akış artar.</div>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
@@ -539,7 +539,7 @@ export function ShopView() {
               </button>
             </div>
             <div className="mt-2.5 flex items-center gap-2 rounded-lg bg-ink-900/50 px-3 py-2 text-[10px] text-white/40">
-              💡 Bot müşteriler 2 dakikada bir mağazaları gezer; önerilen fiyatın %130'una kadar makul fiyatlı ürünleri alır.
+              💡 Bot müşteriler mağazaları gezer: herkes kendi zevkine göre (giyim, yemek, elektronik...) ve bütçesine göre alışveriş yapar. Vitrin ne kadar doluysa, reklam yayındaysa ve fiyatlar makulse o kadar çok müşteri gelir.
             </div>
           </div>
 

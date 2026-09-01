@@ -92,6 +92,7 @@ import {
   type Stats,
   type RollLog,
   type Announcement,
+  type AdBanner,
   type RaffleState,
   type FirstLoginEvent,
   type AutoSettings,
@@ -120,7 +121,6 @@ import {
   type ShopCustom,
   type SeasonProgress,
   type SeasonState,
-  SHOP_BOT_INTERVAL_MIN,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
@@ -605,9 +605,37 @@ interface GameState {
   syncCode: string | null;
   setSyncCode: (code: string | null) => void;
   syncNow: () => void;
+
+  /* reklamlar */
+  ads: AdBanner[];
+  adsAll: AdBanner[];
+  addAd: (a: { emoji?: string; title: string; text: string; link?: string }) => { ok: boolean; error?: string };
+  toggleAd: (id: string) => void;
+  removeAd: (id: string) => void;
 }
 
 const GameCtx = createContext<GameState | null>(null);
+
+/* Bot müşteri profilleri — herkes aynı ürünü almaz:
+   modacı kıyafet, gurme yemek/içecek, teknolojici elektronik,
+   evcimen ev ürünü, koleksiyoncu pahalı şey, fırsatçı en uygunu arar. */
+interface ShopperProfile {
+  cats: ShopCategory[] | null;
+  /** alt fiyat eşiği — koleksiyoncu pahalı arar */
+  minUnit: number;
+  /** önerilen satış fiyatının kaç katına kadar razı olur */
+  maxRatio: number;
+}
+const SHOPPER_PROFILES: ShopperProfile[] = [
+  { cats: ["giyim", "aksesuar"], minUnit: 0, maxRatio: 1.3 },
+  { cats: ["yemek", "icecek"], minUnit: 0, maxRatio: 1.3 },
+  { cats: ["elektronik", "aksesuar"], minUnit: 0, maxRatio: 1.3 },
+  { cats: ["ev", "yemek"], minUnit: 0, maxRatio: 1.3 },
+  { cats: ["giyim", "yemek", "icecek", "ev"], minUnit: 0, maxRatio: 1.5 },
+  { cats: null, minUnit: 4000, maxRatio: 1.6 },
+  { cats: null, minUnit: 0, maxRatio: 1.1 },
+  { cats: null, minUnit: 0, maxRatio: 1.3 },
+];
 
 /** geçerli sekme anahtarları — F5 sonrası geri yükleme doğrulaması için */
 const TAB_KEYS: Record<TabKey, true> = {
@@ -2006,57 +2034,98 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(iv);
   }, [claimShopPayments]);
 
-  /* Bot müşteriler: her 2 dakikada bir aktif ilanlardan alışveriş.
+  /* Bot müşteriler: dinamik akış — popülerlik, aktif reklam ve fiyat
+     cazibesine göre 25-150 sn arasında mağazaları gezerler. Her ziyaretçi
+     kendi profiline göre ürün seçer (modacı, gurme, teknolojici, evcimen,
+     koleksiyoncu, fırsatçı...) — herkes tişört almaz.
      Çift-cihaz yarışına karşı İKİ-FAZLI CLAIM: önce shopBotAt damgası yazılır,
      taze okuma damgayı hâlâ kendisindeyse işlemi yapan bu cihaz olur. */
   useEffect(() => {
     const iv = window.setInterval(() => {
       let fresh = loadDB();
       const now = Date.now();
-      if (now - (fresh.shopBotAt ?? 0) < SHOP_BOT_INTERVAL_MIN * 60000) return;
+      const active = (fresh.shopListings ?? []).filter((l) => !l.removed && (l.qty ?? 0) > 0);
+      const adsOn = (fresh.ads ?? []).some((a) => !a.removed && a.active);
+      const avgUnit =
+        active.length > 0 ? active.reduce((s, l) => s + Math.max(1, l.unitPrice), 0) / active.length : 0;
+
+      /* ---- akış: popülerlik + reklam + fiyat ---- */
+      let gap = 110;
+      gap -= Math.min(9, Math.floor(active.length / 5)) * 8; // her ~5 ilan müşteri çeker
+      gap -= adsOn ? 25 : 0; // aktif reklam mağazayı doldurur
+      if (avgUnit > 0 && avgUnit < 800) gap -= 20;
+      else if (avgUnit > 0 && avgUnit < 1800) gap -= 10;
+      else if (avgUnit > 12000) gap += 25;
+      gap = Math.max(25, Math.min(150, Math.round(gap)));
+      if (now - (fresh.shopBotAt ?? 0) < gap * 1000) return;
+
       const claim = now;
       fresh.shopBotAt = claim;
       saveDB(fresh);
       /* diğer cihaz daha yeni yazdıysa bu turu o kazanır — çekil */
       fresh = loadDB();
       if (fresh.shopBotAt !== claim) return;
-      /* botlar HERKESİN vitrininden alır — bu cihazın oturumu dahil */
-      const active = (fresh.shopListings ?? []).filter((l) => !l.removed && l.qty > 0);
-      if (!active.length) return;
-      /* fiyatı makul ilanları seç (önerilenin %130'una kadar) */
-      const targets = active.filter((l) => {
-        if (l.custom) return l.unitPrice <= 500000;
-        const def = SHOP_PRODUCT_MAP[l.productId];
-        return def ? l.unitPrice <= def.list * 1.3 : l.unitPrice <= 500000;
-      });
-      const pool = targets.length ? targets : active;
-      const l = pool[Math.floor(Math.random() * pool.length)];
-      const buyQty = Math.min(l.qty, 1 + Math.floor(Math.random() * 3));
-      const gross = Math.round(l.unitPrice * buyQty);
-      l.qty -= buyQty;
-      if (l.qty <= 0) {
-        l.removed = true;
-        l.qty = 0;
+      const act = (fresh.shopListings ?? []).filter((l) => !l.removed && (l.qty ?? 0) > 0);
+      if (!act.length) return;
+
+      /* ---- aynı turda kaç kişi gelir? ---- */
+      const visitors = Math.min(
+        3,
+        1 + Math.floor(act.length / 8) + (adsOn ? 1 : 0) + (avgUnit > 0 && avgUnit < 800 ? 1 : 0)
+      );
+
+      const buys: { listing: (typeof act)[number]; qty: number }[] = [];
+      for (let vi = 0; vi < visitors; vi++) {
+        const prof = pick(SHOPPER_PROFILES);
+        const catSet = prof.cats ? new Set(prof.cats) : null;
+        const cands = act.filter((l) => {
+          if (l.custom) return l.unitPrice <= 500000 * prof.maxRatio;
+          const def = SHOP_PRODUCT_MAP[l.productId];
+          if (!def) return l.unitPrice <= 500000;
+          if (catSet && !catSet.has(def.category)) return false;
+          if (l.unitPrice < prof.minUnit) return false;
+          return l.unitPrice <= def.list * prof.maxRatio;
+        });
+        if (!cands.length) continue;
+        /* fırsatçı en uygunu arar; diğerleri zevkine göre seçer */
+        const l =
+          prof.maxRatio <= 1.1
+            ? cands.reduce((a, b) => (a.unitPrice <= b.unitPrice ? a : b))
+            : cands[Math.floor(Math.random() * cands.length)];
+        const pricey = l.unitPrice >= 3000;
+        const buyQty = Math.min(l.qty, 1 + Math.floor(Math.random() * (pricey ? 2 : 3)));
+        if (buyQty <= 0) continue;
+        buys.push({ listing: l, qty: buyQty });
       }
-      l.ts = now;
-      l.botAt = now;
-      const fee = 0.05;
-      fresh.shopPayments = [
-        ...(fresh.shopPayments ?? []),
-        {
-          id: uid(),
-          listingId: l.id,
-          sellerKey: l.sellerKey,
-          sellerName: l.sellerName,
-          buyerKey: "bot-" + uid(),
-          buyerName: pick(BOT_NAMES),
-          qty: buyQty,
-          gross,
-          net: Math.round(gross * (1 - fee)),
-          ts: now,
-          bot: true,
-        },
-      ].slice(-400);
+      if (!buys.length) return;
+
+      for (const { listing: l, qty: buyQty } of buys) {
+        l.qty -= buyQty;
+        if (l.qty <= 0) {
+          l.removed = true;
+          l.qty = 0;
+        }
+        l.ts = now;
+        l.botAt = now;
+        const gross = Math.round(l.unitPrice * buyQty);
+        const fee = 0.05;
+        fresh.shopPayments = [
+          ...(fresh.shopPayments ?? []),
+          {
+            id: uid(),
+            listingId: l.id,
+            sellerKey: l.sellerKey,
+            sellerName: l.sellerName,
+            buyerKey: "bot-" + uid(),
+            buyerName: pick(BOT_NAMES),
+            qty: buyQty,
+            gross,
+            net: Math.round(gross * (1 - fee)),
+            ts: now,
+            bot: true,
+          },
+        ].slice(-400);
+      }
       saveDB(fresh);
       setDb(fresh);
       notifyDbChanged();
@@ -3207,6 +3276,59 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     },
     [mutate]
   );
+
+  /* ---------------- REKLAM YÖNETİMİ (admin) ----------------
+     Ana menünün hemen altında dönen şerit; tüm cihazlara sync ile yayılır.
+     Aktif reklamlar dükkan bot müşterilerini de çeker (akış bonusu). */
+  const addAd = useCallback(
+    (a: { emoji?: string; title: string; text: string; link?: string }): { ok: boolean; error?: string } => {
+      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
+      const title = a.title.trim();
+      const text = a.text.trim();
+      if (!title || !text) return { ok: false, error: "Başlık ve metin zorunlu" };
+      const link = a.link?.trim();
+      mutate((draft) => {
+        draft.ads = [
+          {
+            id: uid(),
+            ts: Date.now(),
+            by: me.name,
+            emoji: (a.emoji ?? "📣").slice(0, 4),
+            title: title.slice(0, 80),
+            text: text.slice(0, 200),
+            link: link && /^https?:\/\//i.test(link) ? link.slice(0, 300) : undefined,
+            active: true,
+          },
+          ...(draft.ads ?? []),
+        ].slice(0, 100);
+      });
+      pushToast({ kind: "money", title: "Reklam yayında", sub: `Ana menü altında görünüyor: ${title}` });
+      coinDing();
+      return { ok: true };
+    },
+    [mutate, pushToast]
+  );
+
+  const toggleAd = useCallback((id: string) => {
+    const me = dbRef.current.users[dbRef.current.session ?? ""];
+    if (!me?.isAdmin) return;
+    mutate((draft) => {
+      draft.ads = (draft.ads ?? []).map((x) =>
+        x.id === id ? { ...x, ts: Date.now(), active: !x.active } : x
+      );
+    });
+  }, [mutate]);
+
+  const removeAd = useCallback((id: string) => {
+    const me = dbRef.current.users[dbRef.current.session ?? ""];
+    if (!me?.isAdmin) return;
+    mutate((draft) => {
+      draft.ads = (draft.ads ?? []).map((x) =>
+        x.id === id ? { ...x, ts: Date.now(), removed: true, active: false } : x
+      );
+    });
+  }, [mutate]);
 
   /* ---------------- EKONOMİYİ ESKİ HALİNE DÖNDÜR ---------------- */
   const resetEconomy = useCallback((): { ok: boolean; error?: string } => {
@@ -5053,6 +5175,13 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     unlistShopItem,
     buyShopProduct,
     claimShopPayments,
+
+    /* ---------------- REKLAMLAR ---------------- */
+    ads: (db.ads ?? []).filter((a) => !a.removed && a.active).sort((a, b) => b.ts - a.ts),
+    adsAll: (db.ads ?? []).filter((a) => !a.removed).sort((a, b) => b.ts - a.ts),
+    addAd,
+    toggleAd,
+    removeAd,
 
     /* ---------------- SEZON YOLU ---------------- */
     season: seasonOf(Date.now()),
