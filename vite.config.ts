@@ -15,6 +15,10 @@ export default defineConfig({
     host: true,
     allowedHosts: [".e2b.app"],
   },
+  build: {
+    // Tum gorseller tek dosyalik ciktiya base64 olarak gomulsun
+    assetsInlineLimit: 20 * 1024 * 1024,
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
