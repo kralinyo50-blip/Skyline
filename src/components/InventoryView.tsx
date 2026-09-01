@@ -27,6 +27,7 @@ import {
   type InvItem,
 } from "../data/items";
 import { MAX_STICKERS, STICKER_MAP } from "../data/stickers";
+import { SHOP_PRODUCT_MAP, SHOP_CATEGORIES, type ShopCategory } from "../data/shop";
 import { click } from "../lib/audio";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
@@ -344,6 +345,8 @@ export function InventoryView() {
     resetAll,
     showcase,
     toggleShowcase,
+    shopStock,
+    shopCustoms,
   } = useGame();
   const [sort, setSort] = useState<SortKey>("value_desc");
   const [filter, setFilter] = useState<Filter>("all");
@@ -576,7 +579,54 @@ export function InventoryView() {
         </div>
       )}
 
-      <div className="mt-10 flex justify-center">
+      {/* dükkan deposu — normal envantere GİRMEZ, pazara/takasa çıkmaz */}
+      {Object.entries(shopStock).some(([, n]) => n > 0) && (
+        <div className="mt-10 rounded-2xl border border-brand-500/20 bg-brand-500/[0.04] p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <Store className="h-4 w-4 text-brand-300" />
+                <h2 className="font-display text-sm font-black text-white">Dükkan Deposu</h2>
+                <span className="rounded-md bg-brand-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-brand-300">
+                  pazara girmeyen ürünler
+                </span>
+              </div>
+              <p className="mt-1 text-[10px] text-white/40">
+                Bu ürünler yalnızca dükkanında satılır — market ve takasta görünmez.
+              </p>
+            </div>
+            <button
+              onClick={() => { setTab("shop"); click(); }}
+              className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-brand-500/15 px-4 text-xs font-bold text-brand-300 transition hover:bg-brand-500/25"
+            >
+              <Store className="h-4 w-4" /> Depoyu Aç
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(shopStock)
+              .filter(([, n]) => n > 0)
+              .map(([id, n]) => {
+                const custom = shopCustoms.find((c) => c.id === id);
+                const def = SHOP_PRODUCT_MAP[id];
+                const cat = (custom?.category ?? def?.category) as ShopCategory | undefined;
+                return (
+                  <div key={id} className="flex items-center gap-1.5 rounded-lg border border-line/60 bg-ink-900/60 px-2.5 py-1.5 text-xs">
+                    <span className="text-base">{custom?.emoji ?? def?.emoji ?? "📦"}</span>
+                    <span className="font-bold text-white/75">{custom?.name ?? def?.name ?? id}</span>
+                    {cat && (
+                      <span className="rounded bg-ink-800 px-1 py-px text-[8px] font-bold text-white/35">
+                        {SHOP_CATEGORIES[cat]?.label ?? cat}
+                      </span>
+                    )}
+                    <span className="text-white/35">× {n}</span>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-8 flex justify-center">
         <button
           onClick={resetAll}
           className="flex items-center gap-1.5 text-[11px] font-semibold text-white/30 transition hover:text-lose"

@@ -109,6 +109,62 @@ export interface MarketPayment {
   ts: number;
 }
 
+/* ---------------- SANAL DÜKKAN ---------------- */
+
+/** Oyuncunun tasarladığı özel ürün (katalog dışı) */
+export interface ShopCustom {
+  id: string;
+  name: string;
+  emoji: string;
+  category: string;
+  desc: string;
+  attrs: string[];
+  ts: number;
+}
+
+/** Dükkanda satışa çıkan ürün — tüm cihazlara yayınlanır (pazar gibi) */
+export interface ShopListing {
+  id: string;
+  sellerKey: string;
+  sellerName: string;
+  /** satıcının mağaza adı */
+  shopName: string;
+  /** katalog ürün id ya da "c_" ile başlayan özel ürün id */
+  productId: string;
+  /** özel ürünse tanımı ilanla taşınır (alıcı detayı görür) */
+  custom?: ShopCustom;
+  /** birim fiyat (SC) */
+  unitPrice: number;
+  /** kalan adet */
+  qty: number;
+  ts: number;
+  /** iptal / tükenmiş — diğer cihazlara yayılır */
+  removed?: boolean;
+  /** bot müşteri son alışverişi (gaz kelebeği) */
+  botAt?: number;
+}
+
+/** Dükkan satışı — satıcının bakiyesini doldurmak için kayıt */
+export interface ShopPayment {
+  id: string;
+  listingId: string;
+  sellerKey: string;
+  sellerName: string;
+  buyerKey: string;
+  buyerName: string;
+  qty: number;
+  /** alıcının ödediği (brüt) */
+  gross: number;
+  /** satıcıya kalan (komisyon sonrası) */
+  net: number;
+  ts: number;
+  /** bot müşteri satışı */
+  bot?: boolean;
+}
+
+/** Bot müşteri simülasyonu damgası — tüm cihazlarda tek elden yazılır */
+export const SHOP_BOT_INTERVAL_MIN = 2;
+
 export interface MissionProgress {
   day: string;
   cases: number;
@@ -156,6 +212,14 @@ export interface Account {
   pity?: Record<string, number>;
   /** kazanılan başarım id'leri */
   ach?: string[];
+  /** sanal dükkan: depo stokları (productId → adet) */
+  shopStock?: Record<string, number>;
+  /** sanal dükkan: ham madde stokları (matId → adet) */
+  shopMaterials?: Record<string, number>;
+  /** sanal dükkan: tasarlanan özel ürünler */
+  shopCustoms?: ShopCustom[];
+  /** sanal dükkan: mağaza görünümü (vitrin adı + emoji) */
+  shopProfile?: { name: string; emoji: string; desc?: string; ts: number };
   /** VIP üyeliği — bitiş zamanı (eski sistem — sıfırlanır) */
   vipUntil?: number;
   /** VIP paket id'si (eski sistem — sıfırlanır) */
@@ -607,6 +671,14 @@ export interface DB {
   customCases?: CustomCase[];
   /** VIP sınıf sistemine geçiş damgası — eski VIP'ler bir kez temizlenir */
   vipResetAt?: number;
+  /** sanal dükkan ilanları — tüm cihazlara yayınlanır (pazar gibi) */
+  shopListings?: ShopListing[];
+  /** sanal dükkan satış kayıtları — satıcı bakiyesini doldurur */
+  shopPayments?: ShopPayment[];
+  /** bu cihazda bakiyeye işlenen dükkan satış kayıtları */
+  claimedShop?: Record<string, number>;
+  /** bot müşteri son turu (ts) — tek elden üretim */
+  shopBotAt?: number;
 }
 
 const LS_KEY = "skyline:v1";
@@ -641,6 +713,10 @@ export function emptyDB(): DB {
     coupons: null,
     customCases: [],
     vipResetAt: undefined,
+    shopListings: [],
+    shopPayments: [],
+    claimedShop: {},
+    shopBotAt: undefined,
   };
 }
 
@@ -680,12 +756,16 @@ export function loadDB(): DB {
       weekPin: parsed.weekPin ?? null,
       economyWave: parsed.economyWave ?? null,
       economyConfig: parsed.economyConfig ?? null,
-      priceSnaps: Array.isArray(parsed.priceSnaps) ? [...parsed.priceSnaps] : [],
-      depositPacks: parsed.depositPacks ?? null,
-      coupons: parsed.coupons ?? null,
-      customCases: Array.isArray(parsed.customCases) ? [...parsed.customCases] : [],
-      vipResetAt: parsed.vipResetAt,
-    };
+    priceSnaps: Array.isArray(parsed.priceSnaps) ? [...parsed.priceSnaps] : [],
+    depositPacks: parsed.depositPacks ?? null,
+    coupons: parsed.coupons ?? null,
+    customCases: Array.isArray(parsed.customCases) ? [...parsed.customCases] : [],
+    vipResetAt: parsed.vipResetAt,
+    shopListings: Array.isArray(parsed.shopListings) ? [...parsed.shopListings] : [],
+    shopPayments: Array.isArray(parsed.shopPayments) ? [...parsed.shopPayments] : [],
+    claimedShop: parsed.claimedShop ?? {},
+    shopBotAt: parsed.shopBotAt,
+  };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.
        Yalnızca eski sürümün otomatik başlangıç bonusu bir daha uygulanmaz. */
@@ -707,6 +787,11 @@ export function loadDB(): DB {
 
       /* özel stickerları yeniden kaydet (envanterde görünsünler) */
       hydrateCustomStickers(u.customStickers);
+
+      /* sanal dükkan alanları — eski hesaplarda eksikse tamamla */
+      if (!u.shopStock) u.shopStock = {};
+      if (!u.shopMaterials) u.shopMaterials = {};
+      if (!Array.isArray(u.shopCustoms)) u.shopCustoms = [];
 
       /* eski eşyalara aşınma değeri ver (sticker'lar hariç) */
       u.inventory.forEach((it) => {

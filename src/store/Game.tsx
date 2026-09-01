@@ -27,7 +27,7 @@ import {
 
 const STICKER_POOL = STICKERS.map((s) => s.id);
 import { setAudioMuted, coinDing, click } from "../lib/audio";
-import { randHex, seededRng, uid } from "../lib/rng";
+import { randHex, seededRng, uid, pick } from "../lib/rng";
 import {
   SCALE,
   START_BALANCE,
@@ -55,7 +55,7 @@ import {
   jackpotSchedule,
   isValidMcName,
 } from "../config";
-import { CELEBRITY_USERS, COMMUNITY_USERS } from "../data/fakers";
+import { CELEBRITY_USERS, COMMUNITY_USERS, BOT_NAMES } from "../data/fakers";
 import { emitLive } from "./liveEvents";
 import {
   generateBotListings,
@@ -115,10 +115,22 @@ import {
   type DepositPackGift,
   type Coupon,
   type CustomCase,
+  type ShopListing,
+  type ShopPayment,
+  type ShopCustom,
+  SHOP_BOT_INTERVAL_MIN,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
 import { ACHIEVEMENTS, ACH_MAP, type AchievementDef } from "../data/achievements";
 import { CASES, rollCaseSeeded, rollCasePity, casePrice, expectedValue, type CaseDef } from "../data/cases";
+import {
+  SHOP_PRODUCT_MAP,
+  SHOP_MATERIAL_MAP,
+  SHOP_CATEGORIES,
+  CUSTOM_RECIPES,
+  recipeText,
+  type ShopCategory,
+} from "../data/shop";
 import { applyPriceOverrides, skinBasePrice, currentPriceRev, waveFadeEnd, waveMultiplierAt } from "../data/skins";
 import {
   startSync,
@@ -146,6 +158,7 @@ export type TabKey =
   | "games"
   | "jackpot"
   | "market"
+  | "shop"
   | "trade"
   | "inventory"
   | "admin"
@@ -441,6 +454,40 @@ interface GameState {
   shopListings: MarketListing[];
   buyShopListing: (listingId: string, qty: number) => boolean;
 
+  /* ---------------- SANAL DÜKKAN ---------------- */
+  /** dükkan vitrin ilanları (botlar + oyuncular) */
+  shopAllListings: ShopListing[];
+  /** benim dükkan ilanlarım */
+  shopMyListings: ShopListing[];
+  /** depom: productId → adet (normal envantere GİRMEZ) */
+  shopStock: Record<string, number>;
+  /** depom: malzeme stokları matId → adet */
+  shopMaterials: Record<string, number>;
+  /** tasarladığım özel ürünler */
+  shopCustoms: ShopCustom[];
+  /** mağaza vitrini adı/emoji */
+  shopProfile: Account["shopProfile"];
+  /** mağaza satış geçmişi (alıcı + kazancım) */
+  shopMyPayments: { gross: number; net: number; qty: number; buyerName: string; ts: number }[];
+
+  saveShopProfile: (p: { name: string; emoji: string; desc?: string }) => void;
+  /** toptancıdan stok al (belirli ürün) — maliyet × adet düşer */
+  buyShopStock: (productId: string, qty: number) => boolean;
+  /** toptancıdan ham madde al */
+  buyShopMaterial: (matId: string, qty: number) => boolean;
+  /** malzemelerden üret — katalog ürünü */
+  craftShopProduct: (productId: string, qty: number) => boolean;
+  /** özel ürün tasarla (malzeme tarifi kategoriye göre otomatik) */
+  craftShopCustom: (c: { name: string; emoji: string; category: string; desc: string; attrs: string[] }) => boolean;
+  /** depodan vitrine koy — fiyat senin */
+  listShopItem: (productId: string, unitPrice: number, qty: number) => boolean;
+  /** vitrinden geri çek — depoya döner */
+  unlistShopItem: (listingId: string) => void;
+  /** başka oyuncunun dükkânından satın al (hem oyuncu hem bot ilanı) */
+  buyShopProduct: (listingId: string, qty: number) => boolean;
+  /** satıcı: bekleyen dükkan satışlarını bakiyeye işle */
+  claimShopPayments: () => void;
+
   pendingUserList: Account[];
   pendingDepositList: DepositReq[];
   allUsers: Account[];
@@ -537,6 +584,7 @@ const TAB_KEYS: Record<TabKey, true> = {
   games: true,
   jackpot: true,
   market: true,
+  shop: true,
   trade: true,
   inventory: true,
   admin: true,
@@ -1440,6 +1488,411 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const refreshMarket = useCallback(() => {
     setBotListings(generateBotListings());
     click();
+  }, []);
+
+  /* ---------------- SANAL DÜKKAN ----------------
+     Gerçek hayat gibi: oyuncu kendi dükkanını açar (ad + emoji),
+     toptancıdan stok alır veya malzemeden üretir, vitrine koyar.
+     Botlar + oyuncular alışveriş yapar. Dükkan ürünleri normal
+     envantere GİRMEZ — yalnızca Dükkan > Depo'da durur. */
+
+  /** Mağaza vitrini (ad/emoji) kaydet */
+  const saveShopProfile = useCallback(
+    (p: { name: string; emoji: string; desc?: string }) => {
+      mutate((draft) => {
+        const me = draft.users[draft.session ?? ""];
+        if (!me) return;
+        const name = p.name.trim().slice(0, 24) || `${me.name}'in Dükkanı`;
+        me.shopProfile = {
+          name,
+          emoji: p.emoji || "🏪",
+          desc: p.desc?.trim().slice(0, 90) || undefined,
+          ts: Date.now(),
+        };
+      });
+      pushToast({ kind: "info", title: "Mağaza vitrini güncellendi", sub: "Dükkanını ziyarete hazır" });
+    },
+    [mutate, pushToast]
+  );
+
+  /** Toptancıdan stok al — maliyet × adet */
+  const buyShopStock = useCallback(
+    (productId: string, qty: number): boolean => {
+      const def = SHOP_PRODUCT_MAP[productId];
+      const n = Math.max(1, Math.min(9999, Math.round(qty)));
+      if (!def) return false;
+      const total = Math.round(def.cost * n);
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me || me.balance < total) {
+        pushToast({ kind: "lose", title: "Yetersiz bakiye", sub: `Stok için ${money(total)} gerekli` });
+        return false;
+      }
+      me.balance = Math.round(me.balance - total);
+      me.shopStock = { ...(me.shopStock ?? {}), [productId]: (me.shopStock?.[productId] ?? 0) + n };
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      pushToast({
+        kind: "money",
+        title: `Toptan stok: ${n}× ${def.name}`,
+        sub: `Maliyet ${money(total)} — önerilen satış ${money(def.list * n)}`,
+      });
+      return true;
+    },
+    [pushToast]
+  );
+
+  /** Toptancıdan ham madde al */
+  const buyShopMaterial = useCallback(
+    (matId: string, qty: number): boolean => {
+      const mat = SHOP_MATERIAL_MAP[matId];
+      const n = Math.max(1, Math.min(9999, Math.round(qty)));
+      if (!mat) return false;
+      const total = Math.round(mat.price * n);
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me || me.balance < total) {
+        pushToast({ kind: "lose", title: "Yetersiz bakiye", sub: `${money(total)} gerekli` });
+        return false;
+      }
+      me.balance = Math.round(me.balance - total);
+      me.shopMaterials = { ...(me.shopMaterials ?? {}), [matId]: (me.shopMaterials?.[matId] ?? 0) + n };
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      click();
+      return true;
+    },
+    [pushToast]
+  );
+
+  /** Malzemeden üret — katalog ürünü (tarif malzemeleri düşer) */
+  const craftShopProduct = useCallback(
+    (productId: string, qty: number): boolean => {
+      const def = SHOP_PRODUCT_MAP[productId];
+      const n = Math.max(1, Math.min(999, Math.round(qty)));
+      if (!def || !def.recipe || def.recipe.length === 0) return false;
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me) return false;
+      const mats = me.shopMaterials ?? {};
+      for (const r of def.recipe) {
+        if ((mats[r.mat] ?? 0) < r.qty * n) {
+          pushToast({
+            kind: "lose",
+            title: "Malzeme eksik",
+            sub: `Üretim için ${recipeText(def.recipe)} gerekli`,
+          });
+          return false;
+        }
+      }
+      const next = { ...mats };
+      for (const r of def.recipe) next[r.mat] = (next[r.mat] ?? 0) - r.qty * n;
+      me.shopMaterials = next;
+      me.shopStock = { ...(me.shopStock ?? {}), [productId]: (me.shopStock?.[productId] ?? 0) + n };
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      pushToast({
+        kind: "info",
+        title: `Üretildi: ${n}× ${def.name}`,
+        sub: `Depoya eklendi — toptan değeri ${money(def.cost * n)}`,
+      });
+      return true;
+    },
+    [pushToast]
+  );
+
+  /** Özel ürün tasarımı + üretim (kategori tarifi otomatik) */
+  const craftShopCustom = useCallback(
+    (c: { name: string; emoji: string; category: string; desc: string; attrs: string[] }): boolean => {
+      const cat = c.category as ShopCategory;
+      const recipe = CUSTOM_RECIPES[cat];
+      if (!recipe) return false;
+      const name = c.name.trim().slice(0, 24);
+      if (name.length < 2) {
+        pushToast({ kind: "lose", title: "Ürün adı gerekli", sub: "En az 2 karakter" });
+        return false;
+      }
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me) return false;
+      const mats = me.shopMaterials ?? {};
+      for (const r of recipe) {
+        if ((mats[r.mat] ?? 0) < r.qty) {
+          pushToast({
+            kind: "lose",
+            title: "Malzeme eksik",
+            sub: `Üretim için ${recipeText(recipe)} gerekli`,
+          });
+          return false;
+        }
+      }
+      if ((me.shopCustoms ?? []).length >= 30) {
+        pushToast({ kind: "lose", title: "Tasarım limiti", sub: "En fazla 30 özel ürün" });
+        return false;
+      }
+      const next = { ...mats };
+      for (const r of recipe) next[r.mat] = (next[r.mat] ?? 0) - r.qty;
+      const custom: ShopCustom = {
+        id: "c_" + uid(),
+        name,
+        emoji: c.emoji || "🎁",
+        category: cat,
+        desc: c.desc.trim().slice(0, 90),
+        attrs: c.attrs.filter(Boolean).slice(0, 6),
+        ts: Date.now(),
+      };
+      me.shopMaterials = next;
+      me.shopCustoms = [...(me.shopCustoms ?? []), custom];
+      me.shopStock = { ...(me.shopStock ?? {}), [custom.id]: (me.shopStock?.[custom.id] ?? 0) + 1 };
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      pushToast({
+        kind: "win",
+        title: `"${custom.name}" tasarlandı`,
+        sub: `Ürün depoda — vitrine koyup satabilirsin (${SHOP_CATEGORIES[cat]?.label ?? cat})`,
+      });
+      return true;
+    },
+    [pushToast]
+  );
+
+  /** Depodan vitrine koy */
+  const listShopItem = useCallback(
+    (productId: string, unitPrice: number, qty: number): boolean => {
+      const n = Math.max(1, Math.min(9999, Math.round(qty)));
+      const price = Math.max(1, Math.min(5_000_000, Math.round(unitPrice)));
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me) return false;
+      const stock = me.shopStock ?? {};
+      if ((stock[productId] ?? 0) < n) {
+        pushToast({ kind: "lose", title: "Depoda yeterli stok yok", sub: `${n} adet bulunmuyor` });
+        return false;
+      }
+      const custom = productId.startsWith("c_")
+        ? (me.shopCustoms ?? []).find((x) => x.id === productId)
+        : undefined;
+      const def = SHOP_PRODUCT_MAP[productId];
+      const label = custom?.name ?? def?.name ?? productId;
+      me.shopStock = { ...stock, [productId]: (stock[productId] ?? 0) - n };
+      const listing: ShopListing = {
+        id: uid(),
+        sellerKey: me.key,
+        sellerName: me.name,
+        shopName: me.shopProfile?.name ?? `${me.name}'in Dükkanı`,
+        productId,
+        custom,
+        unitPrice: price,
+        qty: n,
+        ts: Date.now(),
+      };
+      fresh.shopListings = [...(fresh.shopListings ?? []), listing].slice(-300);
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      pushToast({
+        kind: "money",
+        title: `Vitrine koyuldu: ${n}× ${label}`,
+        sub: `Birim ${money(price)} — beklenen kazanç ${money(Math.round(price * n * 0.95))}`,
+      });
+      return true;
+    },
+    [pushToast]
+  );
+
+  /** Vitrinden geri çek — depoya döner */
+  const unlistShopItem = useCallback(
+    (listingId: string) => {
+      mutate((draft) => {
+        const me = draft.users[draft.session ?? ""];
+        if (!me) return;
+        const l = (draft.shopListings ?? []).find((x) => x.id === listingId);
+        if (!l || l.sellerKey !== me.key || l.removed) return;
+        l.removed = true;
+        l.ts = Date.now();
+        me.shopStock = { ...(me.shopStock ?? {}), [l.productId]: (me.shopStock?.[l.productId] ?? 0) + l.qty };
+      });
+      pushToast({ kind: "info", title: "İlan geri çekildi", sub: "Ürünler depoya döndü" });
+    },
+    [mutate, pushToast]
+  );
+
+  /** Başka oyuncunun / bot ilanının dükkan ürününü satın al.
+      Katalog ürünü → depoma adet girer; özel ürün → tanımı da kopyalanır. */
+  const buyShopProduct = useCallback(
+    (listingId: string, qty: number): boolean => {
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me) return false;
+      const l = (fresh.shopListings ?? []).find((x) => x.id === listingId && !x.removed);
+      if (!l || l.qty <= 0) {
+        pushToast({ kind: "lose", title: "İlan bulunamadı", sub: "Satıldı ya da geri çekildi" });
+        return false;
+      }
+      if (l.sellerKey === me.key) {
+        pushToast({ kind: "lose", title: "Kendi ilanını alamazsın", sub: "Ilana vitrinden geri çek" });
+        return false;
+      }
+      const buyQty = Math.min(Math.max(1, Math.round(qty)), l.qty);
+      const total = Math.round(l.unitPrice * buyQty);
+      if (me.balance < total) {
+        pushToast({ kind: "lose", title: "Yetersiz bakiye", sub: `${money(total)} gerekli` });
+        return false;
+      }
+      me.balance = Math.round(me.balance - total);
+      /* ürün depoya girer (normal envantere DEĞİL) */
+      me.shopStock = { ...(me.shopStock ?? {}), [l.productId]: (me.shopStock?.[l.productId] ?? 0) + buyQty };
+      /* özel ürünü alan, tasarımını da kopyalar (yeniden satabilir) */
+      if (l.custom && !(me.shopCustoms ?? []).some((x) => x.id === l.custom!.id)) {
+        me.shopCustoms = [...(me.shopCustoms ?? []), l.custom];
+      }
+      l.qty -= buyQty;
+      if (l.qty <= 0) {
+        l.removed = true;
+        l.qty = 0;
+      }
+      l.ts = Date.now();
+      const seller = fresh.users[l.sellerKey];
+      const fee = seller?.vipLevel ? 0.03 : MARKET_FEE;
+      const net = Math.round(total * (1 - fee));
+      const pay: ShopPayment = {
+        id: uid(),
+        listingId: l.id,
+        sellerKey: l.sellerKey,
+        sellerName: l.sellerName,
+        buyerKey: me.key,
+        buyerName: me.name,
+        qty: buyQty,
+        gross: total,
+        net,
+        ts: Date.now(),
+      };
+      fresh.shopPayments = [...(fresh.shopPayments ?? []), pay].slice(-400);
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      const label = l.custom?.name ?? SHOP_PRODUCT_MAP[l.productId]?.name ?? l.productId;
+      coinDing();
+      pushToast({
+        kind: "money",
+        title: buyQty > 1 ? `${buyQty}× alındı` : "Dükkandan alındı",
+        sub: `${label} — ${money(total)} (depona eklendi)`,
+      });
+      return true;
+    },
+    [pushToast]
+  );
+
+  /** Satıcı: bekleyen dükkan satışlarını bakiyeye işle.
+      Çift-sekme/cihaz yarışına karşı: claim damgasını önce yaz, taze oku,
+      damga hâlâ kendindeyse bakiyeye işle (ikinci sekme aynı satışı ALAMAZ). */
+  const claimShopPayments = useCallback(() => {
+    let fresh = loadDB();
+    const me = currentUser(fresh);
+    if (!me) return;
+    let claimed = fresh.claimedShop ?? {};
+    const pending = (fresh.shopPayments ?? []).filter((p) => p.sellerKey === me.key && !claimed[p.id]);
+    if (!pending.length) return;
+    const claimId = Date.now() + ":" + Math.random().toString(36).slice(2, 8);
+    /* 1. faz: benzersiz claim damgasını yaz */
+    const nextClaimed = { ...claimed };
+    pending.forEach((p) => {
+      nextClaimed[p.id] = claimId;
+    });
+    fresh.claimedShop = nextClaimed;
+    saveDB(fresh);
+    /* 2. faz: taze oku — ikinci sekme aynı satış için yarıştıysa damga
+       ya onunkidir ya da son yazan bu cihazdır; SON YAZAN kazanır. */
+    fresh = loadDB();
+    const me2 = currentUser(fresh);
+    if (!me2) return;
+    const stillMine = pending.filter((p) => (fresh.claimedShop ?? {})[p.id] === claimId);
+    if (!stillMine.length) return;
+    let total = 0;
+    stillMine.forEach((p) => {
+      total += p.net;
+    });
+    me2.balance = Math.round(me2.balance + total);
+    const day = todayKey();
+    if (!me2.missions || me2.missions.day !== day) me2.missions = emptyMissions(day);
+    me2.missions.sales += stillMine.length;
+    saveDB(fresh);
+    setDb(fresh);
+    notifyDbChanged();
+    coinDing();
+    pushToast({
+      kind: "money",
+      title: `Dükkan satışı: +${money(total)}`,
+      sub: `${stillMine.length} satış işlendi — mağazana müşteri geldi`,
+    });
+  }, [pushToast]);
+
+  useEffect(() => {
+    claimShopPayments();
+    const iv = window.setInterval(claimShopPayments, 12000);
+    return () => clearInterval(iv);
+  }, [claimShopPayments]);
+
+  /* Bot müşteriler: her 2 dakikada bir aktif ilanlardan alışveriş.
+     Çift-cihaz yarışına karşı İKİ-FAZLI CLAIM: önce shopBotAt damgası yazılır,
+     taze okuma damgayı hâlâ kendisindeyse işlemi yapan bu cihaz olur. */
+  useEffect(() => {
+    const iv = window.setInterval(() => {
+      let fresh = loadDB();
+      const now = Date.now();
+      if (now - (fresh.shopBotAt ?? 0) < SHOP_BOT_INTERVAL_MIN * 60000) return;
+      const claim = now;
+      fresh.shopBotAt = claim;
+      saveDB(fresh);
+      /* diğer cihaz daha yeni yazdıysa bu turu o kazanır — çekil */
+      fresh = loadDB();
+      if (fresh.shopBotAt !== claim) return;
+      /* botlar HERKESİN vitrininden alır — bu cihazın oturumu dahil */
+      const active = (fresh.shopListings ?? []).filter((l) => !l.removed && l.qty > 0);
+      if (!active.length) return;
+      /* fiyatı makul ilanları seç (önerilenin %130'una kadar) */
+      const targets = active.filter((l) => {
+        if (l.custom) return l.unitPrice <= 500000;
+        const def = SHOP_PRODUCT_MAP[l.productId];
+        return def ? l.unitPrice <= def.list * 1.3 : l.unitPrice <= 500000;
+      });
+      const pool = targets.length ? targets : active;
+      const l = pool[Math.floor(Math.random() * pool.length)];
+      const buyQty = Math.min(l.qty, 1 + Math.floor(Math.random() * 3));
+      const gross = Math.round(l.unitPrice * buyQty);
+      l.qty -= buyQty;
+      if (l.qty <= 0) {
+        l.removed = true;
+        l.qty = 0;
+      }
+      l.ts = now;
+      l.botAt = now;
+      const fee = 0.05;
+      fresh.shopPayments = [
+        ...(fresh.shopPayments ?? []),
+        {
+          id: uid(),
+          listingId: l.id,
+          sellerKey: l.sellerKey,
+          sellerName: l.sellerName,
+          buyerKey: "bot-" + uid(),
+          buyerName: pick(BOT_NAMES),
+          qty: buyQty,
+          gross,
+          net: Math.round(gross * (1 - fee)),
+          ts: now,
+          bot: true,
+        },
+      ].slice(-400);
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+    }, 15000);
+    return () => clearInterval(iv);
   }, []);
 
   /* ---------------- TAKAS ---------------- */
@@ -4370,6 +4823,29 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       (l) => !l.removed && l.sellerKey !== (user?.key ?? "")
     ),
     buyShopListing,
+
+    /* ---------------- SANAL DÜKKAN ---------------- */
+    shopAllListings: [...(db.shopListings ?? [])].sort((a, b) => b.ts - a.ts),
+    shopMyListings: (db.shopListings ?? []).filter(
+      (l) => !l.removed && l.sellerKey === (user?.key ?? "")
+    ),
+    shopStock: user?.shopStock ?? {},
+    shopMaterials: user?.shopMaterials ?? {},
+    shopCustoms: user?.shopCustoms ?? [],
+    shopProfile: user?.shopProfile ?? undefined,
+    shopMyPayments: (db.shopPayments ?? [])
+      .filter((p) => p.sellerKey === (user?.key ?? ""))
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 30),
+    saveShopProfile,
+    buyShopStock,
+    buyShopMaterial,
+    craftShopProduct,
+    craftShopCustom,
+    listShopItem,
+    unlistShopItem,
+    buyShopProduct,
+    claimShopPayments,
 
     pendingUserList: pendingUsers(db),
     pendingDepositList: pendingDeposits(db),

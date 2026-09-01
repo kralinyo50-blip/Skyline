@@ -9,6 +9,8 @@ import {
   type MarketListing,
   type MarketPayment,
   type PriceSnap,
+  type ShopListing,
+  type ShopPayment,
   type DepositPackSettings,
   type CouponSettings,
   type CustomCase,
@@ -72,6 +74,12 @@ export interface CloudDoc {
   coupons?: CouponSettings;
   /** admin özel kasaları — id birleşimi */
   customCases?: CustomCase[];
+  /** sanal dükkan ilanları — tüm cihazlara yayınlanır */
+  shop?: ShopListing[];
+  /** sanal dükkan satış kayıtları — id birleşimi */
+  shopPayments?: ShopPayment[];
+  /** bot müşteri son turu — tek elden üretim damgası */
+  shopBotAt?: number;
 }
 
 export function toCloudDoc(db: DB): CloudDoc {
@@ -116,6 +124,12 @@ export function toCloudDoc(db: DB): CloudDoc {
     depositPacks: db.depositPacks ?? undefined,
     coupons: db.coupons ?? undefined,
     customCases: [...(db.customCases ?? [])].slice(-100),
+    shop: (db.shopListings ?? [])
+      .filter((l) => !l.removed || Date.now() - l.ts < 3 * 24 * 3600 * 1000)
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 300),
+    shopPayments: [...(db.shopPayments ?? [])].sort((a, b) => a.ts - b.ts).slice(-400),
+    shopBotAt: db.shopBotAt,
   };
 }
 
@@ -162,6 +176,10 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     marketListings: mergeMarket(local.marketListings ?? [], cloud.market ?? []),
     marketPayments: mergeById(local.marketPayments ?? [], cloud.marketPayments ?? []),
     claimedMarket: local.claimedMarket ?? {},
+    /* sanal dükkan: ilanlar pazar gibi id birleşimi; ödemeler günlük */
+    shopListings: mergeMarket(local.shopListings ?? [], cloud.shop ?? []),
+    shopPayments: mergeById(local.shopPayments ?? [], cloud.shopPayments ?? []),
+    claimedShop: local.claimedShop ?? {},
     /* jackpot yerel tur durumu — bulut yalnızca meta paylaşır (durum korunur) */
     jackpot: local.jackpot,
     chat: [...(local.chat ?? [])].slice(-200),
@@ -337,6 +355,9 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     out.customCases = [...cmap.values()].sort((a, b) => a.ts - b.ts);
   }
 
+  /* bot müşteri damgası — en yeni ts kazanır (çift tur engeli) */
+  if (cloud.shopBotAt && cloud.shopBotAt > (out.shopBotAt ?? 0)) out.shopBotAt = cloud.shopBotAt;
+
   /* fiyat geçmişi — id birleşimi, en yeni 300 kare korunur */
   {
     const smap = new Map<string, PriceSnap>();
@@ -460,8 +481,11 @@ function mergeJackpot(
 
 /* Dükkan ilanları: aynı id için en yeni revizyon kazanır.
    removed=true (iptal/tükenme) herkes tarafından yayıldığı için silme de yayılır. */
-function mergeMarket(local: MarketListing[], cloud: MarketListing[]): MarketListing[] {
-  const map = new Map<string, MarketListing>();
+function mergeMarket<T extends { id: string; ts: number; removed?: boolean }>(
+  local: T[],
+  cloud: T[]
+): T[] {
+  const map = new Map<string, T>();
   local.forEach((l) => map.set(l.id, l));
   cloud.forEach((cl) => {
     const cur = map.get(cl.id);
