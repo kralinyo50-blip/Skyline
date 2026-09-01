@@ -86,11 +86,13 @@ GLOBAL_TIER.covert.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id))
 GLOBAL_TIER.rare.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id));
 
 /* kategoriye göre havuz — yeni temalı kasalar için */
-function catsOf(ids: string[]): Skin[] {
-  return GLOBAL_RAW.filter((s) => ids.includes(WEAPON_CAT[s.weapon] ?? ""));
+function catsOf(ids: string[], opts?: { includeMarin?: boolean }): Skin[] {
+  const includeMarin = opts?.includeMarin ?? false;
+  return GLOBAL_RAW.filter((s) => (includeMarin || !isMarinSkin(s.id)) && ids.includes(WEAPON_CAT[s.weapon] ?? ""));
 }
-function tierOf(pool: Skin[], tier: RarityKey): string[] {
-  return pool.filter((s) => s.rarity === tier).map((s) => s.id);
+function tierOf(pool: Skin[], tier: RarityKey, opts?: { includeMarin?: boolean }): string[] {
+  const includeMarin = opts?.includeMarin ?? false;
+  return pool.filter((s) => (includeMarin || !isMarinSkin(s.id)) && s.rarity === tier).map((s) => s.id);
 }
 
 /* CS gerçek oranlarına yakın ağırlıklar (toplam 100.000) —
@@ -115,8 +117,15 @@ const W_CASE: Partial<Record<RarityKey, number>> = {
   rare: 1,
 };
 
-function byTier(tier: RarityKey): string[] {
-  return GLOBAL_TIER[tier].map((s) => s.id);
+function isMarinSkin(id: string): boolean {
+  return id.startsWith("marin-");
+}
+
+function byTier(tier: RarityKey, opts?: { includeMarin?: boolean }): string[] {
+  const includeMarin = opts?.includeMarin ?? false;
+  return GLOBAL_TIER[tier]
+    .filter((s) => includeMarin || !isMarinSkin(s.id))
+    .map((s) => s.id);
 }
 
 /* --- temalı kasa havuzları --- */
@@ -885,7 +894,8 @@ function enrichCase(c: CaseDef): CaseDef {
   ) as CaseDef["contents"];
   (Object.keys(contents) as RarityKey[]).forEach((t) => {
     const existing = contents[t] ?? [];
-    const pool = byTier(t).filter((id) => !existing.includes(id));
+    // Marin kasası hariç, marin skinleri başka kasalara eklenmesin
+    const pool = byTier(t).filter((id) => !existing.includes(id) && (c.id === "marin-kitagawa" || !isMarinSkin(id)));
     const cap = ENRICH_CAPS[t] ?? 30;
     if (existing.length >= cap || pool.length === 0) return;
     const start = hashStr(c.id + "::" + t) % pool.length;
@@ -911,7 +921,7 @@ function ensureSkinCount(c: CaseDef): CaseDef {
     let added = false;
     for (const t of tiers) {
       if (total() >= MIN_CASE_SKINS) break;
-      const pool = byTier(t).filter((id) => !(contents[t] ?? []).includes(id));
+      const pool = byTier(t).filter((id) => !(contents[t] ?? []).includes(id) && (c.id === "marin-kitagawa" || !isMarinSkin(id)));
       if (pool.length) {
         contents[t] = [...(contents[t] ?? []), pool[0]];
         added = true;
