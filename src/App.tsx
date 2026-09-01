@@ -12,6 +12,7 @@ import { GamesView } from "./components/GamesView";
 import { JackpotView } from "./components/JackpotView";
 import { MarketView } from "./components/MarketView";
 import { ShopView } from "./components/ShopView";
+import { SeasonView } from "./components/SeasonView";
 import { TradeView } from "./components/TradeView";
 import { InventoryView } from "./components/InventoryView";
 import { StatsView } from "./components/StatsView";
@@ -65,6 +66,7 @@ function Shell() {
             {tab === "jackpot" && <JackpotView />}
             {tab === "market" && <MarketView />}
             {tab === "shop" && <ShopView />}
+            {tab === "season" && <SeasonView />}
             {tab === "trade" && <TradeView />}
             {tab === "inventory" && <InventoryView />}
             {tab === "stats" && <StatsView />}

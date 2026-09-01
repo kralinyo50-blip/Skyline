@@ -165,6 +165,27 @@ export interface ShopPayment {
 /** Bot müşteri simülasyonu damgası — tüm cihazlarda tek elden yazılır */
 export const SHOP_BOT_INTERVAL_MIN = 2;
 
+/* ---------------- SEZON YOLU (Season Pass) ---------------- */
+
+/** Kullanıcının sezon ilerlemesi (Account) */
+export interface SeasonProgress {
+  id: number;
+  xp: number;
+  /** premium yol açık mı (sezon başına 75.000₺) */
+  premium: boolean;
+  /** claim edilen ücretsiz seviyeler */
+  claimed: number[];
+  /** claim edilen premium seviyeler */
+  claimedPremium: number[];
+}
+
+/** Aktif sezon penceresi (DB) */
+export interface SeasonState {
+  id: number;
+  startAt: number;
+  endAt: number;
+}
+
 export interface MissionProgress {
   day: string;
   cases: number;
@@ -196,6 +217,8 @@ export interface Account {
   listings?: MyListing[];
   /** günlük görev ilerlemesi */
   missions?: MissionProgress;
+  /** sezon yolu ilerlemesi */
+  season?: SeasonProgress;
   /** kullanıcının tasarladığı stickerlar */
   customStickers?: Sticker[];
   /** referans: bu hesabın davet kodu (kendi nick key'i) */
@@ -676,9 +699,12 @@ export interface DB {
   /** sanal dükkan satış kayıtları — satıcı bakiyesini doldurur */
   shopPayments?: ShopPayment[];
   /** bu cihazda bakiyeye işlenen dükkan satış kayıtları */
-  claimedShop?: Record<string, number>;
+  /** claim damgası: satış id → claimId (ts:random — çift sekme koruması) */
+  claimedShop?: Record<string, string>;
   /** bot müşteri son turu (ts) — tek elden üretim */
   shopBotAt?: number;
+  /** aktif sezon penceresi */
+  season?: SeasonState;
 }
 
 const LS_KEY = "skyline:v1";
@@ -717,6 +743,7 @@ export function emptyDB(): DB {
     shopPayments: [],
     claimedShop: {},
     shopBotAt: undefined,
+    season: undefined,
   };
 }
 
@@ -765,6 +792,7 @@ export function loadDB(): DB {
     shopPayments: Array.isArray(parsed.shopPayments) ? [...parsed.shopPayments] : [],
     claimedShop: parsed.claimedShop ?? {},
     shopBotAt: parsed.shopBotAt,
+    season: parsed.season,
   };
 
     /* Kayıtlar korunur — hiçbir bakiye/envanter otomatik silinmez.

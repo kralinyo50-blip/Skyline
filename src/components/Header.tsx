@@ -48,6 +48,7 @@ const TABS: { key: TabKey; label: string; Icon: typeof Boxes }[] = [
   { key: "jackpot", label: "Jackpot", Icon: Trophy },
   { key: "market", label: "Pazar", Icon: Store },
   { key: "shop", label: "Dükkan", Icon: ShoppingBag },
+  { key: "season", label: "Sezon", Icon: Crown },
   { key: "trade", label: "Takas", Icon: Handshake },
   { key: "inventory", label: "Envanter", Icon: Backpack },
   { key: "stats", label: "Profilim", Icon: ChartNoAxesCombined },

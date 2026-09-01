@@ -118,6 +118,8 @@ import {
   type ShopListing,
   type ShopPayment,
   type ShopCustom,
+  type SeasonProgress,
+  type SeasonState,
   SHOP_BOT_INTERVAL_MIN,
 } from "./db";
 import { MISSIONS, todayKey, type MissionKey } from "../data/missions";
@@ -132,6 +134,17 @@ import {
   type ShopCategory,
 } from "../data/shop";
 import { applyPriceOverrides, skinBasePrice, currentPriceRev, waveFadeEnd, waveMultiplierAt } from "../data/skins";
+import {
+  SEASON_PREMIUM_PRICE,
+  SEASON_MAX_LEVEL,
+  SEASON_TIERS,
+  SEASON_TIER_MAP,
+  seasonOf,
+  seasonNeedXp,
+  seasonLevelOf,
+  seasonInto,
+  type SeasonReward,
+} from "../data/season";
 import {
   startSync,
   stopSync,
@@ -159,6 +172,7 @@ export type TabKey =
   | "jackpot"
   | "market"
   | "shop"
+  | "season"
   | "trade"
   | "inventory"
   | "admin"
@@ -488,6 +502,25 @@ interface GameState {
   /** satıcı: bekleyen dükkan satışlarını bakiyeye işle */
   claimShopPayments: () => void;
 
+  /* ---------------- SEZON YOLU (Season Pass) ---------------- */
+  /** aktif sezon penceresi */
+  season: SeasonState;
+  /** benim ilerlemem */
+  seasonProgress: SeasonProgress;
+  /** ulaşılan seviye (1..40) */
+  seasonLevel: number;
+  /** mevcut seviyedeki xp / gereken xp */
+  seasonIntoXp: number;
+  seasonNeedXp: number;
+  /** tahsil edilebilir ücretsiz seviye sayısı */
+  seasonClaimable: number;
+  /** tahsil edilebilir premium seviye sayısı */
+  seasonClaimablePrem: number;
+  /** premium yolu satın al (sezon başına) */
+  buySeasonPremium: () => { ok: boolean; error?: string };
+  /** ödülü tahsil et — level ile (free/premium otomatik) */
+  claimSeasonReward: (level: number) => { ok: boolean; error?: string };
+
   pendingUserList: Account[];
   pendingDepositList: DepositReq[];
   allUsers: Account[];
@@ -585,6 +618,7 @@ const TAB_KEYS: Record<TabKey, true> = {
   jackpot: true,
   market: true,
   shop: true,
+  season: true,
   trade: true,
   inventory: true,
   admin: true,
@@ -648,13 +682,56 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => setAudioMuted(muted), [muted]);
   useEffect(() => () => toastTimers.current.forEach(clearTimeout), []);
 
+  /** her kayıtta sezon penceresini doğrula — pencere dolduysa sıfırla */
+  const ensureSeasonDraft = (draft: DB) => {
+    const win = seasonOf(Date.now());
+    draft.season = { id: win.id, startAt: win.startAt, endAt: win.endAt };
+    const me = draft.users[draft.session ?? ""];
+    if (!me) return;
+    if (!me.season || me.season.id !== win.id) {
+      me.season = { id: win.id, xp: 0, premium: false, claimed: [], claimedPremium: [] };
+    }
+  };
+
   const mutate = useCallback((fn: (draft: DB) => void) => {
     const fresh = loadDB();
+    ensureSeasonDraft(fresh);
     fn(fresh);
     saveDB(fresh);
     setDb(fresh);
     notifyDbChanged();
   }, []);
+
+  /* ---------------- SEZON YOLU (Season Pass) ---------------- */
+
+  /** aktif sezonu DB + hesaba işle (yeni sezon → ilerleme sıfırlanır) */
+  const ensureSeason = useCallback((draft: DB) => ensureSeasonDraft(draft), []);
+
+  /** XP ver — her çağrıda fresh hesabı mutasyona uğratır */
+  const gainSeasonXp = useCallback((me: Account, amount: number) => {
+    if (amount <= 0) return;
+    const win = seasonOf(Date.now());
+    if (!me.season || me.season.id !== win.id) {
+      me.season = { id: win.id, xp: 0, premium: false, claimed: [], claimedPremium: [] };
+    }
+    me.season.xp += amount;
+  }, []);
+
+  /* sezonu kur — giriş/çıkış sonrası da (yeni hesapta ilerleme başlar) */
+  useEffect(() => {
+    if (!user) return;
+    mutate(ensureSeason);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.key]);
+
+  /* sezon değişimini izle — 14 günlük pencere bittiğinde sıfırla */
+  useEffect(() => {
+    const iv = window.setInterval(() => {
+      const win = seasonOf(Date.now());
+      if (dbRef.current.season?.id !== win.id) mutate(ensureSeason);
+    }, 60000);
+    return () => clearInterval(iv);
+  }, [mutate, ensureSeason]);
 
   /* fiyat geçmişi: fiyatı etkileyen her olayda bir kare düşer — grafik
      dalga eğrisini deterministik yeniden kurar (son 300 kare). */
@@ -1820,6 +1897,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const day = todayKey();
     if (!me2.missions || me2.missions.day !== day) me2.missions = emptyMissions(day);
     me2.missions.sales += stillMine.length;
+    gainSeasonXp(me2, Math.floor(total / 2000));
     saveDB(fresh);
     setDb(fresh);
     notifyDbChanged();
@@ -1829,7 +1907,87 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       title: `Dükkan satışı: +${money(total)}`,
       sub: `${stillMine.length} satış işlendi — mağazana müşteri geldi`,
     });
+  }, [pushToast, gainSeasonXp]);
+
+  /* ---------------- SEZON YOLU (Season Pass) ---------------- */
+
+  /** Premium yolu satın al — sezon başına, sıralı zorunluluk yok */
+  const buySeasonPremium = useCallback((): { ok: boolean; error?: string } => {
+    const fresh = loadDB();
+    const me = currentUser(fresh);
+    if (!me) return { ok: false, error: "Oturum bulunamadı" };
+    const win = seasonOf(Date.now());
+    if (!me.season || me.season.id !== win.id) {
+      me.season = { id: win.id, xp: 0, premium: false, claimed: [], claimedPremium: [] };
+    }
+    if (me.season.premium) return { ok: false, error: "Premium yol zaten aktif" };
+    if (me.balance < SEASON_PREMIUM_PRICE) {
+      return { ok: false, error: `Yetersiz bakiye — ${money(SEASON_PREMIUM_PRICE)} gerekli` };
+    }
+    me.balance = Math.round(me.balance - SEASON_PREMIUM_PRICE);
+    me.season.premium = true;
+    saveDB(fresh);
+    setDb(fresh);
+    notifyDbChanged();
+    coinDing();
+    pushToast({
+      kind: "win",
+      title: "Sezon Premium açıldı 🏆",
+      sub: `Tüm premium ödüller artık tahsil edilebilir · −${money(SEASON_PREMIUM_PRICE)}`,
+    });
+    return { ok: true };
   }, [pushToast]);
+
+  /** Ödül tahsil et — free/premium otomatik seçilir */
+  const claimSeasonReward = useCallback(
+    (level: number): { ok: boolean; error?: string } => {
+      const fresh = loadDB();
+      const me = currentUser(fresh);
+      if (!me) return { ok: false, error: "Oturum bulunamadı" };
+      const win = seasonOf(Date.now());
+      if (!me.season || me.season.id !== win.id) {
+        me.season = { id: win.id, xp: 0, premium: false, claimed: [], claimedPremium: [] };
+      }
+      const tier = SEASON_TIER_MAP[level];
+      if (!tier) return { ok: false, error: "Geçersiz seviye" };
+      if (level > seasonLevelOf(me.season.xp)) {
+        return { ok: false, error: `Önce ${level}. seviyeye ulaşmalısın` };
+      }
+      /* ücretsiz önce; premium varsa ikinci çağrı premium ödülü verir */
+      const freeTaken = me.season.claimed.includes(level);
+      let rew: SeasonReward;
+      if (!freeTaken) {
+        rew = tier.free;
+      } else if (me.season.premium && !me.season.claimedPremium.includes(level)) {
+        rew = tier.prem ?? tier.free;
+      } else {
+        return { ok: false, error: "Bu ödül zaten alındı" };
+      }
+      const isPrem = freeTaken;
+      let label = "";
+      if (rew.kind === "money") {
+        me.balance = Math.round(me.balance + (rew.amount ?? 0));
+        label = `${money(rew.amount ?? 0)}`;
+      } else if (rew.skinId) {
+        const item = makeSkinItem(rew.skinId);
+        me.inventory.unshift(item);
+        const s = SKIN_MAP[rew.skinId];
+        label = s ? `${s.weapon} | ${s.name}` : rew.skinId;
+      }
+      (isPrem ? me.season.claimedPremium : me.season.claimed).push(level);
+      saveDB(fresh);
+      setDb(fresh);
+      notifyDbChanged();
+      coinDing();
+      pushToast({
+        kind: "win",
+        title: `Sezon ödülü: ${level}. seviye 🎁`,
+        sub: `${isPrem ? "Premium" : "Ücretsiz"} yol · ${label}`,
+      });
+      return { ok: true };
+    },
+    [pushToast]
+  );
 
   useEffect(() => {
     claimShopPayments();
@@ -2368,6 +2526,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       bumpMission(me, "cases");
       bumpMission(me, "wagered", price);
       checkLevelUp(me.stats.spent, me);
+      gainSeasonXp(me, 60);
       if (skin.rarity === "covert" || skin.rarity === "rare") {
         if (skin.price > me.stats.bestDrop) me.stats.bestDrop = skin.price;
       }
@@ -2399,7 +2558,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       checkAchievements();
       return { skin, seed, nonce, forced, ok: true };
     },
-    [checkAchievements]
+    [checkAchievements, gainSeasonXp]
   );
 
   /* Provably Fair doğrulama — seed + nonce ile yeniden hesapla */
@@ -3376,10 +3535,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         me.stats.spent = Math.round(me.stats.spent + amount);
         bumpMission(me, "wagered", amount);
         checkLevelUp(me.stats.spent, me);
+        gainSeasonXp(me, Math.floor(amount / 1000));
       });
       checkReferralReward();
     },
-    [updateMe, checkLevelUp, checkReferralReward]
+    [updateMe, checkLevelUp, checkReferralReward, gainSeasonXp]
   );
 
   const trackDrop = useCallback(
@@ -3401,6 +3561,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     updateMe((me) => {
       me.lastDaily = nowTs;
       me.balance = Math.round(me.balance + amount);
+      gainSeasonXp(me, 25);
     });
     pushToast({
       kind: "money",
@@ -3411,7 +3572,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     });
     coinDing();
     return amount;
-  }, [user?.lastDaily, user?.vipLevel, updateMe, pushToast]);
+  }, [user?.lastDaily, user?.vipLevel, updateMe, pushToast, gainSeasonXp]);
 
   /* ---------------- VIP SINIFLARI & CASHBACK ---------------- */
 
@@ -4658,6 +4819,23 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     return best;
   }, [db.users, db.weekPin]);
 
+  /* ---------------- SEZON YOLU — türetilmiş durum ---------------- */
+  const seasonNow = seasonOf(Date.now());
+  const seasonProg: SeasonProgress =
+    user?.season && user.season.id === seasonNow.id
+      ? user.season
+      : { id: seasonNow.id, xp: 0, premium: false, claimed: [], claimedPremium: [] };
+  const seasonLevel = seasonLevelOf(seasonProg.xp);
+  const seasonIntoXp = seasonInto(seasonProg.xp, seasonLevel);
+  const seasonClaimable = SEASON_TIERS.filter(
+    (t) => t.level <= seasonLevel && !seasonProg.claimed.includes(t.level)
+  ).length;
+  const seasonClaimablePrem = seasonProg.premium
+    ? SEASON_TIERS.filter(
+        (t) => t.level <= seasonLevel && !seasonProg.claimedPremium.includes(t.level)
+      ).length
+    : 0;
+
   const value: GameState = {
     db,
     user,
@@ -4846,6 +5024,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     unlistShopItem,
     buyShopProduct,
     claimShopPayments,
+
+    /* ---------------- SEZON YOLU ---------------- */
+    season: seasonOf(Date.now()),
+    seasonProgress: seasonProg,
+    seasonLevel,
+    seasonIntoXp,
+    seasonNeedXp: seasonLevel < SEASON_MAX_LEVEL ? seasonNeedXp(seasonLevel) : 0,
+    seasonClaimable,
+    seasonClaimablePrem,
+    buySeasonPremium,
+    claimSeasonReward,
 
     pendingUserList: pendingUsers(db),
     pendingDepositList: pendingDeposits(db),
