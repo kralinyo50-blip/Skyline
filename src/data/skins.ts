@@ -92,6 +92,9 @@ const BASE: Skin[] = [
   { id: "m4a1s-dark-water", weapon: "M4A1-S", name: "Dark Water", img: CDN + A + "8ypexwjFS4_ega6F_H_GeMX2Vw_x3j-VoXSKMmRQguynLzI6td3-TPQAlD5slR-EJ5hDux9XmMe7i71CI2t8UzSuthi9OvSlo6vFCD_TltxSe0A", rarity: "restricted", price: 12.4 },
 
   { id: "mp9-galaxy-runner", weapon: "MP9", name: "Galaxy Runner", img: "/images/skins/mp9-galaxy-runner.jpg", rarity: "restricted", price: 14, ai: true },
+  { id: "p90-beehive", weapon: "P90", name: "Beehive", img: "/images/skins/p90-beehive.jpg", rarity: "restricted", price: 7.5, ai: true },
+  { id: "galil-radioactive", weapon: "Galil AR", name: "Radioactive", img: "/images/skins/galil-radioactive.jpg", rarity: "restricted", price: 11, ai: true },
+  { id: "fiveseven-night-owl", weapon: "Five-SeveN", name: "Night Owl", img: "/images/skins/fiveseven-night-owl.jpg", rarity: "restricted", price: 16, ai: true },
 
   /* ---------- CLASSIFIED ---------- */
   { id: "m4a1s-atomic-alloy", weapon: "M4A1-S", name: "Atomic Alloy", img: CDN + A + "8ypexwjFS4_ega6F_H_GeMWrEwL87o95oQyW8jCIooTyLnYrGLSLANkI-D5d2FrENtRG7wNDvZe-3slfci9pFmHj8jSof6yZjtugEB6QtrKTXhxaBb-PhITXxPA", rarity: "classified", price: 22 },
@@ -102,11 +105,18 @@ const BASE: Skin[] = [
   { id: "deagle-hypnotic", weapon: "Desert Eagle", name: "Hypnotic", img: CDN + A + "1m5fn8Sdk7vORfqF_NPmUAVicyOl-pK9qSyyywxgjtmnVytyocnLGPA4iWcYmRLYIu0S-xtbuMLjg51DXjoJC02yg2VjGnh4J", rarity: "classified", price: 84 },
   { id: "awp-asiimov", weapon: "AWP", name: "Asiimov", img: "/images/skins/awp-asiimov.jpg", rarity: "classified", price: 98, ai: true },
   { id: "m4a1s-nebula-storm", weapon: "M4A1-S", name: "Nebula Storm", img: "/images/skins/m4a1s-nebula-storm.jpg", rarity: "classified", price: 190, ai: true },
+  { id: "glock-frostbite", weapon: "Glock-18", name: "Frostbite", img: "/images/skins/glock-frostbite.jpg", rarity: "classified", price: 38, ai: true },
+  { id: "usp-cyber-pulse", weapon: "USP-S", name: "Cyber Pulse", img: "/images/skins/usp-cyber-pulse.jpg", rarity: "classified", price: 62, ai: true },
+  { id: "aug-top-gun-ace", weapon: "AUG", name: "Top Gun Ace", img: "/images/skins/aug-top-gun-ace.jpg", rarity: "classified", price: 88, ai: true },
+  { id: "sg553-matriarch", weapon: "SG 553", name: "Matriarch", img: "/images/skins/sg553-matriarch.jpg", rarity: "classified", price: 120, ai: true },
   { id: "deagle-blaze", weapon: "Desert Eagle", name: "Blaze", img: "/images/skins/deagle-blaze.jpg", rarity: "classified", price: 545, ai: true },
 
   /* ---------- COVERT ---------- */
   { id: "awp-lightning-strike", weapon: "AWP", name: "Lightning Strike", img: CDN + A + "wiYbf_C9k4_upYLBjKf6UMWaH0dF6ueZhW2frwU1_sW2EmNyvc32RZwMpCpcjQ-EJ4xbtmt3gYezk4wzb3tpAy3mrkGoXubsGIfVN", rarity: "covert", price: 118 },
   { id: "deagle-anubis-oath", weapon: "Desert Eagle", name: "Anubis Oath", img: "/images/skins/deagle-anubis-oath.jpg", rarity: "covert", price: 620, ai: true },
+  { id: "famas-dragon-breath", weapon: "FAMAS", name: "Dragon Breath", img: "/images/skins/famas-dragon-breath.jpg", rarity: "covert", price: 240, ai: true },
+  { id: "ssg-golden-hour", weapon: "SSG 08", name: "Golden Hour", img: "/images/skins/ssg-golden-hour.jpg", rarity: "covert", price: 320, ai: true },
+  { id: "awp-skyfall", weapon: "AWP", name: "Skyfall", img: "/images/skins/awp-skyfall.jpg", rarity: "covert", price: 1180, ai: true },
   { id: "m4a4-phoenix-rising", weapon: "M4A4", name: "Phoenix Rising", img: "/images/skins/m4a4-phoenix-rising.jpg", rarity: "covert", price: 760, ai: true },
   { id: "ak-thunderwolf", weapon: "AK-47", name: "Thunderwolf", img: "/images/skins/ak-thunderwolf.jpg", rarity: "covert", price: 880, ai: true },
   { id: "ak-fire-serpent", weapon: "AK-47", name: "Fire Serpent", img: "/images/skins/ak-fire-serpent.jpg", rarity: "covert", price: 1450, ai: true },
