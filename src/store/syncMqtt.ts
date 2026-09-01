@@ -78,6 +78,12 @@ export function startMqtt(code: string, h: MqttHandlers) {
   window.addEventListener("skyline:db-changed", onLocalChange);
   cleanupFns.push(() => window.removeEventListener("skyline:db-changed", onLocalChange));
 
+  /* "Yenile" düğmesi (forceSync) kod modunda da çalışsın — eskiden yalnızca
+     URL modu bu olayı dinliyordu, kod modunda buton hiçbir şey yapmıyordu. */
+  const onForce = () => schedulePublish(0, true);
+  window.addEventListener("skyline:sync-force", onForce);
+  cleanupFns.push(() => window.removeEventListener("skyline:sync-force", onForce));
+
   /* Saklanan durumu periyodik olarak zorla yeniden yayınla — başka bir cihazın
      eski belgesi üzerimize yazsa bile onaylı işlemlerimiz kaybolmaz. */
   const keepAlive = window.setInterval(() => schedulePublish(0, true), 20000);

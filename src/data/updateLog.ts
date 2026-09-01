@@ -18,6 +18,19 @@ export interface UpdateEntry {
 
 export const UPDATE_LOG: UpdateEntry[] = [
   {
+    version: "v2.3",
+    date: "2026-09-01",
+    tag: "Panel & Senkron Onarımı",
+    items: [
+      { emoji: "🔄", title: "Senkron Veri Kaybı Düzeldi", desc: "Kutlama, toplu bakiye sıfırlama, denetim kaydı, sezon penceresi ve dükkan bot damgası artık her senkron turunda silinmiyor — panelden yapılan işlemler tüm cihazlara ulaşıyor." },
+      { emoji: "📡", title: "Sunucu Kodunda Canlı Profil", desc: "Profil yayını (bakiye, seviye, kasa, envanter) eskiden sadece URL modunda çalışıyordu; artık sunucu kodu modunda da yayınlanıyor. Panelde herkes 0₺ / Seviye 1 görünmüyor." },
+      { emoji: "🏆", title: "Liderlik Verisi", desc: "Harcama ve en iyi düşüş değerleri de yayınlanıyor — topluluk sıralaması ve haftanın oyuncusu doğru çalışıyor." },
+      { emoji: "💸", title: "Karşı Teklif & Komisyon", desc: "Onaylanan talepte oyuncunun hesabına artık yetkilinin onayladığı tutar (komisyon düşülmüş) yükleniyor; eskiden tam istenen tutar yükleniyordu." },
+      { emoji: "🎁", title: "Paket Hediyeleri Kaydediliyor", desc: "Yatırma paketlerine eklenen kasa/skin hediyeleri kaydetme sırasında siliniyordu — düzeltildi." },
+      { emoji: "🎟️", title: "Çekiliş Katılımcıları", desc: "Diğer cihazlardan gelen katılımcılar birleşiyor ama kaydedilmiyordu; artık kalıcı." },
+    ],
+  },
+  {
     version: "v2.2",
     date: "2026-09-01",
     tag: "Marin Kitagawa Kasası",
