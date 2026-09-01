@@ -18,6 +18,16 @@ export interface UpdateEntry {
 
 export const UPDATE_LOG: UpdateEntry[] = [
   {
+    version: "v2.1",
+    date: "2026-09-01",
+    tag: "20 Skin Transfer Fix",
+    items: [
+      { emoji: "🖼️", title: "20 Eksik Görsel Geri Yüklendi", desc: "TRANSFER.md'deki 20 skin (Gut, Shadow, Classic, Talon, Skeleton + 15 silah) görselleri eklendi — artık 30/30 ex- skin tam." },
+      { emoji: "🔧", title: "Kırık Kartlar Düzeltildi", desc: "public/images/skins/ex-*.jpg tamamlandı (40 görsel: 10 base + 30 ex). Kasa açılışında boş fallback yok." },
+      { emoji: "📦", title: "Kaynak", desc: "d8f9381 + 358c644 commitlerinden alındı, ex- isimlendirmesine dönüştürüldü." },
+    ],
+  },
+  {
     version: "v2.0",
     date: "2026-09-01",
     tag: "Yeni Skin Paketi",
