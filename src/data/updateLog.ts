@@ -18,6 +18,16 @@ export interface UpdateEntry {
 
 export const UPDATE_LOG: UpdateEntry[] = [
   {
+    version: "v2.2",
+    date: "2026-09-01",
+    tag: "Marin Kitagawa Kasası",
+    items: [
+      { emoji: "💖", title: "Marin Kitagawa Kasası", desc: "18 özel anime skin — My Dress-Up Darling temalı, şeffaf arka planlı PNG'ler, 7 milspec + 4 restricted + 2 classified + 2 covert + 3 rare bıçak." },
+      { emoji: "🎨", title: "Şeffaf Skinler", desc: "Tüm Marin skinleri arka plansız PNG, kasa kapağı da şeffaf — site vitrininde temiz görünüm." },
+      { emoji: "🔥", title: "Anime Kasa", desc: "Kasa sealed & anime etiketli, sadece Marin skinleri düşer, hot rozetli." },
+    ],
+  },
+  {
     version: "v2.1",
     date: "2026-09-01",
     tag: "20 Skin Transfer Fix",
