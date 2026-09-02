@@ -13,11 +13,17 @@ export default defineConfig({
   plugins: [react(), tailwindcss(), viteSingleFile()],
   server: {
     host: true,
-    allowedHosts: [".e2b.app"],
+    port: 5173,
+    allowedHosts: [".e2b.app", ".e2b.dev", ".preview.app.github.dev", "localhost"],
   },
   build: {
     // Tum gorseller tek dosyalik ciktiya base64 olarak gomulsun
     assetsInlineLimit: 20 * 1024 * 1024,
+  },
+  preview: {
+    host: true,
+    port: 4173,
+    allowedHosts: [".e2b.app", ".e2b.dev", ".preview.app.github.dev", "localhost"],
   },
   resolve: {
     alias: {

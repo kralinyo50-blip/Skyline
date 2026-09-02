@@ -1,19 +1,33 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { AlertTriangle, ArrowRight, ShieldCheck, Sparkles, UserRound } from "lucide-react";
-import { ADMIN_NAME, BRAND, CURRENCY, isValidMcName, mcBody, mcHead } from "../config";
+import { AlertTriangle, ArrowRight, Gift, Megaphone, ShieldCheck, Sparkles, UserRound } from "lucide-react";
+import {
+  ADMIN_NAME,
+  BRAND,
+  CURRENCY,
+  REFERRAL_BONUS,
+  isValidMcName,
+  mcBody,
+  mcHead,
+  money,
+} from "../config";
 import { click } from "../lib/audio";
 import { useGame } from "../store/Game";
 import { SyncCodeBox } from "./SyncCodeBox";
 import { cn } from "../utils/cn";
+import { UPDATE_LOG } from "../data/updateLog";
 
 export function LoginView() {
   const { login } = useGame();
   const [name, setName] = useState("");
+  const [ref, setRef] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState("");
+  const [reportOpen, setReportOpen] = useState(true);
+  const latest = UPDATE_LOG[0];
 
   const valid = isValidMcName(name);
+  const refValid = ref.trim() === "" || isValidMcName(ref);
   const willBeAdmin = name.trim().toLowerCase() === ADMIN_NAME.toLowerCase();
 
   /* skin önizlemesi için gecikmeli güncelleme */
@@ -27,8 +41,12 @@ export function LoginView() {
       setError("Geçerli bir Minecraft adı gir (3-16 karakter, harf/rakam/_)");
       return;
     }
+    if (!refValid) {
+      setError("Davet kodu geçersiz — 3-16 karakter, harf/rakam/_");
+      return;
+    }
     click();
-    const res = login(name.trim());
+    const res = login(name.trim(), ref.trim() || undefined);
     if (!res.ok) setError(res.error ?? "Giriş yapılamadı");
   }
 
@@ -116,6 +134,29 @@ export function LoginView() {
               </div>
             )}
 
+            {/* davet kodu */}
+            <div className="mt-4">
+              <label className="mb-1.5 flex items-center gap-1 text-[11px] font-bold uppercase tracking-widest text-white/40">
+                <Gift className="h-3.5 w-3.5 text-emerald-400" /> Davet Kodu (opsiyonel)
+              </label>
+              <input
+                value={ref}
+                onChange={(e) => {
+                  setRef(e.target.value);
+                  setError(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
+                placeholder="Seni davet eden oyuncunun adı"
+                maxLength={16}
+                spellCheck={false}
+                className="h-11 w-full rounded-xl border border-line bg-ink-800 px-3 font-display text-sm font-semibold text-white placeholder:text-white/20 focus:border-emerald-500/50 focus:outline-none"
+              />
+              <p className="mt-1.5 text-[10px] leading-relaxed text-white/30">
+                Arkadaşının kodunu girersen, sen Seviye 5'e ulaşınca arkadaşın{" "}
+                <span className="font-bold text-emerald-400">{money(REFERRAL_BONUS)}</span> ödül kazanır.
+              </p>
+            </div>
+
             <button
               onClick={submit}
               className="mt-4 flex h-13 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 font-display text-lg font-black uppercase tracking-widest text-ink-950 transition hover:brightness-110 hover:shadow-[0_12px_36px_-8px_rgba(249,142,29,0.7)]"
@@ -129,6 +170,53 @@ export function LoginView() {
           <div className="mt-5">
             <SyncCodeBox />
           </div>
+
+          {/* güncelleme raporu */}
+          {latest && (
+            <div className="mt-4 rounded-2xl border border-brand-500/25 bg-gradient-to-br from-brand-500/10 to-transparent">
+              <button
+                onClick={() => setReportOpen((v) => !v)}
+                className="flex w-full items-center gap-2.5 px-4 py-3 text-left"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-400 to-brand-600 text-ink-950">
+                  <Megaphone className="h-4.5 w-4.5" style={{ width: 18, height: 18 }} strokeWidth={2.4} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-2">
+                    <span className="font-display text-sm font-black text-white">Güncelleme Raporu</span>
+                    <span className="rounded-md bg-brand-500/25 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-brand-300">
+                      {latest.version}
+                    </span>
+                  </span>
+                  <span className="block truncate text-[10px] text-white/40">
+                    {latest.tag} · {latest.items.length} yenilik
+                  </span>
+                </span>
+                <span
+                  className={cn(
+                    "text-[10px] font-bold text-brand-300 transition-transform",
+                    reportOpen && "rotate-180"
+                  )}
+                >
+                  ▼
+                </span>
+              </button>
+              {reportOpen && (
+                <div className="space-y-2 px-4 pb-4">
+                  {latest.items.map((it) => (
+                    <div key={it.title} className="flex items-start gap-2.5 rounded-xl bg-ink-900/60 p-2.5">
+                      <span className="mt-0.5 text-base leading-none">{it.emoji}</span>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-bold text-white/85">{it.title}</div>
+                        <div className="mt-0.5 text-[10px] leading-relaxed text-white/40">{it.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                  <div className="text-[9px] text-white/25">Tarih: {latest.date}</div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="mt-4 flex flex-wrap items-center gap-2 text-[10px] font-semibold">
             <span className="rounded border border-line bg-ink-800 px-2 py-1 text-white/40">

@@ -1,7 +1,16 @@
 /* Küçük WebAudio ses motoru — dosya gerektirmez */
 
+import { loadPrefs, PREFS_EVENT } from "./prefs";
+
 let ctx: AudioContext | null = null;
 let muted = false;
+let volume = Math.max(0, Math.min(1, loadPrefs().sfx / 100));
+
+if (typeof window !== "undefined") {
+  window.addEventListener(PREFS_EVENT, () => {
+    volume = Math.max(0, Math.min(1, loadPrefs().sfx / 100));
+  });
+}
 
 export function setAudioMuted(m: boolean) {
   muted = m;
@@ -29,7 +38,7 @@ function blip(
   when = 0,
   slideTo?: number
 ) {
-  if (muted) return;
+  if (muted || volume <= 0) return;
   const c = ac();
   if (!c) return;
   try {
@@ -39,8 +48,9 @@ function blip(
     o.type = type;
     o.frequency.setValueAtTime(freq, t0);
     if (slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+    const gv = gain * volume;
     g.gain.setValueAtTime(0, t0);
-    g.gain.linearRampToValueAtTime(gain, t0 + 0.004);
+    g.gain.linearRampToValueAtTime(gv, t0 + 0.004);
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
     o.connect(g).connect(c.destination);
     o.start(t0);

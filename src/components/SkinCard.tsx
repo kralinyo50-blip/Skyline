@@ -37,8 +37,14 @@ export function SkinImg({
       loading="lazy"
       draggable={false}
       onError={() => setErr(true)}
-      className={cn("skin-img-mask select-none object-cover", className)}
-      style={{ filter: `drop-shadow(0 10px 18px rgba(0,0,0,0.55))` }}
+      className={cn(
+        "skin-img-mask select-none object-contain transition-transform duration-300 ease-out hover:scale-[1.35] hover:z-10",
+        className
+      )}
+      style={{
+        filter: `drop-shadow(0 10px 18px rgba(0,0,0,0.55))`,
+        imageRendering: "auto",
+      }}
     />
   );
 }
@@ -78,9 +84,9 @@ export function SkinCard({
       onClick={onClick}
       disabled={!onClick}
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-xl border bg-gradient-to-b from-ink-700 to-ink-800 text-left transition-all duration-200",
+        "group relative flex flex-col overflow-hidden rounded-xl border bg-gradient-to-b from-ink-700 to-ink-800 text-left transition-all duration-200 hover:z-20 hover:overflow-visible",
         selected ? "border-brand-500 shadow-[0_0_0_1px_#f98e1d,0_10px_30px_-10px_rgba(249,142,29,0.4)]" : "border-line hover:border-ink-500",
-        onClick && "cursor-pointer hover:-translate-y-0.5 hover:shadow-lg",
+        onClick && "cursor-pointer hover:-translate-y-1 hover:shadow-xl hover:shadow-black/30",
         dimmed && "opacity-40 saturate-50",
         sizes,
         className
@@ -100,8 +106,8 @@ export function SkinCard({
           Hatıra
         </span>
       )}
-      <div className={cn("relative w-full", size === "xs" ? "h-16" : size === "sm" ? "h-20" : "h-24")}>
-        <SkinImg skin={skin} className="mx-auto h-full w-full" />
+      <div className={cn("relative w-full overflow-visible", size === "xs" ? "h-16" : size === "sm" ? "h-20" : "h-24")}>
+        <SkinImg skin={skin} className="mx-auto h-full w-full transition-all duration-300 ease-out group-hover:scale-[1.45] group-hover:z-10 group-hover:drop-shadow-[0_12px_24px_rgba(0,0,0,0.7)]" />
       </div>
       <div className="mt-1.5 min-w-0">
         <div className="truncate text-[10px] font-medium uppercase tracking-wider text-white/45">

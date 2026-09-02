@@ -1,5 +1,7 @@
 import { MIN_PRICE } from "../config";
 import { badgeArt, type BadgeShape } from "./skinArt";
+import { EXTRA_STICKERS } from "./extraStickers";
+import { ELITE_STICKERS } from "./eliteStickers";
 
 export type StickerRarity = "high" | "remarkable" | "exotic" | "extraordinary";
 
@@ -13,6 +15,8 @@ export interface Sticker {
   effect?: "holo" | "foil" | "gold";
   /** e-spor takımı */
   team?: string;
+  /** Major şampiyonluk hatırası */
+  champion?: boolean;
   /** kullanıcı yapımı */
   custom?: boolean;
 }
@@ -273,6 +277,14 @@ const TEAMS: TeamDef[] = [
   { tag: "AUR", name: "Aurora Gaming", bg: "#4b1f6f", fg: "#c58bff", shape: "circle" },
   { tag: "MNGL", name: "The MongolZ", bg: "#1a1f2e", fg: "#e8b64c", shape: "shield" },
   { tag: "VP", name: "Virtus.pro", bg: "#12100e", fg: "#ff8a00", shape: "diamond" },
+  { tag: "ENC", name: "ENCE", bg: "#12234a", fg: "#f5f7fa", shape: "shield" },
+  { tag: "GL", name: "GamerLegion", bg: "#12003d", fg: "#7c4dff", shape: "diamond" },
+  { tag: "9Z", name: "9z Team", bg: "#0e3d2c", fg: "#c9ff3d", shape: "hex" },
+  { tag: "SAW", name: "SAW", bg: "#f4f4f4", fg: "#12301f", shape: "star" },
+  { tag: "LGC", name: "Legacy", bg: "#2a0f3d", fg: "#d8b4ff", shape: "circle" },
+  { tag: "BIG", name: "BIG", bg: "#101010", fg: "#ffe600", shape: "hex" },
+  { tag: "IMP", name: "Imperial", bg: "#0b0b0b", fg: "#e4ae39", shape: "diamond" },
+  { tag: "RA", name: "Rare Atom", bg: "#3a0d0d", fg: "#ffd7c2", shape: "shield" },
 ];
 
 const TEAM_STICKERS: Sticker[] = TEAMS.flatMap((t) => [
@@ -289,8 +301,17 @@ const TEAM_STICKERS: Sticker[] = TEAMS.flatMap((t) => [
     name: `${t.name} (Holo)`,
     img: badgeArt({ text: t.tag, bg: t.bg, fg: t.fg, shape: t.shape, effect: "holo" }),
     rarity: "remarkable" as StickerRarity,
-    price: MIN_PRICE * 5.5,
+    price: MIN_PRICE * 6.5,
     effect: "holo" as const,
+    team: t.name,
+  },
+  {
+    id: `st-team-${t.tag.toLowerCase()}-foil`,
+    name: `${t.name} (Foil)`,
+    img: badgeArt({ text: t.tag, bg: t.bg, fg: t.fg, shape: t.shape, effect: "foil" }),
+    rarity: "exotic" as StickerRarity,
+    price: MIN_PRICE * 12,
+    effect: "foil" as const,
     team: t.name,
   },
   {
@@ -298,7 +319,7 @@ const TEAM_STICKERS: Sticker[] = TEAMS.flatMap((t) => [
     name: `${t.name} (Altın)`,
     img: badgeArt({ text: t.tag, bg: t.bg, fg: t.fg, shape: t.shape, effect: "gold" }),
     rarity: "extraordinary" as StickerRarity,
-    price: MIN_PRICE * 22,
+    price: MIN_PRICE * 26,
     effect: "gold" as const,
     team: t.name,
   },
@@ -308,9 +329,70 @@ STICKERS.push(...TEAM_STICKERS);
 
 export const TEAM_STICKER_IDS = TEAM_STICKERS.map((s) => s.id);
 
+/* ---------- MAJOR ŞAMPİYONLARI (çok değerli) ---------- */
+const CHAMPIONS: TeamDef[] = [
+  { tag: "NAVI", name: "Natus Vincere", bg: "#f5d90a", fg: "#1a1a1a", shape: "crown" },
+  { tag: "SPRT", name: "Team Spirit", bg: "#1f2c5c", fg: "#ffd23f", shape: "crown" },
+  { tag: "VIT", name: "Team Vitality", bg: "#f2e40d", fg: "#111111", shape: "crown" },
+  { tag: "FAZE", name: "FaZe Clan", bg: "#e43d30", fg: "#ffffff", shape: "crown" },
+  { tag: "MOUZ", name: "MOUZ", bg: "#e2372a", fg: "#ffffff", shape: "crown" },
+];
+
+const CHAMPION_STICKERS: Sticker[] = CHAMPIONS.flatMap((t, i) => [
+  {
+    id: `st-champ-${t.tag.toLowerCase()}-holo`,
+    name: `${t.name} (Şampiyon Holo) | Major`,
+    img: badgeArt({ text: t.tag, bg: t.bg, fg: t.fg, shape: t.shape, effect: "holo" }),
+    rarity: "remarkable" as StickerRarity,
+    price: MIN_PRICE * (16 + i * 3),
+    effect: "holo" as const,
+    team: t.name,
+    champion: true,
+  },
+  {
+    id: `st-champ-${t.tag.toLowerCase()}-foil`,
+    name: `${t.name} (Şampiyon Foil) | Major`,
+    img: badgeArt({ text: t.tag, bg: t.bg, fg: t.fg, shape: t.shape, effect: "foil" }),
+    rarity: "exotic" as StickerRarity,
+    price: MIN_PRICE * (34 + i * 4),
+    effect: "foil" as const,
+    team: t.name,
+    champion: true,
+  },
+  {
+    id: `st-champ-${t.tag.toLowerCase()}-gold`,
+    name: `${t.name} (Şampiyon Altın) | Major`,
+    img: badgeArt({ text: t.tag, bg: t.bg, fg: t.fg, shape: t.shape, effect: "gold" }),
+    rarity: "extraordinary" as StickerRarity,
+    price: MIN_PRICE * (68 + i * 7),
+    effect: "gold" as const,
+    team: t.name,
+    champion: true,
+  },
+]);
+
+STICKERS.push(...CHAMPION_STICKERS);
+
+/* ---------- GERÇEK STEAM STICKER KOLEKSİYONU (150-800 SC) ---------- */
+STICKERS.push(...EXTRA_STICKERS);
+
+/* ---------- ELİT KOLEKSİYON (5.000-50.000 SC) ---------- */
+STICKERS.push(...ELITE_STICKERS);
+
+export const CHAMPION_HOLO_IDS = CHAMPION_STICKERS.filter((s) => s.id.endsWith("-holo")).map((s) => s.id);
+export const CHAMPION_FOIL_IDS = CHAMPION_STICKERS.filter((s) => s.id.endsWith("-foil")).map((s) => s.id);
+export const CHAMPION_GOLD_IDS = CHAMPION_STICKERS.filter((s) => s.id.endsWith("-gold")).map((s) => s.id);
+export const CHAMPION_STICKER_IDS = CHAMPION_STICKERS.map((s) => s.id);
+
 export const STICKER_MAP: Record<string, Sticker> = Object.fromEntries(
   STICKERS.map((s) => [s.id, s])
 );
+
+/** Gerçek Steam koleksiyonu (150-800 SC) */
+export const EXTRA_STICKER_IDS = EXTRA_STICKERS.map((s) => s.id);
+
+/** Elit koleksiyon (5.000-50.000 SC) */
+export const ELITE_STICKER_IDS = ELITE_STICKERS.map((s) => s.id);
 
 /** Özel (kullanıcı yapımı) sticker'ı çalışma zamanında kaydet */
 export function registerStickerDef(s: Sticker) {
@@ -321,10 +403,22 @@ export function registerStickerDef(s: Sticker) {
 export const CUSTOM_STICKER_COST = 500;
 
 /** Silaha yapıştırılan stickerların kattığı ek değer */
-export const STICKER_ABSORB = 0.22;
+export const STICKER_ABSORB = 0.45;
+
+/** Nadir stickerlar değerlerinin daha büyük kısmını silaha aktarır */
+export const STICKER_RARITY_BOOST: Record<StickerRarity, number> = {
+  high: 0.7,
+  remarkable: 1,
+  exotic: 1.35,
+  extraordinary: 1.8,
+};
 
 export function stickerBonus(ids: string[]): number {
-  return ids.reduce((a, id) => a + (STICKER_MAP[id]?.price ?? 0) * STICKER_ABSORB, 0);
+  return ids.reduce((a, id) => {
+    const s = STICKER_MAP[id];
+    if (!s) return a;
+    return a + Math.round(s.price * STICKER_ABSORB * STICKER_RARITY_BOOST[s.rarity]);
+  }, 0);
 }
 
 export const MAX_STICKERS = 4;

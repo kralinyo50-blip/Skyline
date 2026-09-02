@@ -1,0 +1,200 @@
+import { asset } from "../lib/asset";
+/* ------------------------------------------------------------------
+   EL ÇİZİMİ SANAT KASASI (SKETCHBOOK & GRAPHITE COLLECTION)
+   20 Özel El Çizimi & Karakalem Sanat Eseri Skin
+   - Şeffaf arkaplanlı, yüksek detaylı kurşun kalem, karakalem,
+     mürekkep, çapraz tarama ve teknik mimari çizim temalı.
+------------------------------------------------------------------ */
+import { type Skin } from "./skins";
+
+export const SKETCH_SKINS: Skin[] = [
+  /* ----------------------- ★ RARE (4) — Bıçaklar ----------------------- */
+  {
+    id: "sketch-butterfly-graphite",
+    weapon: "★ Butterfly Knife",
+    name: "Graphite Hatching",
+    img: asset("/images/skins/sketch-butterfly-graphite.png"),
+    rarity: "rare",
+    price: 4800,
+    ai: true,
+  },
+  {
+    id: "sketch-karambit-blueprint",
+    weapon: "★ Karambit",
+    name: "Architect Blueprint",
+    img: asset("/images/skins/sketch-karambit-blueprint.png"),
+    rarity: "rare",
+    price: 4200,
+    ai: true,
+  },
+  {
+    id: "sketch-skeleton-phantom",
+    weapon: "★ Skeleton Knife",
+    name: "Charcoal Phantom",
+    img: asset("/images/skins/sketch-skeleton-phantom.png"),
+    rarity: "rare",
+    price: 3900,
+    ai: true,
+  },
+  {
+    id: "sketch-huntsman-pencil",
+    weapon: "★ Huntsman Knife",
+    name: "Pencil Damascus",
+    img: asset("/images/skins/sketch-huntsman-pencil.png"),
+    rarity: "rare",
+    price: 3400,
+    ai: true,
+  },
+
+  /* ----------------------- COVERT (2) — Kırmızı ----------------------- */
+  {
+    id: "sketch-ak47-dragon-pen",
+    weapon: "AK-47",
+    name: "Ballpoint Dragon",
+    img: asset("/images/skins/sketch-ak47-dragon-pen.png"),
+    rarity: "covert",
+    price: 1650,
+    ai: true,
+  },
+  {
+    id: "sketch-awp-charcoal-beast",
+    weapon: "AWP",
+    name: "Charcoal Beast",
+    img: asset("/images/skins/sketch-awp-charcoal-beast.png"),
+    rarity: "covert",
+    price: 1850,
+    ai: true,
+  },
+
+  /* ----------------------- CLASSIFIED (4) — Pembe ----------------------- */
+  {
+    id: "sketch-m4a4-howl-sketch",
+    weapon: "M4A4",
+    name: "Pencil Howl",
+    img: asset("/images/skins/sketch-m4a4-howl-sketch.png"),
+    rarity: "classified",
+    price: 580,
+    ai: true,
+  },
+  {
+    id: "sketch-m4a1s-ink-samurai",
+    weapon: "M4A1-S",
+    name: "Ink Samurai",
+    img: asset("/images/skins/sketch-m4a1s-ink-samurai.png"),
+    rarity: "classified",
+    price: 520,
+    ai: true,
+  },
+  {
+    id: "sketch-deagle-hand-skull",
+    weapon: "Desert Eagle",
+    name: "Sketched Skull",
+    img: asset("/images/skins/sketch-deagle-hand-skull.png"),
+    rarity: "classified",
+    price: 450,
+    ai: true,
+  },
+  {
+    id: "sketch-usp-blueprint",
+    weapon: "USP-S",
+    name: "Blueprint Grid",
+    img: asset("/images/skins/sketch-usp-blueprint.png"),
+    rarity: "classified",
+    price: 390,
+    ai: true,
+  },
+
+  /* ----------------------- RESTRICTED (5) — Mor ----------------------- */
+  {
+    id: "sketch-glock-doodle-chaos",
+    weapon: "Glock-18",
+    name: "Doodled Chaos",
+    img: asset("/images/skins/sketch-glock-doodle-chaos.png"),
+    rarity: "restricted",
+    price: 220,
+    ai: true,
+  },
+  {
+    id: "sketch-ssg-falcon-lines",
+    weapon: "SSG 08",
+    name: "Line Art Falcon",
+    img: asset("/images/skins/sketch-ssg-falcon-lines.png"),
+    rarity: "restricted",
+    price: 190,
+    ai: true,
+  },
+  {
+    id: "sketch-galil-pencil-storm",
+    weapon: "Galil AR",
+    name: "Pencil Storm",
+    img: asset("/images/skins/sketch-galil-pencil-storm.png"),
+    rarity: "restricted",
+    price: 160,
+    ai: true,
+  },
+  {
+    id: "sketch-famas-lotus-ink",
+    weapon: "FAMAS",
+    name: "Lotus Ink",
+    img: asset("/images/skins/sketch-famas-lotus-ink.png"),
+    rarity: "restricted",
+    price: 175,
+    ai: true,
+  },
+  {
+    id: "sketch-p90-crosshatch-viper",
+    weapon: "P90",
+    name: "Crosshatch Viper",
+    img: asset("/images/skins/sketch-p90-crosshatch-viper.png"),
+    rarity: "restricted",
+    price: 140,
+    ai: true,
+  },
+
+  /* ----------------------- MIL-SPEC (5) — Mavi ----------------------- */
+  {
+    id: "sketch-mp9-scribble",
+    weapon: "MP9",
+    name: "Notebook Scribble",
+    img: asset("/images/skins/sketch-mp9-scribble.png"),
+    rarity: "milspec",
+    price: 75,
+    ai: true,
+  },
+  {
+    id: "sketch-mp7-graphite-mesh",
+    weapon: "MP7",
+    name: "Graphite Mesh",
+    img: asset("/images/skins/sketch-mp7-graphite-mesh.png"),
+    rarity: "milspec",
+    price: 60,
+    ai: true,
+  },
+  {
+    id: "sketch-ump-charcoal-paw",
+    weapon: "UMP-45",
+    name: "Charcoal Tiger",
+    img: asset("/images/skins/sketch-ump-charcoal-paw.png"),
+    rarity: "milspec",
+    price: 85,
+    ai: true,
+  },
+  {
+    id: "sketch-nova-blueprint",
+    weapon: "Nova",
+    name: "Blueprint Draft",
+    img: asset("/images/skins/sketch-nova-blueprint.png"),
+    rarity: "milspec",
+    price: 55,
+    ai: true,
+  },
+  {
+    id: "sketch-mac10-sketchy",
+    weapon: "MAC-10",
+    name: "Sketchy Lines",
+    img: asset("/images/skins/sketch-mac10-sketchy.png"),
+    rarity: "milspec",
+    price: 68,
+    ai: true,
+  },
+];

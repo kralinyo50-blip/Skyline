@@ -1,7 +1,6 @@
 import { SKINS, WEAPON_SKINS, SKIN_MAP, type Skin } from "./skins";
 import { COMMUNITY_USERS } from "./fakers";
-import { itemValue, type InvItem } from "./items";
-import { rollFloat } from "./wear";
+import { itemValue, pinnedWearOf, type InvItem } from "./items";
 import { STICKERS } from "./stickers";
 import { pick, randInt, uid } from "../lib/rng";
 
@@ -15,6 +14,36 @@ export interface Listing {
   stickers?: string[];
   /** aşınma + sticker dahil gerçek değeri */
   baseValue: number;
+  /** toptan paket: kopya sayısı (1 = tekil) */
+  qty?: number;
+  /** toptan paket: birim fiyat */
+  unitPrice?: number;
+}
+
+/* ---------------- TOPLU (WHOLESALE) FİYATLANDIRMA ---------------- */
+
+/** Adet arttıkça birim fiyat düşer */
+export const BULK_TIERS: { min: number; mult: number }[] = [
+  { min: 50, mult: 0.84 },
+  { min: 20, mult: 0.88 },
+  { min: 10, mult: 0.92 },
+  { min: 5, mult: 0.96 },
+  { min: 1, mult: 1 },
+];
+
+export function bulkMult(qty: number): number {
+  for (const t of BULK_TIERS) if (qty >= t.min) return t.mult;
+  return 1;
+}
+
+/** Belirtilen adet için birim fiyat (yüzliğe yuvarlanır) */
+export function bulkUnitPrice(unit: number, qty: number): number {
+  return Math.max(100, Math.round((unit * bulkMult(qty)) / 100) * 100);
+}
+
+/** Belirtilen adet için toplam fiyat */
+export function bulkTotal(unit: number, qty: number): number {
+  return Math.max(100, bulkUnitPrice(unit, qty) * qty);
 }
 
 const STICKER_IDS = STICKERS.map((s) => s.id);
@@ -23,7 +52,7 @@ const STICKER_IDS = STICKERS.map((s) => s.id);
 export function makeBotListing(skin?: Skin): Listing {
   const s = skin ?? pick(SKINS);
   const isSticker = !!s.sticker;
-  const float = isSticker ? undefined : rollFloat();
+  const float = isSticker ? undefined : pinnedWearOf(s.id);
 
   let stickers: string[] | undefined;
   if (!isSticker && Math.random() < 0.16) {
@@ -33,11 +62,29 @@ export function makeBotListing(skin?: Skin): Listing {
   const probe: InvItem = { uid: "probe", skinId: s.id, ts: 0, float, stickers };
   const base = itemValue(probe);
   const mult = 1.02 + Math.random() * 0.3;
+  const unit = Math.max(100, Math.round((base * mult) / 100) * 100);
+
+  /* %18 ihtimalle toptan paket — 3-12 kopya, birim fiyat düşer */
+  if (!isSticker && Math.random() < 0.18) {
+    const qty = randInt(3, 12);
+    return {
+      id: uid(),
+      skinId: s.id,
+      price: bulkTotal(unit, qty),
+      unitPrice: unit,
+      qty,
+      seller: pick(COMMUNITY_USERS),
+      ts: Date.now() - randInt(20, 5400) * 1000,
+      float,
+      stickers,
+      baseValue: base,
+    };
+  }
 
   return {
     id: uid(),
     skinId: s.id,
-    price: Math.max(100, Math.round((base * mult) / 100) * 100),
+    price: unit,
     seller: pick(COMMUNITY_USERS),
     ts: Date.now() - randInt(20, 5400) * 1000,
     float,
@@ -51,9 +98,36 @@ export function generateBotListings(count = 96): Listing[] {
   return Array.from({ length: count }, () => makeBotListing()).sort((a, b) => b.ts - a.ts);
 }
 
-export function priceRatio(l: { price: number; baseValue?: number; skinId: string }): number {
+/** İlan kimliğini koruyarak bot ilanlarını YENİ fiyat çarpanlarına ölçekle.
+ *  Satıcı/aşınma/sticker/yaş aynı kalır; birim fiyat, toplam ve değer baz
+ *  fiyattaki değişim oranıyla (~margin korunur) yeniden hesaplanır.
+ *  Fiyat çarpanı değişmediyse sonuç birebir aynıdır (kayan nokta sapması yok). */
+export function rescaleBotListings(listings: Listing[]): Listing[] {
+  return listings.map((l) => {
+    const probe: InvItem = { uid: "probe", skinId: l.skinId, ts: 0, float: l.float, stickers: l.stickers };
+    const newBase = itemValue(probe);
+    const oldBase = l.baseValue > 0 ? l.baseValue : newBase;
+    const scale = oldBase > 0 && newBase > 0 ? newBase / oldBase : 1;
+    const qty = Math.max(1, l.qty ?? 1);
+    const oldUnit = l.unitPrice ?? (qty > 1 ? Math.round(l.price / qty) : l.price);
+    const unit = Math.max(100, Math.round((oldUnit * scale) / 100) * 100);
+    return {
+      ...l,
+      unitPrice: qty > 1 ? unit : undefined,
+      price: qty > 1 ? bulkTotal(unit, qty) : unit,
+      baseValue: newBase,
+    };
+  });
+}
+
+export function priceRatio(l: {
+  price: number;
+  baseValue?: number;
+  skinId: string;
+  unitPrice?: number;
+}): number {
   const base = l.baseValue ?? SKIN_MAP[l.skinId]?.price ?? 1;
-  return l.price / Math.max(1, base);
+  return (l.unitPrice ?? l.price) / Math.max(1, base);
 }
 
 /**
@@ -94,7 +168,7 @@ export interface TradeOffer {
 }
 
 function makeTradeItem(skin: Skin): TradeItem {
-  const float = skin.sticker ? undefined : rollFloat();
+  const float = skin.sticker ? undefined : pinnedWearOf(skin.id);
   const stickers =
     !skin.sticker && Math.random() < 0.2
       ? Array.from({ length: randInt(1, 3) }, () => pick(STICKER_IDS))
