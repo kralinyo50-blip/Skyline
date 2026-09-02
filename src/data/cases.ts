@@ -1,22 +1,15 @@
-import { SKIN_MAP, BASE_SKINS, RARITY, type Skin, type RarityKey, TIER_ORDER } from "./skins";
+import { asset } from "../lib/asset";
+import { SKIN_MAP, BASE_SKINS, RARITY, currentPriceRev, hypotheticalSkinPrice, type EconomyWaveLike, type Skin, type RarityKey, TIER_ORDER } from "./skins";
+import { NEW_SKINS } from "./newSkins";
+import { MARIN_SKINS } from "./marinSkins";
+import { SKETCH_SKINS } from "./sketchSkins";
+import type { CaseSale, CustomCase, PriceSettings } from "../store/db";
+import { EXTRA_SKINS } from "./extraSkins";
+import { LEGEND_SKINS, LEGEND_IDS } from "./legends";
+import { WEAPON_CAT } from "./weaponCats";
 import { CASE_MARKUP, roundCasePrice } from "../config";
-import { TEAM_STICKER_IDS } from "./stickers";
-
-/** Anime kasaları için SVG kapak görseli */
-function caseArt(colors: string[], emoji: string): string {
-  const [a, b, c] = colors;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 100">
-<defs><linearGradient id="cg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${a}"/><stop offset="60%" stop-color="${b}"/><stop offset="100%" stop-color="${a}"/></linearGradient>
-<linearGradient id="cs" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#fff" stop-opacity=".35"/><stop offset="55%" stop-color="#fff" stop-opacity="0"/><stop offset="100%" stop-color="#000" stop-opacity=".5"/></linearGradient></defs>
-<path d="M10,30 L60,10 L110,30 V74 L60,94 L10,74 Z" fill="url(#cg)"/>
-<path d="M10,30 L60,50 L110,30" fill="none" stroke="${c}" stroke-width="3"/>
-<path d="M60,50 V94" stroke="${c}" stroke-width="3"/>
-<path d="M10,30 L60,10 L110,30 V74 L60,94 L10,74 Z" fill="url(#cs)"/>
-<path d="M10,30 L60,10 L110,30 V74 L60,94 L10,74 Z" fill="none" stroke="rgba(0,0,0,.5)" stroke-width="2.5"/>
-<text x="60" y="66" text-anchor="middle" font-size="26">${emoji}</text>
-</svg>`;
-  return "data:image/svg+xml," + encodeURIComponent(svg.replace(/\n/g, ""));
-}
+import { TEAM_STICKER_IDS, CHAMPION_HOLO_IDS, CHAMPION_FOIL_IDS, CHAMPION_GOLD_IDS, STICKER_MAP, EXTRA_STICKER_IDS, ELITE_STICKER_IDS } from "./stickers";
+import { seededRng } from "../lib/rng";
 
 const CDN = "https://community.akamai.steamstatic.com/economy/image/";
 const CASE_P =
@@ -38,32 +31,110 @@ export interface CaseDef {
   stickered?: boolean;
   /** Anime koleksiyon kasası */
   anime?: boolean;
+  /** Katalog dağıtımından etkilenmez — içeriği zaten tam havuz */
+  sealed?: boolean;
+  /** yükleme anındaki orijinal beklenen değer (fiyat çarpanı hesabı için) */
+  origValue?: number;
+  /** admin özel kasası: kalan stok (sınırlı) */
+  stock?: number;
+  /** admin özel kasası: sınırlı rozeti */
+  limited?: boolean;
   contents: Partial<Record<RarityKey, string[]>>;
 }
 
-/* CS gerçek oranlarına yakın ağırlıklar (onbinde) */
-export const TIER_WEIGHTS: Record<RarityKey, number> = {
-  consumer: 7000,
-  industrial: 5000,
-  milspec: 7992,
-  restricted: 1598,
-  classified: 320,
-  covert: 64,
-  rare: 26,
-};
-
-/* standart kasa ağırlıkları (milspec tabanlı) */
-const W_CASE: Partial<Record<RarityKey, number>> = {
-  milspec: 7992,
-  restricted: 1598,
-  classified: 320,
-  covert: 64,
-  rare: 26,
-};
-
-function byTier(tier: RarityKey): string[] {
-  return BASE_SKINS.filter((s) => s.rarity === tier).map((s) => s.id);
+/** Admin özel kasasını CaseDef'e çevir (mağazada satılır, stok düşer) */
+export function toCaseDef(c: CustomCase): CaseDef {
+  return {
+    id: c.id,
+    name: c.name,
+    img: c.img,
+    price: c.price,
+    accent: c.accent,
+    tagline: c.tagline,
+    origValue: c.origValue || c.price,
+    stock: c.stock,
+    limited: true,
+    contents: c.contents,
+  };
 }
+
+/* ------------------------------------------------------------------
+   GLOBAL KATALOG — kasaların zengin havuzu
+   (BASE + 1.947 gerçek Steam skin + 50 efsane; varyantlar hariç)
+   Aynı id'ye sahip skinler tekilleştirilir (efsane fiyatı kazanır).
+------------------------------------------------------------------ */
+const GLOBAL_BY_ID = new Map<string, Skin>();
+[...BASE_SKINS, ...EXTRA_SKINS, ...NEW_SKINS, ...MARIN_SKINS, ...SKETCH_SKINS, ...LEGEND_SKINS].forEach((s) => GLOBAL_BY_ID.set(s.id, s));
+const GLOBAL_RAW: Skin[] = [...GLOBAL_BY_ID.values()];
+
+const GLOBAL_TIER: Record<RarityKey, Skin[]> = {
+  consumer: [],
+  industrial: [],
+  milspec: [],
+  restricted: [],
+  classified: [],
+  covert: [],
+  rare: [],
+};
+GLOBAL_RAW.forEach((s) => {
+  if (!GLOBAL_TIER[s.rarity].some((x) => x.id === s.id)) GLOBAL_TIER[s.rarity].push(s);
+});
+GLOBAL_TIER.consumer.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id));
+GLOBAL_TIER.industrial.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id));
+GLOBAL_TIER.milspec.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id));
+GLOBAL_TIER.restricted.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id));
+GLOBAL_TIER.classified.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id));
+GLOBAL_TIER.covert.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id));
+GLOBAL_TIER.rare.sort((a, b) => a.price - b.price || a.id.localeCompare(b.id));
+
+/* kategoriye göre havuz — yeni temalı kasalar için */
+function catsOf(ids: string[], opts?: { includeSpecial?: boolean }): Skin[] {
+  const includeSpecial = opts?.includeSpecial ?? false;
+  return GLOBAL_RAW.filter((s) => (includeSpecial || !isSpecialExclusiveSkin(s.id)) && ids.includes(WEAPON_CAT[s.weapon] ?? ""));
+}
+function tierOf(pool: Skin[], tier: RarityKey, opts?: { includeSpecial?: boolean }): string[] {
+  const includeSpecial = opts?.includeSpecial ?? false;
+  return pool.filter((s) => (includeSpecial || !isSpecialExclusiveSkin(s.id)) && s.rarity === tier).map((s) => s.id);
+}
+
+/* CS gerçek oranlarına yakın ağırlıklar (toplam 100.000) —
+   ★ Aşırı Nadir (bıçak/eldiven) GERÇEKTEN efsanevi: 1/100.000 kasa (~%0.001).
+   Gizli (covert) %0.5 — "yüzde 1 civarı" hedefin altında tutulur. */
+export const TIER_WEIGHTS: Record<RarityKey, number> = {
+  consumer: 45_000,
+  industrial: 25_000,
+  milspec: 18_999,
+  restricted: 9_000,
+  classified: 1_500,
+  covert: 500,
+  rare: 1,
+};
+
+/* standart kasa ağırlıkları (milspec tabanlı) — toplam 100.000 */
+const W_CASE: Partial<Record<RarityKey, number>> = {
+  milspec: 88_999,
+  restricted: 9_000,
+  classified: 1_500,
+  covert: 500,
+  rare: 1,
+};
+
+function isSpecialExclusiveSkin(id: string): boolean {
+  return id.startsWith("marin-") || id.startsWith("sketch-");
+}
+
+function byTier(tier: RarityKey, opts?: { includeSpecial?: boolean }): string[] {
+  const includeSpecial = opts?.includeSpecial ?? false;
+  return GLOBAL_TIER[tier]
+    .filter((s) => includeSpecial || !isSpecialExclusiveSkin(s.id))
+    .map((s) => s.id);
+}
+
+/* --- temalı kasa havuzları --- */
+const KNIFE_POOL = catsOf(["Knives", "Gloves"]);
+const AK_POOL = GLOBAL_RAW.filter((s) => !isSpecialExclusiveSkin(s.id) && s.weapon === "AK-47");
+const AWP_POOL = GLOBAL_RAW.filter((s) => !isSpecialExclusiveSkin(s.id) && s.weapon === "AWP");
+const PISTOL_POOL = catsOf(["Pistols"]);
 
 const CASES_RAW: CaseDef[] = [
   {
@@ -72,8 +143,11 @@ const CASES_RAW: CaseDef[] = [
     img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSQ7FBhpZf460DiU1P1yZfmrSEMu_Gta_w-caSQXTbEwrYh4LY5FyrjlBh0sm2Am4uqcyrDcEZ-XUgUbjls",
     price: 0.99,
     accent: "#ff8ad4",
-    tagline: "Her şey çıkabilir!",
+    tagline: "Her şey çıkabilir! (2.000+ skin)",
+    sealed: true,
     contents: {
+      consumer: byTier("consumer"),
+      industrial: byTier("industrial"),
       milspec: byTier("milspec"),
       restricted: byTier("restricted"),
       classified: byTier("classified"),
@@ -251,6 +325,176 @@ const CASES_RAW: CaseDef[] = [
     },
   },
   {
+    id: "kilowatt",
+    name: "Kilowatt Case",
+    img: CDN + CASE_P + "rnEVvqf_a6VoIfGSXz7Hlbwg57QwSS_mxhl15jiGyN37c3_GZw91W8BwRflK7EfKsa2sfw",
+    price: 2.99,
+    accent: "#ff5a6e",
+    tagline: "2024'ün yeni nesli — Black Lotus & Chrome Cannon",
+    hot: true,
+    contents: {
+      milspec: [
+        "dual-berettas-hideout",
+        "mac-10-light-box",
+        "nova-dark-sigil",
+        "ssg-08-dezastre",
+        "tec-9-slag",
+        "ump-45-motorized",
+        "xm1014-irezumi",
+      ],
+      restricted: [
+        "glock-18-block-18",
+        "m4a4-etch-lord",
+        "five-seven-hybrid",
+        "mp7-just-smile",
+        "sawed-off-analog-input",
+      ],
+      classified: ["m4a1-s-black-lotus", "zeus-x27-olympus", "usp-s-jawbreaker"],
+      covert: ["awp-chrome-cannon", "ak-47-inheritance"],
+    },
+  },
+  {
+    id: "gallery",
+    name: "Gallery Case",
+    img: CDN + CASE_P + "rnYVuPD5baE6IfTFCmSRme0j5eU5SXrjkRwmt2rWnoqhdnjEPQQiDpRxTflK7EePRV2-Kg",
+    price: 2.99,
+    accent: "#53c8ff",
+    tagline: "Sanat galerisi — Gold Toof & Vaporwave",
+    hot: true,
+    contents: {
+      milspec: [
+        "usp-s-27",
+        "desert-eagle-calligraffiti",
+        "mp5-sd-statics",
+        "aug-luxe-trim",
+        "m249-hypnosis",
+        "r8-revolver-tango",
+        "scar-20-trail-blazer",
+      ],
+      restricted: [
+        "m4a4-turbine",
+        "dual-berettas-hydro-strike",
+        "mac-10-saib-oni",
+        "p90-randy-rush",
+        "ssg-08-rapid-transit",
+      ],
+      classified: ["ak-47-the-outsiders", "p250-epicenter", "ump-45-neo-noir"],
+      covert: ["glock-18-gold-toof", "m4a1-s-vaporwave"],
+    },
+  },
+  {
+    id: "fever",
+    name: "Fever Case",
+    img: CDN + CASE_P + "rncVtqv7MPE8JaHHCj_Dl-wk4-NtFirikURy4jiGwo2udHqVaAEjDZp3EflK7EeSMnMs4w",
+    price: 3.49,
+    accent: "#c1ff3d",
+    tagline: "2025'in en ateşli kasası — AWP Printstream",
+    hot: true,
+    contents: {
+      milspec: [
+        "m4a4-choppa",
+        "mag-7-resupply",
+        "ssg-08-memorial",
+        "p2000-sure-grip",
+        "usp-s-pc-grn",
+        "mp9-nexus",
+        "xm1014-mockingbird",
+      ],
+      restricted: [
+        "desert-eagle-serpent-strike",
+        "zeus-x27-tosai",
+        "nova-rising-sun",
+        "galil-ar-control",
+        "p90-wave-breaker",
+      ],
+      classified: ["ak-47-searing-rage", "glock-18-shinobu", "ump-45-k-o-factory"],
+      covert: ["famas-bad-trip", "awp-printstream"],
+    },
+  },
+  {
+    id: "marin-kitagawa",
+    name: "Marin Kitagawa Kasası",
+    img: asset("/images/skins/marin-case.png"),
+    price: 0,
+    accent: "#ff8ad4",
+    tagline: "My Dress-Up Darling — 18 özel anime skin! 💖 Şeffaf",
+    hot: true,
+    anime: true,
+    sealed: true,
+    contents: {
+      milspec: [
+        "marin-mp9-kawaii",
+        "marin-p90-lolita-dream",
+        "marin-famas-blush",
+        "marin-galil-gaze",
+        "marin-mp7-choker",
+        "marin-ump-black-rose",
+        "marin-nova-lace",
+      ],
+      restricted: [
+        "marin-deagle-gyaru-heart",
+        "marin-usp-dressup-darling",
+        "marin-glock-marin-smile",
+        "marin-ssg-shizuku-ink",
+      ],
+      classified: [
+        "marin-m4a4-pink-tips",
+        "marin-m4a1s-cosplay-queen",
+      ],
+      covert: [
+        "marin-ak47-black-lobelia",
+        "marin-awp-shizuku",
+      ],
+      rare: [
+        "marin-karambit-lace",
+        "marin-butterfly-charm",
+        "marin-talon-gyaru-queen",
+      ],
+    },
+  },
+  {
+    id: "sketch-case",
+    name: "El Çizimi Sanat Kasası",
+    img: asset("/images/skins/sketch-case.png"),
+    price: 0,
+    accent: "#e5c07b",
+    tagline: "Karakalem & eskiz şaheserleri — 20 özel el çizimi skin! ✏️ Şeffaf",
+    hot: true,
+    sealed: true,
+    contents: {
+      milspec: [
+        "sketch-mp9-scribble",
+        "sketch-mp7-graphite-mesh",
+        "sketch-ump-charcoal-paw",
+        "sketch-nova-blueprint",
+        "sketch-mac10-sketchy",
+      ],
+      restricted: [
+        "sketch-glock-doodle-chaos",
+        "sketch-ssg-falcon-lines",
+        "sketch-galil-pencil-storm",
+        "sketch-famas-lotus-ink",
+        "sketch-p90-crosshatch-viper",
+      ],
+      classified: [
+        "sketch-m4a4-howl-sketch",
+        "sketch-m4a1s-ink-samurai",
+        "sketch-deagle-hand-skull",
+        "sketch-usp-blueprint",
+      ],
+      covert: [
+        "sketch-ak47-dragon-pen",
+        "sketch-awp-charcoal-beast",
+      ],
+      rare: [
+        "sketch-butterfly-graphite",
+        "sketch-karambit-blueprint",
+        "sketch-skeleton-phantom",
+        "sketch-huntsman-pencil",
+      ],
+    },
+  },
+  {
     id: "vault",
     name: "Gizemli Sandık",
     img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSQ7FBhrZf460DiUw6_mse3-yddvab2MfRrcqGWWGOVme10s7g_Fnm1wEx-6znRz4z7I32WaRhgVMUd4mX-iw",
@@ -267,6 +511,138 @@ const CASES_RAW: CaseDef[] = [
     },
   },
 ];
+
+/* ---------------- EFSANELER KASASI (50 ikonik skin) ---------------- */
+{
+  const L = LEGEND_IDS;
+  CASES_RAW.push({
+    id: "legends",
+    name: "Efsaneler Kasası",
+    /* Chroma Case — Karambit Fade/Doppler'in geldiği ikonik kasa */
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj35VTqVBP4io_fq2wP7qr6bqI5cvHDCzfBlbcv57JqF3zrxRkj4W6Dwo34dy6QPQAoC5ZyW6dU5cxvklfG",
+    price: 0,
+    accent: "#e4ae39",
+    tagline: "50 efsane — Dragon Lore, Fire Serpent, Karambit Fade…",
+    hot: true,
+    sealed: true,
+    contents: {
+      classified: L.classified,
+      covert: L.covert,
+      rare: L.rare,
+    },
+  });
+}
+
+/* ---------------- YENİ TEMALI KASALAR (katalog dağıtımı) ---------------- */
+{
+  /* AK-47 Kasası */
+  CASES_RAW.push({
+    id: "ak-case",
+    name: "AK-47 Kasası",
+    /* Operation Bravo Case — Fire Serpent'in geldiği efsane kasa */
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj7-lz1QAn4kZjf9CsVuvf7OfQ5IabBVzbHlb915bcwHCjikEp_sTnTn4z6eH6RblQlC8RwFPlK7EdXSP0Ibg",
+    price: 0,
+    accent: "#ff8a3d",
+    tagline: "61+ AK deseni tek kasada",
+    sealed: true,
+    contents: {
+      milspec: tierOf(AK_POOL, "milspec"),
+      restricted: tierOf(AK_POOL, "restricted"),
+      classified: tierOf(AK_POOL, "classified"),
+      covert: tierOf(AK_POOL, "covert"),
+    },
+  });
+
+  /* AWP Kasası */
+  CASES_RAW.push({
+    id: "awp-case",
+    name: "AWP Kasası",
+    /* Operation Phoenix Weapon Case — AWP Asiimov'un geldiği kasa */
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj35VTqVBP4io_fr2wPtqP5PKVvJPSQDWSSl7sn6eMxHC3hwhl3sDuDztivJHrEagJzWZd3W6dU5fXcT7oM",
+    price: 0,
+    accent: "#57d6ff",
+    tagline: "52+ AWP — Dragon Lore'dan Gungnir'e",
+    sealed: true,
+    contents: {
+      milspec: tierOf(AWP_POOL, "milspec"),
+      restricted: tierOf(AWP_POOL, "restricted"),
+      classified: tierOf(AWP_POOL, "classified"),
+      covert: tierOf(AWP_POOL, "covert"),
+    },
+  });
+
+  /* Pistol Kasası */
+  CASES_RAW.push({
+    id: "pistols-case",
+    name: "Pistol Kasası",
+    /* eSports 2013 Case — klasik ilk CS:GO kasası */
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bjx-UnoUwniocSwrHEV7KaobPdud6HEWjXGmbYl6LIwHn2ywhgh5GzXzdmsc3yRalAkD5R3FvlK7Ed7JoXDRQ",
+    price: 0,
+    accent: "#b6f05a",
+    tagline: "436 pistol — uygun başlangıç",
+    sealed: true,
+    contents: {
+      consumer: tierOf(PISTOL_POOL, "consumer"),
+      industrial: tierOf(PISTOL_POOL, "industrial"),
+      milspec: tierOf(PISTOL_POOL, "milspec"),
+      restricted: tierOf(PISTOL_POOL, "restricted"),
+      classified: tierOf(PISTOL_POOL, "classified"),
+      covert: tierOf(PISTOL_POOL, "covert"),
+    },
+  });
+
+  /* Zeus Kasası — yeni elektroşok ailesinin tamamı */
+  CASES_RAW.push({
+    id: "zeus-case",
+    name: "Zeus Kasası",
+    /* Kilowatt Case görseli — Zeus Olympus'un geldiği gerçek kasa */
+    img: CDN + CASE_P + "rnEVvqf_a6VoIfGSXz7Hlbwg57QwSS_mxhl15jiGyN37c3_GZw91W8BwRflK7EfKsa2sfw",
+    price: 0,
+    accent: "#ffd24a",
+    tagline: "7 Zeus x27 — elektroşok avı!",
+    hot: true,
+    sealed: true,
+    contents: {
+      consumer: ["zeus-x27-swamp-ddpat"],
+      industrial: ["zeus-x27-electric-blue"],
+      milspec: ["zeus-x27-earth-mandala"],
+      restricted: ["zeus-x27-charged-up", "zeus-x27-tosai"],
+      classified: ["zeus-x27-olympus", "zeus-x27-dragon-snore"],
+    },
+  });
+
+  /* Bıçak & Eldiven Kasası — her açılışta garantili bıçak/eldiven */
+  CASES_RAW.push({
+    id: "knife-case",
+    name: "Bıçak & Eldiven Kasası",
+    /* Falchion Case — bıçaklı ilk modern kasa */
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj35VTqVBP4io_fpWwI7Pb-P6Y5dvPEDGSSlrsh57U8HHHiwx5yt2-Dwo7_JSnCOw8oCJF0W6dU5dgrLNA1",
+    price: 0,
+    accent: "#e4ae39",
+    tagline: "539 bıçak/eldiven — hepsi çıkabilir!",
+    hot: true,
+    sealed: true,
+    contents: {
+      rare: KNIFE_POOL.map((s) => s.id),
+    },
+  });
+
+  /* Efsane StatTrak™ Kasası — 1M+ seviye */
+  CASES_RAW.push({
+    id: "ultra-case",
+    name: "Efsane StatTrak™ Kasası",
+    /* Shattered Web Case — en yüksek değerli modern kasa */
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bj35VTqVBP4io_fr3EVvKD6MKU_cKPKXWHFxLkls7FsSnDqwUl_sWTczoqheHifbwMmD5F1RvlK7Ec_KL6Q_A",
+    price: 0,
+    accent: "#ff5f9e",
+    tagline: "StatTrak™ Dragon Lore, Howl, Fire Serpent…",
+    hot: true,
+    sealed: true,
+    contents: {
+      covert: LEGEND_IDS.covert.map((id) => id + "-st"),
+    },
+  });
+}
 
 /* ---------------- Sticker kapsülleri & stickerlı kasa ---------------- */
 const STICKER_CASES: CaseDef[] = [
@@ -323,18 +699,66 @@ const STICKER_CASES: CaseDef[] = [
     },
   },
   {
+    id: "capsule-elite",
+    name: "Elit Sticker Kapsülü",
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bjn_lDkShjjoYbh_ilk7OKmOvQ_dM-UHGiF0dF1uOBkXyC8mw5psDjTwt-vI3rDPwMlWJd0ROMP5xPskdLmNe7n5AeI2YJBmST9iyoavzErvbi0sb1FJQ",
+    price: 0,
+    accent: "#e4ae39",
+    tagline: "300 elit sticker — 5.000$'dan başlar, Gold'a kadar",
+    capsule: true,
+    hot: true,
+    contents: {
+      milspec: ELITE_STICKER_IDS.filter((id) => STICKER_MAP[id]?.rarity === "high"),
+      restricted: ELITE_STICKER_IDS.filter((id) => STICKER_MAP[id]?.rarity === "remarkable"),
+      classified: ELITE_STICKER_IDS.filter((id) => STICKER_MAP[id]?.rarity === "exotic"),
+      covert: ELITE_STICKER_IDS.filter((id) => STICKER_MAP[id]?.rarity === "extraordinary"),
+    },
+  },
+  {
+    id: "capsule-steam",
+    name: "Steam Sticker Kapsülü",
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bjn_lDkShjjoYbh_ikLvrz-PfRpcKeQCzPEk-p147M_SXrglx8l4m2EnoqvJS2eagchCZQiQeADrFDmxXUYlhnp",
+    price: 0,
+    accent: "#2fd673",
+    tagline: "300 gerçek Steam sticker — 150$'dan başlar",
+    capsule: true,
+    hot: true,
+    contents: {
+      milspec: EXTRA_STICKER_IDS.filter((id) => STICKER_MAP[id]?.rarity === "high"),
+      restricted: EXTRA_STICKER_IDS.filter((id) => STICKER_MAP[id]?.rarity === "remarkable"),
+      classified: EXTRA_STICKER_IDS.filter((id) => STICKER_MAP[id]?.rarity === "exotic"),
+      covert: EXTRA_STICKER_IDS.filter((id) => STICKER_MAP[id]?.rarity === "extraordinary"),
+    },
+  },
+  {
     id: "capsule-esports",
     name: "E-Spor Takım Kapsülü",
-    img: caseArt(["#4b69ff", "#101a3d", "#ffd166"], "🏆"),
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bjn_lDkShjjoYbh_ilk7P2jZbFjKeSKXDfCkNF1sfF6WiW22xsjtm7XmImsJHzFPw8gXpMhRbVfs0Lrx9blNO-07wzbi4IXyHqqjCpXrnE8kTJtUHk",
     price: 0,
     accent: "#4b69ff",
     tagline: "Takımını silahına taşı",
     capsule: true,
     hot: true,
     contents: {
-      milspec: TEAM_STICKER_IDS.filter((id) => !id.endsWith("-holo") && !id.endsWith("-gold")),
+      milspec: TEAM_STICKER_IDS.filter((id) => !id.endsWith("-holo") && !id.endsWith("-foil") && !id.endsWith("-gold")),
       restricted: TEAM_STICKER_IDS.filter((id) => id.endsWith("-holo")),
+      classified: TEAM_STICKER_IDS.filter((id) => id.endsWith("-foil")),
       covert: TEAM_STICKER_IDS.filter((id) => id.endsWith("-gold")),
+    },
+  },
+  {
+    id: "capsule-champions",
+    name: "Major Şampiyon Kapsülü",
+    img: CDN + "i0CoZ81Ui0m-9KwlBY1L_18myuGuq1wfhWSaZgMttyVfPaERSR0Wqmu7LAocGJKz2lu_XsnXwtmkJjSU91dh8bjn_lDkShjjoYbh_ilk7OKmOvQ_dM-UHGiF0dF1uOBkXyC8mw5psDjTwt-vI3rDPwMlWJd0ROMP5xPskdLmNe7n5AeI2YJBmST9iyoavzErvbi0sb1FJQ",
+    price: 0,
+    accent: "#e4ae39",
+    tagline: "Sadece Major şampiyonları — çok değerli",
+    capsule: true,
+    hot: true,
+    contents: {
+      restricted: CHAMPION_HOLO_IDS,
+      classified: CHAMPION_FOIL_IDS,
+      covert: CHAMPION_GOLD_IDS,
     },
   },
   {
@@ -459,7 +883,10 @@ const SOUVENIR_CASES: CaseDef[] = [
 ];
 
 /* Kasa fiyatı = beklenen değer × kâr payı (otomatik dengeli) */
-function expectedValue(c: CaseDef): number {
+export function expectedValue(
+  c: CaseDef,
+  priceOf: (s: Skin) => number = (s) => s.price
+): number {
   const weights = weightsFor(c);
   const tiers = (Object.keys(c.contents) as RarityKey[]).filter(
     (t) => (c.contents[t]?.length ?? 0) > 0 && (weights[t] ?? 0) > 0
@@ -468,25 +895,165 @@ function expectedValue(c: CaseDef): number {
   return tiers.reduce((acc, t) => {
     const pool = c.contents[t]!.map((id) => SKIN_MAP[id]).filter(Boolean);
     if (!pool.length) return acc;
-    const avg = pool.reduce((s, k) => s + k.price, 0) / pool.length;
+    const avg = pool.reduce((s, k) => s + priceOf(k), 0) / pool.length;
     /* hatıra paketlerinde eşyalar altın varyant olarak çıkar */
     const mult = c.souvenir ? 1.55 : 1;
     return acc + ((weights[t] ?? 0) / total) * avg * mult;
   }, 0);
 }
 
+/* ------------------------------------------------------------------
+   Her kasadan en az N farklı skin düşebilsin.
+   Eksik kasalar kendi kademelerinden genel havuzla tamamlanır.
+   Hediye Paketi'ne (gift) hiç dokunulmaz — içeriği ve fiyatı korunur.
+------------------------------------------------------------------ */
+const MIN_CASE_SKINS = 11;
+
+/* Katalog dağıtımı — her mevcut kasa kendi kademelerinden geniş bir alt havuz alır */
+const ENRICH_CAPS: Record<RarityKey, number> = {
+  consumer: 150,
+  industrial: 130,
+  milspec: 110,
+  restricted: 75,
+  classified: 45,
+  covert: 30,
+  rare: 45,
+};
+
+function hashStr(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Kasa kimliğine göre deterministik rotasyon — her kasa farklı ama dengeli alt küme alır */
+function enrichCase(c: CaseDef): CaseDef {
+  /* sticker kapsülleri dışında her kasa katalogdan geniş alt havuz alır */
+  if (c.sealed || c.capsule) return c;
+  const contents: CaseDef["contents"] = Object.fromEntries(
+    Object.entries(c.contents).map(([k, v]) => [k, [...(v ?? [])]])
+  ) as CaseDef["contents"];
+  (Object.keys(contents) as RarityKey[]).forEach((t) => {
+    const existing = contents[t] ?? [];
+    // Özel kasalar (Marin, Sketch vb.) hariç, bu skinler genel kasalara dağıtılmaz
+    const pool = byTier(t).filter((id) => !existing.includes(id) && !isSpecialExclusiveSkin(id));
+    const cap = ENRICH_CAPS[t] ?? 30;
+    if (existing.length >= cap || pool.length === 0) return;
+    const start = hashStr(c.id + "::" + t) % pool.length;
+    for (let i = 0; i < pool.length && contents[t]!.length < cap; i++) {
+      contents[t]!.push(pool[(start + i) % pool.length]);
+    }
+  });
+  return { ...c, contents };
+}
+
+function ensureSkinCount(c: CaseDef): CaseDef {
+  /* sealed kasalar (gift, zeus-case, marin, sketch vb.) içerikleri korunur — tamamlayıcı eklenmez */
+  if (c.sealed) return c;
+  const contents: CaseDef["contents"] = Object.fromEntries(
+    Object.entries(c.contents).map(([k, v]) => [k, [...(v ?? [])]])
+  ) as CaseDef["contents"];
+  const tiers = (Object.keys(contents) as RarityKey[]).filter(
+    (t) => (contents[t]?.length ?? 0) > 0
+  );
+  const total = () => tiers.reduce((a, t) => a + (contents[t]?.length ?? 0), 0);
+  let guard = 0;
+  while (total() < MIN_CASE_SKINS && guard++ < 40) {
+    let added = false;
+    for (const t of tiers) {
+      if (total() >= MIN_CASE_SKINS) break;
+      const pool = byTier(t).filter((id) => !(contents[t] ?? []).includes(id) && !isSpecialExclusiveSkin(id));
+      if (pool.length) {
+        contents[t] = [...(contents[t] ?? []), pool[0]];
+        added = true;
+      }
+    }
+    if (!added) break;
+  }
+  return { ...c, contents };
+}
+
 export const CASES: CaseDef[] = [
   ...CASES_RAW,
   ...STICKER_CASES,
   ...SOUVENIR_CASES,
-].map((c) => ({
-  ...c,
-  price: roundCasePrice(expectedValue(c) * CASE_MARKUP * (c.stickered ? 1.15 : 1)),
-}));
+].map((c) => {
+  const e = enrichCase(ensureSkinCount(c));
+  const orig = expectedValue(e);
+  return {
+    ...e,
+    /* fiyat çarpanı yönetimi için yükleme anındaki orijinal kası değeri */
+    origValue: orig,
+    /* Hediye Paketi: değeri sabit tutulur (4200$) — zor skin zammından etkilenmez */
+    /* Bıçak & Eldiven Kasası: +%45 zam (bıçak/eldiven zammının üzerine) */
+    price:
+      c.id === "gift"
+        ? 4200
+        : c.id === "knife-case"
+          ? roundCasePrice(orig * CASE_MARKUP * 1.45 * (e.stickered ? 1.15 : 1))
+          : roundCasePrice(orig * CASE_MARKUP * (e.stickered ? 1.15 : 1)),
+  };
+});
 
 export const CASE_MAP: Record<string, CaseDef> = Object.fromEntries(
   CASES.map((c) => [c.id, c])
 );
+
+/* kasa değer çarpanı önbelleği — fiyat revizyonu (rev) değişince yeniden hesaplanır.
+ * Not: uygulamada önce render, sonra applyPriceOverrides çalıştığı için
+ * ps.ts yerine priceRev anahtarı kullanılır (aksi halde eski fiyatla önbelleklenir). */
+const caseScaleCache = new Map<string, { rev: number; scale: number }>();
+
+/** Kasa beklenen değerindeki değişim oranı (skin zam/indirimi + ekonomik dalga). */
+export function caseScale(def: CaseDef): number {
+  const rev = currentPriceRev();
+  const hit = caseScaleCache.get(def.id);
+  if (hit && hit.rev === rev) return hit.scale;
+  let scale = 1;
+  if ((def.origValue ?? 0) > 0) {
+    const cur = expectedValue(def);
+    scale = cur > 0 ? cur / (def.origValue ?? 1) : 1;
+  }
+  caseScaleCache.set(def.id, { rev, scale });
+  return scale;
+}
+
+/** Admin önizlemesi: hiçbir şeyi değiştirmeden varsayımsal kasa fiyatı.
+ *  Önce yükleme anındaki orijinal beklentiden oran alınır, sonra hipotetik
+ *  skin fiyatlarıyla hesaplanan yeni beklenti oranına uygulanır. */
+export function previewCasePrice(
+  def: CaseDef,
+  ps?: PriceSettings | null,
+  wave?: EconomyWaveLike | null
+): number {
+  if ((def.origValue ?? 0) <= 0) return def.price;
+  const cur = expectedValue(def, (s) => hypotheticalSkinPrice(s.id, ps, wave));
+  const scale = cur > 0 ? cur / (def.origValue ?? 1) : 1;
+  return Math.max(1, Math.round(def.price * scale));
+}
+
+/** Kasa fiyatı — skin zam/indirimi + aktif kasa indirimi etkinliği uygulu */
+export function casePrice(
+  def: CaseDef,
+  sale?: CaseSale | null,
+  _ps?: PriceSettings | null
+): number {
+  const base = Math.max(1, Math.round(def.price * caseScale(def)));
+  if (
+    sale &&
+    !sale.cancelled &&
+    sale.endsAt > Date.now() &&
+    sale.discount > 0 &&
+    sale.caseIds.includes(def.id)
+  ) {
+    const d = Math.min(90, Math.max(5, sale.discount));
+    return Math.max(0.01, Math.round(base * (1 - d / 100) * 100) / 100);
+  }
+  return base;
+}
 
 /* Kasada tüketici/endüstriyel kademe varsa oranları ona göre dağıt */
 function weightsFor(caseDef: CaseDef): Partial<Record<RarityKey, number>> {
@@ -498,12 +1065,23 @@ function weightsFor(caseDef: CaseDef): Partial<Record<RarityKey, number>> {
 
 /* Bir kasadan ağırlıklı rastgele skin seç (+%10 StatTrak şansı) */
 export function rollCase(caseDef: CaseDef): Skin {
+  return rollCaseWith(caseDef, Math.random);
+}
+
+/* Provably Fair: seed + nonce ile deterministik sonuç —
+   aynı seed/nonce her zaman aynı skin'i üretir (doğrulanabilir) */
+export function rollCaseSeeded(caseDef: CaseDef, seed: string, nonce: number): Skin {
+  const rng = seededRng(seed, nonce);
+  return rollCaseWith(caseDef, rng);
+}
+
+function rollCaseWith(caseDef: CaseDef, rng: () => number): Skin {
   const weights = weightsFor(caseDef);
   const tiers = (Object.keys(caseDef.contents) as RarityKey[]).filter(
     (t) => (caseDef.contents[t]?.length ?? 0) > 0 && (weights[t] ?? 0) > 0
   );
   const totalW = tiers.reduce((acc, t) => acc + (weights[t] ?? 0), 0);
-  let roll = Math.random() * totalW;
+  let roll = rng() * totalW;
   let pickedTier: RarityKey = tiers[0];
   for (const t of tiers) {
     roll -= weights[t] ?? 0;
@@ -513,7 +1091,7 @@ export function rollCase(caseDef: CaseDef): Skin {
     }
   }
   const pool = caseDef.contents[pickedTier]!;
-  const id = pool[Math.floor(Math.random() * pool.length)];
+  const id = pool[Math.floor(rng() * pool.length)];
   let skin = SKIN_MAP[id];
 
   if (caseDef.souvenir) {
@@ -525,13 +1103,35 @@ export function rollCase(caseDef: CaseDef): Skin {
     skin.rarity !== "rare" &&
     skin.rarity !== "consumer" &&
     skin.rarity !== "industrial" &&
-    Math.random() < 0.1
+    rng() < 0.1
   ) {
     /* %10 StatTrak sürprizi */
     const st = SKIN_MAP[skin.id + "-st"];
     if (st) skin = st;
   }
   return skin;
+}
+
+/* Pity: kasadan gizli (covert) çekme garantisi — garanti dolduysa
+   doğrudan covert havuzundan döndürür.
+   Bıçak/eldiven (rare) GARANTİYE GİRMEZ: efsanevi nadirlik (1/100.000)
+   pity ile asla zedelenmez — garanti yalnızca covert verir. */
+export function rollCasePity(caseDef: CaseDef): Skin {
+  const weights = weightsFor(caseDef);
+  const tiers = (Object.keys(caseDef.contents) as RarityKey[]).filter(
+    (t) => (caseDef.contents[t]?.length ?? 0) > 0 && (weights[t] ?? 0) > 0
+  );
+  /* garantide bıçak yok — sadece covert; covert yoksa normal çekiliş */
+  const high = tiers.filter((t) => t === "covert");
+  if (!high.length) return rollCase(caseDef);
+  const pool = caseDef.contents[high[0]]!;
+  const id = pool[Math.floor(Math.random() * pool.length)];
+  let skin = SKIN_MAP[id];
+  if (skin && Math.random() < 0.1) {
+    const st = SKIN_MAP[skin.id + "-st"];
+    if (st) skin = st;
+  }
+  return skin ?? rollCase(caseDef);
 }
 
 /* Kasa içeriğini gösterim için sırala + gerçek olasılıkları hesapla */
@@ -544,11 +1144,18 @@ export function caseContentsDetailed(caseDef: CaseDef) {
   const odds: Partial<Record<RarityKey, number>> = {};
   tiers.forEach((t) => (odds[t] = ((weights[t] ?? 0) / totalW) * 100));
 
+  const seen = new Set<string>();
   const items = tiers
     .flatMap((t) =>
       caseDef.contents[t]!.map((id) => (caseDef.souvenir ? SKIN_MAP[id + "-sv"] ?? SKIN_MAP[id] : SKIN_MAP[id]))
     )
     .filter(Boolean)
+    /* aynı id iki kez görünmesin (havuz kopyalarına karşı güvence) */
+    .filter((s) => {
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    })
     .sort(
       (a, b) =>
         RARITY[b.rarity].order - RARITY[a.rarity].order || b.price - a.price
@@ -568,12 +1175,28 @@ export const FEED_USERS = [
   "pushw_34", "donkJr", "silentD3ath", "kripto_efe", "VandalBaron55",
   "zort_", "osi_official", "TapTapGoKill", "BeyazBarel", "nix0x",
   "MirageMusa", "InfernoIbo", "CacheCeto", "OverpassOzi", "AncientArda",
+  "SniperSerkan", "KasaAvcisi", "ButterflyBay", "AWP_Fatihi", "RushB_Reis",
+  "NadeAtanNecmi", "FlashGarda", "EkonomiEfe", "SkinSaticisi", "Bastik2",
+  "JumpPeekJale", "SmitinSami", "ClutchCengiz", "DropDeniz", "HavuzHakan",
+  "KasaKral62", "PaparaPasa", "NoobSens", "BicakciBurak", "StatTrakSelin",
+  "VitrinVolkan", "MarketMurat", "TakasTayfun", "JackpotJale", "UpgradeUmut",
+  "QuickScopeQt", "WastedWeronika", "PeekPoyraz", "AimAli", "GloveGazi",
+  "OyunOzan", "RutinRecep", "TurboTolga", "KnifeKemal", "HazineHilal",
+  "Dust2Deniz", "FragFurkan", "S1mpleSafak", "DropDilan", "PazarPelin",
+  "LootLeyla", "SpinSefa", "ReelReyiz", "KasaKrali", "SlotSuat",
 ];
 
 export const FEED_ACTIONS: { tier: RarityKey; weight: number }[] = [
-  { tier: "milspec", weight: 42 },
-  { tier: "restricted", weight: 30 },
-  { tier: "classified", weight: 18 },
-  { tier: "covert", weight: 7.5 },
-  { tier: "rare", weight: 2.5 },
+  { tier: "milspec", weight: 84 },
+  { tier: "restricted", weight: 12 },
+  { tier: "classified", weight: 3.5 },
+  { tier: "covert", weight: 0.499 },
+  { tier: "rare", weight: 0.001 },
 ];
+
+/** Olasılık yüzdesini kullanıcı dostu biçimlendir — çok küçükse "1/100.000" göster */
+export function formatOdds(pct: number): string {
+  if (pct <= 0) return "%0";
+  if (pct < 0.005) return `1/${Math.round(100 / pct).toLocaleString("tr-TR")}`;
+  return `%${pct.toFixed(2)}`;
+}

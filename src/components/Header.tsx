@@ -4,19 +4,26 @@ import {
   Backpack,
   Banknote,
   Boxes,
+  ChartNoAxesCombined,
   ChevronsUp,
   Check,
   Clock,
+  Crown,
   Dices,
   Gift,
   Handshake,
   LogOut,
   Plus,
+  Settings,
   ShieldCheck,
+  ShoppingBag,
   Sparkles,
   Store,
   Swords,
+  Trophy,
   Unplug,
+  UserPlus,
+  Users,
   Volume2,
   VolumeX,
   Wallet,
@@ -24,18 +31,28 @@ import {
   X,
 } from "lucide-react";
 import { useGame, DAILY_COOLDOWN, type TabKey } from "../store/Game";
-import { ADMIN_NAME, BRAND, CURRENCY, SCALE, mcHead, money } from "../config";
+import { ADMIN_NAME, BRAND, CURRENCY, SCALE, VIP_LEVELS, VIP_TIERS, vipLevelEntry, mcHead, money } from "../config";
+import { DEFAULT_DEPOSIT_PACKS } from "../store/db";
+import { CASES } from "../data/cases";
+import { SKIN_MAP } from "../data/skins";
 import { click, coinDing } from "../lib/audio";
+import { loadPrefs, savePrefs, type Prefs } from "../lib/prefs";
 import { cn } from "../utils/cn";
+import { ReferralModal } from "./ReferralModal";
 
 const TABS: { key: TabKey; label: string; Icon: typeof Boxes }[] = [
   { key: "cases", label: "Kasalar", Icon: Boxes },
   { key: "upgrader", label: "Upgrader", Icon: ChevronsUp },
   { key: "battle", label: "Savaş", Icon: Swords },
   { key: "games", label: "Oyunlar", Icon: Dices },
+  { key: "jackpot", label: "Jackpot", Icon: Trophy },
   { key: "market", label: "Pazar", Icon: Store },
+  { key: "shop", label: "Dükkan", Icon: ShoppingBag },
+  { key: "season", label: "Sezon", Icon: Crown },
   { key: "trade", label: "Takas", Icon: Handshake },
   { key: "inventory", label: "Envanter", Icon: Backpack },
+  { key: "stats", label: "Profilim", Icon: ChartNoAxesCombined },
+  { key: "community", label: "Topluluk", Icon: Users },
 ];
 
 function AnimatedMoney({ value }: { value: number }) {
@@ -64,7 +81,9 @@ export function Header() {
     level, levelTitleStr, levelProgress, xpCurrent, xpNeeded,
     lastDaily, claimDaily, isAdmin, userName, logout,
     requestDeposit, requestWithdraw, heldBalance, myDeposits, pendingDepositList, pendingUserList,
+    depositPacks, redeemCoupon, couponBonus, respondDepositOffer,
     syncCode, setSyncCode, syncStatus,
+    vipLevel, vipTier, vipNext, vipActive, buyVipLevel,
   } = useGame();
 
   const [mode, setMode] = useState<"deposit" | "withdraw">("deposit");
@@ -72,13 +91,25 @@ export function Header() {
 
   const [connectOpen, setConnectOpen] = useState(false);
   const [codeDraft, setCodeDraft] = useState("");
+  const [optsOpen, setOptsOpen] = useState(false);
+  const [prefs, setPrefsState] = useState<Prefs>(() => loadPrefs());
+
+  function updatePref(p: Partial<Prefs>) {
+    const next = { ...prefs, ...p };
+    setPrefsState(next);
+    savePrefs(next);
+    click();
+  }
 
   const [depositOpen, setDepositOpen] = useState(false);
   const [amount, setAmount] = useState("10000");
+  const [couponCode, setCouponCode] = useState("");
   const [method, setMethod] = useState(METHODS[0]);
   const [sent, setSent] = useState(false);
   const [dailyOpen, setDailyOpen] = useState(false);
   const [claimed, setClaimed] = useState<number | null>(null);
+  const [referralOpen, setReferralOpen] = useState(false);
+  const [vipOpen, setVipOpen] = useState(false);
 
   const dailyReady = !lastDaily || Date.now() - lastDaily >= DAILY_COOLDOWN;
   const dailyLeftMs = lastDaily ? Math.max(0, lastDaily + DAILY_COOLDOWN - Date.now()) : 0;
@@ -88,6 +119,22 @@ export function Header() {
   const myPending = myDeposits.filter((d) => d.status === "pending");
   const adminBadge = pendingDepositList.length + pendingUserList.length;
   const amountNum = Math.max(0, Math.round(Number(amount.replace(/[^\d]/g, "")) || 0));
+
+  /* yatırma paketleri — admin panelinden değiştirilebilir */
+  const packs = [...(depositPacks?.packs?.length ? depositPacks.packs : DEFAULT_DEPOSIT_PACKS)].sort(
+    (a, b) => a.amount - b.amount
+  );
+  const activePack = mode === "deposit" ? packs.find((p) => p.amount === amountNum) : undefined;
+  const credit = amountNum + Math.round((amountNum * (activePack?.bonus ?? 0)) / 100);
+  const giftLabel = (g?: { kind: string; id: string; count: number }) => {
+    if (!g) return null;
+    if (g.kind === "case") {
+      const c = CASES.find((x) => x.id === g.id);
+      return `${g.count > 1 ? g.count + "× " : ""}${c ? c.name : g.id}`;
+    }
+    const sk = SKIN_MAP[g.id];
+    return sk ? `${sk.weapon} | ${sk.name}` : g.id;
+  };
 
   const allTabs: typeof TABS = isAdmin
     ? [...TABS, { key: "admin" as TabKey, label: "Panel", Icon: ShieldCheck }]
@@ -139,43 +186,7 @@ export function Header() {
             </div>
           </button>
 
-          {/* desktop nav */}
-          <nav className="mx-auto hidden items-center gap-1 lg:flex">
-            {allTabs.map(({ key, label, Icon }) => (
-              <button
-                key={key}
-                onClick={() => {
-                  setTab(key);
-                  click();
-                }}
-                className={cn(
-                  "relative flex items-center gap-1.5 rounded-lg px-3.5 py-2 font-display text-sm font-semibold uppercase tracking-wider transition-colors",
-                  tab === key ? "text-white" : "text-white/45 hover:text-white/80"
-                )}
-              >
-                <Icon className="h-4 w-4" />
-                {label}
-                {key === "inventory" && inventory.length > 0 && (
-                  <span className="ml-0.5 rounded-full bg-brand-500/20 px-1.5 text-[10px] font-bold text-brand-300">
-                    {inventory.length}
-                  </span>
-                )}
-                {key === "admin" && adminBadge > 0 && (
-                  <span className="ml-0.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-lose px-1 text-[10px] font-black text-white" style={{ height: 18, minWidth: 18 }}>
-                    {adminBadge}
-                  </span>
-                )}
-                {tab === key && (
-                  <motion.div
-                    layoutId="nav-underline"
-                    className="absolute inset-x-3 -bottom-[13px] h-[2.5px] rounded-full bg-gradient-to-r from-brand-400 to-brand-600"
-                  />
-                )}
-              </button>
-            ))}
-          </nav>
-
-          <div className="ml-auto flex items-center gap-2 lg:ml-0">
+          <div className="ml-auto flex items-center gap-2">
             {/* seviye */}
             <div
               className="hidden items-center gap-2 rounded-lg border border-line bg-ink-800 px-2.5 py-1.5 xl:flex"
@@ -241,14 +252,148 @@ export function Header() {
               )}
             </button>
 
-            {/* mute */}
+            {/* VIP */}
             <button
-              onClick={toggleMute}
-              className="hidden h-9 w-9 items-center justify-center rounded-lg border border-line bg-ink-800 text-white/50 transition hover:text-white sm:flex"
-              title={muted ? "Sesi aç" : "Sesi kapat"}
+              onClick={() => {
+                setVipOpen(true);
+                click();
+              }}
+              className={cn(
+                "relative flex h-9 items-center justify-center gap-1 rounded-lg border px-2.5 font-display text-xs font-black uppercase tracking-wider transition",
+                vipActive
+                  ? "border-rar-rare/60 bg-gradient-to-b from-rar-rare/25 to-brand-600/20 text-rar-rare shadow-[0_0_16px_-4px_rgba(228,174,57,0.5)]"
+                  : "border-line bg-ink-800 text-white/40 hover:text-rar-rare"
+              )}
+              title={vipActive ? `VIP seviyen ${vipLevel}/24 — ${vipTier.label}` : "VIP kademelerini satın al"}
             >
-              {muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              <Crown className="h-4 w-4" />
+              <span className="hidden sm:inline">{vipActive ? `${vipTier.label} ${vipLevelEntry(vipLevel)?.roman ?? ""}` : "VIP"}</span>
+              {vipActive && (
+                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 animate-ping rounded-full" style={{ background: vipTier.color }} />
+              )}
             </button>
+
+            {/* davet & ödül */}
+            <button
+              onClick={() => {
+                setReferralOpen(true);
+                click();
+              }}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-ink-800 text-white/40 transition hover:text-emerald-400"
+              title="Davet et — seviye ödülü kazan"
+            >
+              <UserPlus className="h-4 w-4" />
+            </button>
+
+            {/* ayarlar merkezi */}
+            <div className="relative hidden sm:block">
+              <button
+                onClick={() => {
+                  setOptsOpen((o) => !o);
+                  click();
+                }}
+                className={cn(
+                  "flex h-9 w-9 items-center justify-center rounded-lg border transition",
+                  optsOpen
+                    ? "border-brand-500/60 bg-brand-500/15 text-brand-300"
+                    : "border-line bg-ink-800 text-white/50 hover:text-white"
+                )}
+                title="Ayarlar Merkezi"
+              >
+                <Settings className="h-4 w-4" />
+                {prefs.sfx <= 0 || muted ? (
+                  <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-lose" />
+                ) : null}
+              </button>
+              <AnimatePresence>
+                {optsOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6, scale: 0.97 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 6, scale: 0.97 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-11 z-50 w-72 rounded-2xl border border-line bg-ink-950/95 p-4 shadow-2xl backdrop-blur-xl"
+                  >
+                    <div className="mb-3 flex items-center gap-2">
+                      <Settings className="h-4 w-4 text-brand-300" />
+                      <span className="font-display text-sm font-black uppercase tracking-widest text-white/85">
+                        Ayarlar Merkezi
+                      </span>
+                      <button
+                        onClick={() => setOptsOpen(false)}
+                        className="ml-auto flex h-6 w-6 items-center justify-center rounded-lg text-white/40 transition hover:text-white"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    {/* ses */}
+                    <div className="rounded-xl border border-line bg-ink-900/70 p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-white/40">Ses</span>
+                        <span className="font-display text-xs font-black text-brand-300">
+                          {muted ? "Kapalı" : `%${Math.round(prefs.sfx)}`}
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={Math.round(prefs.sfx)}
+                        onChange={(e) => updatePref({ sfx: Number(e.target.value) })}
+                        disabled={muted}
+                        className="mt-2 w-full accent-brand-500 disabled:opacity-40"
+                      />
+                      <button
+                        onClick={toggleMute}
+                        className={cn(
+                          "mt-2 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border text-[11px] font-bold transition",
+                          muted
+                            ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-400"
+                            : "border-lose/40 bg-lose/10 text-lose hover:bg-lose/20"
+                        )}
+                      >
+                        {muted ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+                        {muted ? "Sesi Aç" : "Sesi Kapat"}
+                      </button>
+                    </div>
+
+                    {/* tercihler */}
+                    <div className="mt-3 space-y-2">
+                      {(
+                        [
+                          { key: "effects", label: "Görsel Efektler", desc: "Kazanç parlamaları ve ışık patlamaları" },
+                          { key: "shake", label: "Ekran Sarsıntısı", desc: "Yetersiz bakiye uyarısında sarsıntı" },
+                          { key: "fastReels", label: "Hızlı Makara", desc: "Kasa açılışını hızlandır (kısa animasyon)" },
+                        ] as { key: keyof Prefs; label: string; desc: string }[]
+                      ).map((t) => (
+                        <div key={t.key} className="flex items-center gap-3 rounded-xl border border-line bg-ink-900/70 px-3 py-2.5">
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[11px] font-bold text-white/80">{t.label}</div>
+                            <div className="text-[9px] text-white/35">{t.desc}</div>
+                          </div>
+                          <button
+                            onClick={() => updatePref({ [t.key]: !prefs[t.key] } as Partial<Prefs>)}
+                            className={cn(
+                              "relative h-6 w-11 shrink-0 rounded-full transition-colors",
+                              prefs[t.key] ? "bg-emerald-500" : "bg-ink-600"
+                            )}
+                            aria-pressed={Boolean(prefs[t.key])}
+                          >
+                            <span
+                              className={cn(
+                                "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all",
+                                prefs[t.key] ? "left-[22px]" : "left-0.5"
+                              )}
+                            />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* bakiye */}
             <div className="flex items-stretch overflow-hidden rounded-lg border border-line bg-ink-800">
@@ -302,16 +447,54 @@ export function Header() {
             </div>
           </div>
         </div>
+
+        {/* desktop nav — ikinci satır (dar ekranlarda kendiliğinden sarar, asla taşmaz) */}
+        <nav className="hidden border-t border-line/60 lg:block">
+          <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-center gap-x-1 gap-y-1 px-4 py-1.5">
+            {allTabs.map(({ key, label, Icon }) => (
+              <button
+                key={key}
+                onClick={() => {
+                  setTab(key);
+                  click();
+                }}
+                className={cn(
+                  "relative flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 font-display text-xs font-semibold uppercase tracking-wider transition-colors",
+                  tab === key ? "text-white" : "text-white/45 hover:text-white/80"
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                {label}
+                {key === "inventory" && inventory.length > 0 && (
+                  <span className="ml-0.5 rounded-full bg-brand-500/20 px-1.5 text-[10px] font-bold text-brand-300">
+                    {inventory.length}
+                  </span>
+                )}
+                {key === "admin" && adminBadge > 0 && (
+                  <span className="ml-0.5 flex items-center justify-center rounded-full bg-lose px-1.5 text-[10px] font-black text-white" style={{ height: 18, minWidth: 18 }}>
+                    {adminBadge}
+                  </span>
+                )}
+                {tab === key && (
+                  <motion.div
+                    layoutId="nav-underline"
+                    className="absolute inset-x-3 bottom-0 h-[2.5px] rounded-full bg-gradient-to-r from-brand-400 to-brand-600"
+                  />
+                )}
+              </button>
+            ))}
+          </div>
+        </nav>
       </header>
 
       {/* mobil alt nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 flex border-t border-line bg-ink-950/95 backdrop-blur-md lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-50 flex overflow-x-auto border-t border-line bg-ink-950/95 backdrop-blur-md lg:hidden" style={{ scrollbarWidth: "none" }}>
         {allTabs.map(({ key, label, Icon }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
             className={cn(
-              "relative flex flex-1 flex-col items-center gap-1 py-2.5 text-[9px] font-semibold uppercase tracking-wider",
+              "relative flex min-w-[62px] flex-1 flex-col items-center gap-1 overflow-hidden py-2.5 text-[9px] font-semibold uppercase tracking-wider",
               tab === key ? "text-brand-400" : "text-white/40"
             )}
           >
@@ -403,8 +586,18 @@ export function Header() {
                     </div>
                     <div className="font-display text-xl font-black text-white">Talep gönderildi</div>
                     <p className="max-w-xs text-sm text-white/45">
-                      <span className="font-bold text-emerald-400">{money(amountNum)}</span> tutarındaki{" "}
-                      {mode === "withdraw" ? "çekim" : "yatırma"} talebin{" "}
+                      <span className="font-bold text-emerald-400">
+                        {mode === "withdraw" ? money(amountNum) : money(credit)}
+                      </span>{" "}
+                      {mode === "withdraw"
+                        ? "tutarındaki çekim talebin"
+                        : activePack && (activePack.bonus > 0 || (activePack.gifts ?? []).length > 0)
+                          ? `(+${money(credit - amountNum)} bonus ve ${
+                              (activePack.gifts ?? []).length > 0
+                                ? `${activePack.gifts!.map((g) => giftLabel(g)).filter(Boolean).join(", ")} hediyesi`
+                                : ""
+                            }) yatırma talebin`
+                          : "tutarındaki yatırma talebin"}{" "}
                       <span className="font-semibold text-brand-300">{ADMIN_NAME}</span> onayına düştü.
                       {mode === "withdraw"
                         ? " Tutar bakiyenden bloke edildi, onaylanınca ödemen yapılacak."
@@ -428,6 +621,40 @@ export function Header() {
                       </div>
                     )}
 
+                    {mode === "deposit" && (
+                      <div className="mb-4 rounded-xl border border-dashed border-brand-500/35 bg-brand-500/5 p-3">
+                        <div className="mb-1.5 text-[11px] font-bold uppercase tracking-widest text-white/40">
+                          Kupon / Promosyon kodu
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            value={couponCode}
+                            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                            placeholder="SKY20"
+                            maxLength={24}
+                            className="h-10 min-w-0 flex-1 rounded-lg border border-line bg-ink-900 px-3 font-mono text-sm font-bold tracking-widest text-white placeholder:text-white/20 focus:border-brand-500/60 focus:outline-none"
+                          />
+                          <button
+                            onClick={() => {
+                              const res = redeemCoupon(couponCode);
+                              if (res.ok) {
+                                setCouponCode("");
+                                click();
+                              } else pushToast({ kind: "lose", title: "Kupon geçersiz", sub: res.error });
+                            }}
+                            className="h-10 shrink-0 rounded-lg bg-gradient-to-b from-brand-400 to-brand-600 px-4 font-display text-sm font-bold text-ink-950 transition hover:brightness-110"
+                          >
+                            Kullan
+                          </button>
+                        </div>
+                        {couponBonus && couponBonus.until > Date.now() && (
+                          <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-500/10 px-2.5 py-1.5 text-[10px] font-bold text-emerald-300">
+                            🎟️ Aktif: Sonraki yatırmana +%{couponBonus.pct} bonus (~{Math.ceil((couponBonus.until - Date.now()) / 3600000)} saat kaldı)
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* tutar girişi */}
                     <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-widest text-white/40">
                       {mode === "withdraw" ? "Ne kadar çekmek istiyorsun?" : "Ne kadar yatırmak istiyorsun?"}
@@ -447,24 +674,57 @@ export function Header() {
                     </div>
 
                     <div className="mt-2.5 grid grid-cols-3 gap-2">
-                      {PRESETS.map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => {
-                            setAmount(String(p));
-                            click();
-                          }}
-                          className={cn(
-                            "rounded-lg border py-2 font-display text-sm font-bold transition",
-                            amountNum === p
-                              ? "border-brand-500 bg-brand-500/10 text-brand-300"
-                              : "border-line bg-ink-700 text-white/55 hover:text-white"
-                          )}
-                        >
-                          {money(p)}
-                        </button>
-                      ))}
+                      {(mode === "deposit" ? packs.map((p) => p.amount) : PRESETS).map((p) => {
+                        const pack = mode === "deposit" ? packs.find((x) => x.amount === p) : undefined;
+                        return (
+                          <button
+                            key={p}
+                            onClick={() => {
+                              setAmount(String(p));
+                              click();
+                            }}
+                            className={cn(
+                              "relative rounded-lg border py-2 font-display text-sm font-bold transition",
+                              amountNum === p
+                                ? "border-brand-500 bg-brand-500/10 text-brand-300"
+                                : "border-line bg-ink-700 text-white/55 hover:text-white"
+                            )}
+                          >
+                            {money(p)}
+                            {pack && (pack.bonus > 0 || (pack.gifts ?? []).length > 0) && (
+                              <span className="absolute -top-1.5 right-1 flex items-center gap-0.5 rounded-full bg-emerald-500 px-1 py-px text-[8px] font-black text-ink-950">
+                                {pack.bonus > 0 && `+%${pack.bonus}`}
+                                {(pack.gifts ?? []).length > 0 && <span>🎁</span>}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
+
+                    {mode === "deposit" && activePack && (activePack.bonus > 0 || (activePack.gifts ?? []).length > 0) && (
+                      <div className="mt-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2.5 text-[11px]">
+                        <div className="flex items-center justify-between">
+                          <span className="text-white/55">
+                            Paket bonusu <span className="font-black text-emerald-400">+%{activePack.bonus}</span>
+                          </span>
+                          <span className="font-display text-sm font-black text-emerald-400">
+                            {money(credit)} yüklenecek
+                          </span>
+                        </div>
+                        {(activePack.gifts ?? []).length > 0 && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5 border-t border-emerald-500/20 pt-1.5 text-[10px] text-white/60">
+                            <span>🎁 Hediye:</span>
+                            {activePack.gifts!.map((g, gi) => (
+                              <span key={gi} className="rounded bg-emerald-500/15 px-1.5 py-0.5 font-bold text-emerald-300">
+                                {g.kind === "case" ? `Kasa · ${giftLabel(g)}` : giftLabel(g)}
+                                {g.kind === "case" && " (onayda otomatik açılır)"}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <label className="mb-1.5 mt-4 block text-[11px] font-bold uppercase tracking-widest text-white/40">
                       Ödeme yöntemi
@@ -543,7 +803,8 @@ export function Header() {
                           : "bg-gradient-to-b from-brand-400 to-brand-600"
                       )}
                     >
-                      {money(amountNum)} {mode === "withdraw" ? "Çekim Talebi" : "Talep Et"}
+                      {mode === "withdraw" ? money(amountNum) : money(credit)}{" "}
+                      {mode === "withdraw" ? "Çekim Talebi" : "Yükle ve Al"}
                     </button>
                   </>
                 )}
@@ -555,38 +816,87 @@ export function Header() {
                       Taleplerim
                     </div>
                     <div className="tiny-scroll max-h-40 space-y-1.5 overflow-y-auto">
-                      {myDeposits.slice(0, 12).map((d) => (
-                        <div
-                          key={d.id}
-                          className="flex items-center gap-2 rounded-lg bg-ink-900 px-3 py-2 text-xs"
-                        >
-                          <span
-                            className={cn(
-                              "shrink-0 rounded px-1 py-0.5 text-[9px] font-black uppercase",
-                              d.kind === "withdraw"
-                                ? "bg-emerald-500/15 text-emerald-400"
-                                : "bg-brand-500/15 text-brand-300"
+                      {myDeposits.slice(0, 12).map((d) => {
+                        const isOffer = d.status === "pending" && !!d.offerTs && !d.offerRespondedTs;
+                        const netReq =
+                          d.status === "approved"
+                            ? Math.max(0, Math.round(((d.offered ?? d.amount) * (100 - Math.min(90, Math.max(0, d.commissionPct ?? 0)))) / 100))
+                            : d.amount;
+                        return (
+                          <div key={d.id} className="rounded-lg bg-ink-900 p-2 text-xs">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={cn(
+                                  "shrink-0 rounded px-1 py-0.5 text-[9px] font-black uppercase",
+                                  d.kind === "withdraw"
+                                    ? "bg-emerald-500/15 text-emerald-400"
+                                    : "bg-brand-500/15 text-brand-300"
+                                )}
+                              >
+                                {d.kind === "withdraw" ? "Çekim" : "Yatır"}
+                              </span>
+                              <span className="font-display font-bold text-white/80">{money(d.amount)}</span>
+                              <span className="truncate text-[10px] text-white/30">{d.method}</span>
+                              {(d.commissionPct ?? 0) > 0 && (
+                                <span className="rounded bg-lose/10 px-1 py-0.5 text-[9px] font-black text-lose">
+                                  -%{d.commissionPct}
+                                </span>
+                              )}
+                              <span className="ml-auto shrink-0 text-[10px] text-white/25">{ago(d.ts)}</span>
+                              <span
+                                className={cn(
+                                  "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase",
+                                  d.status === "approved"
+                                    ? "bg-emerald-500/15 text-emerald-400"
+                                    : d.status === "pending"
+                                      ? isOffer
+                                        ? "bg-amber-500/15 text-amber-300"
+                                        : "bg-brand-500/15 text-brand-300"
+                                      : "bg-lose/15 text-lose"
+                                )}
+                              >
+                                {d.status === "approved" ? "Onaylandı" : isOffer ? "Teklif" : d.status === "pending" ? "Bekliyor" : "Reddedildi"}
+                              </span>
+                            </div>
+                            {isOffer && (
+                              <div className="mt-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-2">
+                                <div className="flex items-center justify-between text-[10px] text-white/55">
+                                  <span>
+                                    Teklif: <span className="font-black text-amber-300">{money(d.offered ?? 0)}</span>
+                                    {d.offered! < d.amount ? ` (istedin: ${money(d.amount)})` : ""}
+                                  </span>
+                                  <span>
+                                    {d.kind === "withdraw" ? "ödenecek" : "yüklenecek"}:{" "}
+                                    <span className="font-black text-emerald-400">{money(netReq)}</span>
+                                  </span>
+                                </div>
+                                <div className="mt-2 flex gap-1.5">
+                                  <button
+                                    onClick={() => {
+                                      const r = respondDepositOffer(d.id, true);
+                                      if (!r.ok) pushToast({ kind: "lose", title: "Kabul edilemedi", sub: r.error });
+                                      else click();
+                                    }}
+                                    className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-500 font-display text-[11px] font-bold text-ink-950 transition hover:brightness-110"
+                                  >
+                                    <Check className="h-3.5 w-3.5" strokeWidth={3} /> Kabul Et
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      const r = respondDepositOffer(d.id, false);
+                                      if (!r.ok) pushToast({ kind: "lose", title: "Reddedilemedi", sub: r.error });
+                                      else click();
+                                    }}
+                                    className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg border border-lose/40 bg-lose/10 text-[11px] font-bold text-lose transition hover:bg-lose/20"
+                                  >
+                                    <X className="h-3.5 w-3.5" strokeWidth={3} /> Reddet
+                                  </button>
+                                </div>
+                              </div>
                             )}
-                          >
-                            {d.kind === "withdraw" ? "Çekim" : "Yatır"}
-                          </span>
-                          <span className="font-display font-bold text-white/80">{money(d.amount)}</span>
-                          <span className="truncate text-[10px] text-white/30">{d.method}</span>
-                          <span className="ml-auto shrink-0 text-[10px] text-white/25">{ago(d.ts)}</span>
-                          <span
-                            className={cn(
-                              "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase",
-                              d.status === "approved"
-                                ? "bg-emerald-500/15 text-emerald-400"
-                                : d.status === "pending"
-                                  ? "bg-brand-500/15 text-brand-300"
-                                  : "bg-lose/15 text-lose"
-                            )}
-                          >
-                            {d.status === "approved" ? "Onaylandı" : d.status === "pending" ? "Bekliyor" : "Reddedildi"}
-                          </span>
-                        </div>
-                      ))}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -772,6 +1082,222 @@ export function Header() {
                   </div>
                 </div>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* davet & ödül modal */}
+      <AnimatePresence>
+        {referralOpen && <ReferralModal onClose={() => setReferralOpen(false)} />}
+      </AnimatePresence>
+
+      {/* VIP modal */}
+      <AnimatePresence>
+        {vipOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            onClick={() => setVipOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.92, y: 20, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.95, y: 10, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 26 }}
+              onClick={(e) => e.stopPropagation()}
+              className="tiny-scroll max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-rar-rare/40 bg-ink-800 shadow-2xl"
+            >
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-line bg-ink-800 px-5 py-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-rar-rare to-brand-600 text-ink-950">
+                    <Crown className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="font-display text-lg font-black tracking-wide text-white">VIP Sınıfları</div>
+                    <div className="text-[11px] text-white/40">
+                      {vipActive
+                        ? `${vipTier.icon} ${vipTier.label} — harcadıkça yükselir`
+                        : "Sınıflar: Bakır → Demir → Altın → Elmas → Obsidyen → Netherite"}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setVipOpen(false)}
+                  className="rounded-lg p-2 text-white/40 hover:bg-white/5 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="p-5">
+                {/* aktif seviye */}
+                <div
+                  className="mb-4 flex items-center gap-3 rounded-xl border px-4 py-3"
+                  style={{ borderColor: `${vipTier.color}55`, background: `${vipTier.color}0d` }}
+                >
+                  <div
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-xl"
+                    style={{ background: `${vipTier.color}22` }}
+                  >
+                    {vipTier.icon}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-display text-sm font-black" style={{ color: vipTier.color }}>
+                      {vipActive
+                        ? `VIP Seviyen ${vipLevel}/24 · ${vipTier.label} ${vipLevelEntry(vipLevel)?.roman ?? ""}`
+                        : "Henüz VIP seviyen yok"}
+                    </div>
+                    <div className="text-[11px] text-white/45">
+                      {vipNext ? (
+                        <>
+                          Sıradaki kademe: <span className="font-bold text-white/70">{vipNext.label}</span> —{" "}
+                          <span className="font-bold text-white/70">{money(vipNext.price)}</span>{" "}
+                          <button
+                            onClick={() => {
+                              const r = buyVipLevel(vipLevel + 1);
+                              if (!r.ok && r.error)
+                                pushToast({ kind: "lose", title: "VIP", sub: r.error });
+                            }}
+                            className="ml-1 rounded bg-rar-rare px-1.5 py-0.5 text-[9px] font-black uppercase text-ink-950 transition hover:brightness-110"
+                          >
+                            Al
+                          </button>
+                        </>
+                      ) : (
+                        "Tüm kademelere sahipsin 👑"
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ilerleme */}
+                <div className="mb-4">
+                  <div className="mb-1 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest text-white/40">
+                    <span>{vipTier.icon} Kademe {vipLevel}/24</span>
+                    <span>{vipNext ? `sıradaki: ${vipNext.label}` : "maksimum 🏆"}</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-ink-600">
+                    <motion.div
+                      className="h-full rounded-full"
+                      animate={{ width: `${Math.min(100, (vipLevel / VIP_LEVELS.length) * 100)}%` }}
+                      transition={{ type: "spring", stiffness: 120, damping: 20 }}
+                      style={{
+                        background: `linear-gradient(90deg, ${vipTier.color}, ${VIP_TIERS.find((t) => t.id === vipNext?.tier)?.color ?? vipTier.color})`,
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* sınıf bölümleri — her sınıfta 4 kademe */}
+                <div className="space-y-3">
+                  {VIP_TIERS.filter((t) => t.id !== "none").map((tier) => {
+                    const levels = VIP_LEVELS.filter((l) => l.tier === tier.id);
+                    const firstIdx = VIP_LEVELS.indexOf(levels[0]);
+                    const tierOwned = vipLevel >= firstIdx + 4;
+                    return (
+                      <div
+                        key={tier.id}
+                        className={cn(
+                          "overflow-hidden rounded-xl border",
+                          tierOwned ? "border-rar-rare/50 bg-ink-900" : "border-line bg-ink-900"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 px-3.5 py-2.5" style={{ background: `${tier.color}14` }}>
+                          <span className="text-xl">{tier.icon}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-display text-sm font-black uppercase tracking-wider" style={{ color: tier.color }}>
+                              {tier.label}
+                            </div>
+                            <div className="text-[9px] font-bold uppercase text-white/35">4 kademe · para ile satın alınır</div>
+                          </div>
+                          {tierOwned && (
+                            <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[9px] font-black uppercase text-emerald-400">
+                              Bölüm tamam ✓
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid gap-px bg-line/60">
+                          {levels.map((lv, k) => {
+                            const idx = firstIdx + k;
+                            const owned = vipLevel > idx;
+                            const current = vipLevel === idx + 1;
+                            const next = vipLevel === idx;
+                            return (
+                              <div
+                                key={lv.id}
+                                className={cn(
+                                  "flex flex-col gap-2 px-3.5 py-2.5 sm:flex-row sm:items-center",
+                                  current ? "bg-rar-rare/10" : owned ? "bg-emerald-500/[0.04]" : "bg-ink-900"
+                                )}
+                              >
+                                <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                                  <span
+                                    className={cn(
+                                      "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-black",
+                                      owned
+                                        ? "bg-emerald-500/20 text-emerald-400"
+                                        : current
+                                          ? "bg-rar-rare/25 text-rar-rare"
+                                          : "bg-ink-700 text-white/40"
+                                    )}
+                                  >
+                                    {owned ? "✓" : lv.roman}
+                                  </span>
+                                  <div className="min-w-0">
+                                    <div className={cn("font-display text-xs font-black", owned ? "text-white/80" : current ? "text-rar-rare" : "text-white/70")}>
+                                      {lv.label}
+                                      {current && <span className="ml-1.5 text-[9px] font-black uppercase text-rar-rare">aktif</span>}
+                                    </div>
+                                    <div className="text-[9.5px] text-white/35">
+                                      🎁 ×{lv.dailyMult} · 💸 %{Math.round(lv.cashback * 100)} · 🏪 %{Math.round(lv.fee * 100)} · 🎰 %{lv.caseDisc}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="flex shrink-0 items-center justify-end gap-2">
+                                  <span className="text-[10px] font-bold text-white/45">{money(lv.price)}</span>
+                                  {owned ? (
+                                    <span className="pointer-events-none rounded-lg border border-emerald-500/30 px-2.5 py-1.5 text-[10px] font-black uppercase text-emerald-400">
+                                      Sahip
+                                    </span>
+                                  ) : (
+                                    <button
+                                      onClick={() => {
+                                        const r = buyVipLevel(idx + 1);
+                                        if (!r.ok && r.error)
+                                          pushToast({ kind: "lose", title: "VIP", sub: r.error });
+                                      }}
+                                      className={cn(
+                                        "rounded-lg px-3 py-1.5 text-[11px] font-black uppercase transition hover:brightness-110 active:scale-95",
+                                        next
+                                          ? "bg-gradient-to-b from-rar-rare to-brand-600 text-ink-950"
+                                          : "border border-rar-rare/40 bg-rar-rare/10 text-rar-rare"
+                                      )}
+                                    >
+                                      {next ? "Satın Al" : "Doğrudan Al"}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <p className="mt-4 rounded-lg border border-line bg-ink-900 px-3 py-2.5 text-[10px] leading-relaxed text-white/35">
+                  VIP kademeleri <span className="font-bold text-white/60">bakiyenden para düşerek</span>
+                  satın alınır — <span className="font-bold text-white/60">istediğin kademeyi doğrudan alabilirsin</span>,
+                  sıralı almak zorunda değilsin. Toplam 6 sınıf × 4 kademe ={" "}
+                  <span className="font-bold text-white/60">24 seviye</span>:{" "}
+                  {VIP_TIERS.filter((t) => t.id !== "none").map((t) => t.label).join(" → ")}. Kademe arttıkça
+                  günlük ödül çarpanı, cashback, pazar komisyonu avantajı ve kasa indirimi artar.
+                </p>
+              </div>
             </motion.div>
           </motion.div>
         )}

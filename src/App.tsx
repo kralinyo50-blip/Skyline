@@ -9,11 +9,21 @@ import { CasesView } from "./components/CasesView";
 import { UpgraderView } from "./components/UpgraderView";
 import { BattleView } from "./components/BattleView";
 import { GamesView } from "./components/GamesView";
+import { JackpotView } from "./components/JackpotView";
 import { MarketView } from "./components/MarketView";
+import { ShopView } from "./components/ShopView";
+import { SeasonView } from "./components/SeasonView";
 import { TradeView } from "./components/TradeView";
 import { InventoryView } from "./components/InventoryView";
+import { StatsView } from "./components/StatsView";
+import { CommunityView } from "./components/CommunityView";
+import { EventBanners } from "./components/EventBanners";
+import { SupportChat } from "./components/SupportChat";
+import { CasinoAmbience } from "./components/CasinoAmbience";
+import { CelebrationOverlay } from "./components/CelebrationOverlay";
 import { AdminPanel } from "./components/AdminPanel";
 import { Toasts } from "./components/Toasts";
+import { LiveToasts } from "./components/LiveToasts";
 import { Footer } from "./components/Footer";
 
 function Shell() {
@@ -34,8 +44,10 @@ function Shell() {
 
   return (
     <div className="noise bg-site min-h-screen">
+      <CasinoAmbience />
       <Header />
       <LiveTicker />
+      <EventBanners />
       <FeedRail />
       <ChatRail />
 
@@ -52,16 +64,24 @@ function Shell() {
             {tab === "upgrader" && <UpgraderView />}
             {tab === "battle" && <BattleView />}
             {tab === "games" && <GamesView />}
+            {tab === "jackpot" && <JackpotView />}
             {tab === "market" && <MarketView />}
+            {tab === "shop" && <ShopView />}
+            {tab === "season" && <SeasonView />}
             {tab === "trade" && <TradeView />}
             {tab === "inventory" && <InventoryView />}
+            {tab === "stats" && <StatsView />}
+            {tab === "community" && <CommunityView />}
             {tab === "admin" && (isAdmin ? <AdminPanel /> : <CasesView />)}
           </motion.div>
         </AnimatePresence>
         <Footer />
       </main>
 
+      <CelebrationOverlay />
       <Toasts />
+      <LiveToasts />
+      <SupportChat />
     </div>
   );
 }

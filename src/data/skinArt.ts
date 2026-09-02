@@ -121,7 +121,7 @@ ${glow}
 
 /* ---------------- Sticker sanatı (e-spor rozetleri & özel) ---------------- */
 
-export type BadgeShape = "circle" | "shield" | "star" | "hex" | "diamond";
+export type BadgeShape = "circle" | "shield" | "star" | "hex" | "diamond" | "crown";
 
 export interface BadgeSpec {
   text: string;
@@ -138,6 +138,7 @@ const SHAPE_PATH: Record<BadgeShape, string> = {
   star: "M50,3 L62,36 H97 L69,57 L80,92 L50,71 L20,92 L31,57 L3,36 H38 Z",
   hex: "M50,3 L91,26 V74 L50,97 L9,74 V26 Z",
   diamond: "M50,2 L98,50 L50,98 L2,50 Z",
+  crown: "M8,28 L26,16 L40,30 L50,10 L60,30 L74,16 L92,28 V72 C92,88 72,95 50,95 C28,95 8,88 8,72 Z",
 };
 
 export function badgeArt(spec: BadgeSpec): string {

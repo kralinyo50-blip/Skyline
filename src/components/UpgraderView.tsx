@@ -86,6 +86,7 @@ export function UpgraderView() {
     setTab,
     pushToast,
     nonce,
+    priceVersion,
     trackWager,
     trackMission,
   } = useGame();
@@ -93,6 +94,8 @@ export function UpgraderView() {
   const [mode, setMode] = useState<Mode>("upgrade");
   const [selUids, setSelUids] = useState<string[]>([]);
   const [targetId, setTargetId] = useState<string | null>(null);
+  const [targetFilter, setTargetFilter] = useState<"all" | "rare" | "upgrade">("upgrade");
+  const [targetPage, setTargetPage] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [rot, setRot] = useState(0);
   const [result, setResult] = useState<"win" | "lose" | null>(null);
@@ -115,7 +118,8 @@ export function UpgraderView() {
         const it = inventory.find((i) => i.uid === u);
         return a + (it ? itemValue(it) : 0);
       }, 0),
-    [selUids, inventory]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selUids, inventory, priceVersion]
   );
   const target: Skin | null = targetId ? SKIN_MAP[targetId] : null;
 
@@ -125,7 +129,8 @@ export function UpgraderView() {
       [...inventory].sort(
         (a, b) => (SKIN_MAP[b.skinId]?.price ?? 0) - (SKIN_MAP[a.skinId]?.price ?? 0)
       ),
-    [inventory]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [inventory, priceVersion]
   );
 
   /* ön seçim (envanterden "Yükselt" ile gel) */
@@ -141,22 +146,54 @@ export function UpgraderView() {
     setSelUids((prev) => prev.filter((u) => inventory.some((i) => i.uid === u)));
   }, [inventory]);
 
+  /* F5: sayfa yenilenmeden seçili skin algılanıp silinir */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "F5") {
+        e.preventDefault();
+        setUpgraderPick(null);
+        setSelUids([]);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setUpgraderPick]);
+
   const chance = useMemo(() => {
     if (totalSel <= 0 || !target) return null;
-    return clamp((totalSel / target.price) * 0.95, 0.03, 0.95);
+    const base = clamp((totalSel / target.price) * 0.95, 0.005, 0.95);
+    /* bıçak/eldiven (★ Aşırı Nadir) upgrader'da ÇOK zor: en fazla %5 */
+    if (target.rarity === "rare") return clamp(base, 0.005, 0.05);
+    return base;
   }, [totalSel, target]);
+
+  /* TÜM skinler hedef olabilir — pahalı eşyada da asla "hedef yok" durumu oluşmaz */
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const allTargets = useMemo(() => SKINS.filter((s) => !s.sticker).sort((a, b) => a.price - b.price), [priceVersion]);
 
   const targets = useMemo(() => {
     if (totalSel <= 0) return [];
-    return SKINS.filter((s) => s.price > totalSel * 1.02)
-      .sort((a, b) => a.price - b.price)
-      .slice(0, 42);
-  }, [totalSel]);
+    if (targetFilter === "rare") return allTargets.filter((s) => s.rarity === "rare");
+    if (targetFilter === "upgrade")
+      return allTargets.filter((s) => s.price > totalSel * 1.02);
+    return allTargets;
+  }, [allTargets, totalSel, targetFilter]);
 
-  /* hedef geçersizleşirse temizle */
+  const TARGET_PAGE = 18;
+  const targetPages = Math.max(1, Math.ceil(targets.length / TARGET_PAGE));
+  const targetPageSafe = Math.min(targetPage, targetPages - 1);
+  const targetItems = useMemo(
+    () => targets.slice(targetPageSafe * TARGET_PAGE, (targetPageSafe + 1) * TARGET_PAGE),
+    [targets, targetPageSafe]
+  );
+
+  /* filtre değişince sayfa başa dönsün, geçersiz hedef temizlensin */
   useEffect(() => {
-    if (target && target.price <= totalSel * 1.02) setTargetId(null);
-  }, [totalSel, target]);
+    setTargetPage(0);
+  }, [targetFilter, totalSel]);
+  useEffect(() => {
+    if (target && !targets.some((s) => s.id === target.id)) setTargetId(null);
+  }, [targets, target]);
 
   const multiplier = chance ? 1 / chance : null;
 
@@ -598,14 +635,22 @@ export function UpgraderView() {
           </button>
 
           {totalSel > 0 && target && chance !== null && (
-            <div className="mt-3 flex w-full items-center justify-between rounded-lg border border-line bg-ink-800 px-3 py-2 text-[11px] text-white/45">
-              <span className="flex items-center gap-1">
-                <Info className="h-3 w-3" /> Beklenen değer
-              </span>
-              <span className="font-display font-bold text-white/75">
-                {fmtMoney(totalSel)} → <span className="text-emerald-400">{fmtMoney(target.price)}</span>
-              </span>
-            </div>
+            <>
+              <div className="mt-3 flex w-full items-center justify-between rounded-lg border border-line bg-ink-800 px-3 py-2 text-[11px] text-white/45">
+                <span className="flex items-center gap-1">
+                  <Info className="h-3 w-3" /> Beklenen değer
+                </span>
+                <span className="font-display font-bold text-white/75">
+                  {fmtMoney(totalSel)} → <span className="text-emerald-400">{fmtMoney(target.price)}</span>
+                </span>
+              </div>
+              {target.rarity === "rare" && (
+                <div className="mt-2 flex w-full items-center justify-between rounded-lg border border-amber-400/30 bg-amber-400/8 px-3 py-2 text-[11px] text-amber-300/80">
+                  <span>★ Bıçak/eldiven hedefi</span>
+                  <span className="font-display font-bold text-amber-300">En fazla %5 şans</span>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -617,7 +662,7 @@ export function UpgraderView() {
               Hedef Seç
             </span>
             <span className="ml-auto text-xs text-white/35">
-              {totalSel > 0 ? `${targets.length} hedef müsait` : "—"}
+              {totalSel > 0 ? `${targets.length.toLocaleString("tr-TR")} hedef` : "—"}
             </span>
             {target && (
               <button
@@ -627,6 +672,28 @@ export function UpgraderView() {
                 <X className="h-3 w-3" />
               </button>
             )}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-line/70 px-3 py-2">
+            {(
+              [
+                { k: "upgrade", label: "⬆ Daha Pahalı" },
+                { k: "all", label: "Tümü" },
+                { k: "rare", label: "★ Bıçak & Eldiven" },
+              ] as const
+            ).map((f) => (
+              <button
+                key={f.k}
+                onClick={() => setTargetFilter(f.k)}
+                className={cn(
+                  "rounded-lg border px-2.5 py-1.5 text-[10px] font-bold transition",
+                  targetFilter === f.k
+                    ? "border-brand-500/70 bg-brand-500/15 text-brand-300"
+                    : "border-line bg-ink-800 text-white/40 hover:text-white/75"
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
           <div className="tiny-scroll max-h-[430px] flex-1 overflow-y-auto p-3 lg:max-h-[480px]">
             {totalSel <= 0 ? (
@@ -638,13 +705,13 @@ export function UpgraderView() {
                   Önce soldan yükseltilecek eşyaları seç
                 </p>
               </div>
-            ) : targets.length === 0 ? (
+            ) : targetItems.length === 0 ? (
               <div className="flex h-full min-h-[300px] items-center justify-center p-6 text-center text-sm text-white/45">
-                Bu değerden daha yüksek hedef kalmadı. Zirvedesin!
+                Bu filtrede hedef kalmadı — "Tümü" veya "★ Bıçak & Eldiven" dene
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3">
-                {targets.map((s) => (
+                {targetItems.map((s) => (
                   <SkinCard
                     key={s.id}
                     skin={s}
@@ -652,18 +719,48 @@ export function UpgraderView() {
                     selected={targetId === s.id}
                     onClick={() => !spinning && setTargetId(targetId === s.id ? null : s.id)}
                     badge={
-                      <span
-                        className="absolute right-1.5 top-1.5 rounded px-1 text-[9px] font-bold"
-                        style={{
-                          color: RARITY[s.rarity].color,
-                          background: "rgba(7,9,15,0.7)",
-                        }}
-                      >
-                        x{(s.price / totalSel).toFixed(1)}
-                      </span>
+                      <>
+                        {s.rarity === "rare" && (
+                          <span className="absolute left-1.5 top-1.5 rounded bg-[#e4ae39] px-1 py-0.5 text-[8px] font-black uppercase text-ink-950 shadow">
+                            ★ Çok Zor
+                          </span>
+                        )}
+                        <span
+                          className="absolute right-1.5 top-1.5 rounded px-1 text-[9px] font-bold"
+                          style={{
+                            color: RARITY[s.rarity].color,
+                            background: "rgba(7,9,15,0.7)",
+                          }}
+                        >
+                          {s.price > totalSel
+                            ? `x${(s.price / totalSel).toFixed(1)}`
+                            : `-%${Math.round(((totalSel - s.price) / totalSel) * 100)}`}
+                        </span>
+                      </>
                     }
                   />
                 ))}
+              </div>
+            )}
+            {totalSel > 0 && targetPages > 1 && (
+              <div className="mt-3 flex items-center justify-center gap-2 border-t border-line/70 pt-3">
+                <button
+                  onClick={() => setTargetPage((p) => Math.max(0, p - 1))}
+                  disabled={targetPageSafe === 0}
+                  className="flex h-8 items-center gap-0.5 rounded-lg border border-line bg-ink-800 px-2.5 text-[10px] font-bold text-white/55 transition hover:text-white disabled:opacity-30"
+                >
+                  ◀ Önceki
+                </button>
+                <span className="text-[10px] font-bold text-white/40">
+                  {targetPageSafe + 1}/{targetPages}
+                </span>
+                <button
+                  onClick={() => setTargetPage((p) => Math.min(targetPages - 1, p + 1))}
+                  disabled={targetPageSafe >= targetPages - 1}
+                  className="flex h-8 items-center gap-0.5 rounded-lg border border-line bg-ink-800 px-2.5 text-[10px] font-bold text-white/55 transition hover:text-white disabled:opacity-30"
+                >
+                  Sonraki ▶
+                </button>
               </div>
             )}
           </div>

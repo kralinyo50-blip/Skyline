@@ -60,25 +60,33 @@ export function startMqtt(code: string, h: MqttHandlers) {
   let stopped = false;
   let current: MqttClient | null = null;
 
-  const doPublish = (h2: MqttHandlers, topicName: string) => {
+  const doPublish = (h2: MqttHandlers, topicName: string, force = false) => {
     const cl = current;
     if (!cl || !cl.connected) return;
     const doc = h2.toDoc(h2.getLocal());
-    if (doc === lastPublishedJson) return;
+    if (!force && doc === lastPublishedJson) return;
     lastPublishedJson = doc;
     cl.publish(topicName, doc, { retain: true, qos: 0 });
   };
 
-  const schedulePublish = (delay: number) => {
+  const schedulePublish = (delay: number, force = false) => {
     if (publishTimer !== null) clearTimeout(publishTimer);
-    publishTimer = window.setTimeout(() => doPublish(h, topic), delay);
+    publishTimer = window.setTimeout(() => doPublish(h, topic, force), delay);
   };
 
   const onLocalChange = () => schedulePublish(350);
   window.addEventListener("skyline:db-changed", onLocalChange);
   cleanupFns.push(() => window.removeEventListener("skyline:db-changed", onLocalChange));
 
-  const keepAlive = window.setInterval(() => schedulePublish(0), 20000);
+  /* "Yenile" düğmesi (forceSync) kod modunda da çalışsın — eskiden yalnızca
+     URL modu bu olayı dinliyordu, kod modunda buton hiçbir şey yapmıyordu. */
+  const onForce = () => schedulePublish(0, true);
+  window.addEventListener("skyline:sync-force", onForce);
+  cleanupFns.push(() => window.removeEventListener("skyline:sync-force", onForce));
+
+  /* Saklanan durumu periyodik olarak zorla yeniden yayınla — başka bir cihazın
+     eski belgesi üzerimize yazsa bile onaylı işlemlerimiz kaybolmaz. */
+  const keepAlive = window.setInterval(() => schedulePublish(0, true), 20000);
   cleanupFns.push(() => clearInterval(keepAlive));
 
   const connect = () => {
@@ -104,11 +112,14 @@ export function startMqtt(code: string, h: MqttHandlers) {
 
     cl.on("message", (_t, payload) => {
       try {
-        const cloud = JSON.parse(payload.toString("utf8")) as CloudDoc;
+        const raw = payload.toString("utf8");
+        const cloud = JSON.parse(raw) as CloudDoc;
         if (!cloud || typeof cloud !== "object" || !cloud.users || !Array.isArray(cloud.deposits)) return;
         const local = h.getLocal();
         const merged = mergeCloud(local, cloud);
         if (JSON.stringify(merged) !== JSON.stringify(local)) h.apply(merged);
+        /* Yabancı (eski) bir durum geldiyse kendi güncel halimizi zorla geri yaz */
+        if (raw !== lastPublishedJson) schedulePublish(250, true);
       } catch {
         /* bozuk paket — yoksay */
       }

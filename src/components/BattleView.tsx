@@ -11,9 +11,10 @@ import {
   Trophy,
   X,
 } from "lucide-react";
-import { CASES, CASE_MAP, rollCase } from "../data/cases";
+import { CASES, CASE_MAP, casePrice, rollCase } from "../data/cases";
 import { COMMUNITY_USERS, BATTLE_VERBS } from "../data/fakers";
 import { RARITY, fmtMoney, type Skin } from "../data/skins";
+import { applyVipCaseDisc } from "../config";
 import { goldWin, loseSound, reelStart, tick, click } from "../lib/audio";
 import { pick, randInt } from "../lib/rng";
 import { useGame } from "../store/Game";
@@ -62,7 +63,7 @@ function BattleSlot({ skin, rolling, won }: { skin: Skin | null; rolling: boolea
 }
 
 export function BattleView() {
-  const { balance, trySpend, addItem, pushToast, userName, level, trackWager, trackMission, bumpNonce, nonce } =
+  const { balance, trySpend, addItem, pushToast, userName, level, trackWager, trackMission, bumpNonce, nonce, caseSale, priceSettings, vipLevel } =
     useGame();
 
   const [caseId, setCaseId] = useState(CASES[3].id);
@@ -84,7 +85,9 @@ export function BattleView() {
   }, []);
 
   const caseDef = CASE_MAP[caseId];
-  const buyIn = Math.round(caseDef.price * rounds * 100) / 100;
+  /* ekonomik dalga + kasa indirimi + VIP indirimi — normal kasa fiyatıyla aynı */
+  const caseCost = applyVipCaseDisc(casePrice(caseDef, caseSale, priceSettings), vipLevel);
+  const buyIn = Math.round(caseCost * rounds * 100) / 100;
   const pot = Math.round(buyIn * 2 * 100) / 100;
   const afford = balance >= buyIn;
 
@@ -176,10 +179,10 @@ export function BattleView() {
           winner: Math.random() < 0.5 ? a : b,
           caseName: c.name,
           rounds: r,
-          pot: Math.round(c.price * r * 2 * 100) / 100,
+          pot: Math.round(casePrice(c, caseSale, priceSettings) * r * 2 * 100) / 100,
         };
       }),
-    []
+    [caseSale, priceSettings]
   );
 
   return (
@@ -228,7 +231,9 @@ export function BattleView() {
                   <span className="mt-1.5 w-full truncate text-center text-[9px] font-semibold text-white/70">
                     {c.name}
                   </span>
-                  <span className="font-display text-[10px] font-bold text-emerald-400">{fmtMoney(c.price)}</span>
+                  <span className="font-display text-[10px] font-bold text-emerald-400">
+                    {fmtMoney(applyVipCaseDisc(casePrice(c, caseSale, priceSettings), vipLevel))}
+                  </span>
                 </button>
               ))}
             </div>

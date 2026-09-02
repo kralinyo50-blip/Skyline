@@ -19,6 +19,31 @@ export function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+/* ------- PROVABLY FAIR: seed tabanlı deterministik RNG ------- */
+
+/** Seed hex → 32-bit sayı (FNV-1a benzeri karıştırma) */
+function seedToInt(seed: string, salt: string): number {
+  let h = 2166136261;
+  const s = seed + "::" + salt;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** mulberry32 — aynı seed + nonce her zaman aynı diziyi üretir */
+export function seededRng(seed: string, nonce: number | string): () => number {
+  let a = seedToInt(seed, String(nonce)) || 1;
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 /* easeOutQuint — rulet hissi için */
 export function easeOutQuint(t: number): number {
   return 1 - Math.pow(1 - t, 5);

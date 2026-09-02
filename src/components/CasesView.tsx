@@ -1,15 +1,26 @@
 import { useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { Flame, Package, PackageOpen, TrendingUp, Users } from "lucide-react";
-import { CASES, type CaseDef } from "../data/cases";
+import { CASES, casePrice, toCaseDef, type CaseDef } from "../data/cases";
 import { fmtMoney, SKINS } from "../data/skins";
 import { click, hoverPop } from "../lib/audio";
-import { BRAND, CURRENCY } from "../config";
+import { BRAND, CURRENCY, applyVipCaseDisc } from "../config";
 import { useGame } from "../store/Game";
+import { cn } from "../utils/cn";
 import { CaseModal } from "./CaseReel";
 import { MissionsPanel } from "./MissionsPanel";
 
 function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
+  const { caseSale, priceSettings, vipLevel } = useGame();
+  const price = applyVipCaseDisc(casePrice(def, caseSale, priceSettings), vipLevel);
+  /* indirim, dalga sırasında da GÖRÜNÜR: rozet fiyat karşılaştırmasına değil
+     etkinlik durumuna bakar (dalga güçlüyken indirimli fiyat bazın üstünde kalabilir) */
+  const saleActive =
+    !!caseSale && !caseSale.cancelled && caseSale.endsAt > Date.now() && caseSale.caseIds.includes(def.id);
+  const saleOn = saleActive;
+  const regPrice = saleActive ? casePrice(def, null, priceSettings) : price;
+  const waveOn = !saleOn && price > def.price;
+  const limited = def.limited || typeof def.stock === "number";
   return (
     <button
       onClick={() => {
@@ -22,9 +33,29 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
         backgroundImage: `radial-gradient(130% 90% at 50% -10%, ${def.accent}16 0%, transparent 55%), linear-gradient(to bottom, var(--color-ink-700), var(--color-ink-900))`,
       }}
     >
-      {def.hot && (
+      {def.id === "sketch-case" && (
+        <span className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400 to-yellow-300 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-ink-950 shadow-lg">
+          ✏️ El Çizimi Özel
+        </span>
+      )}
+      {def.hot && def.id !== "sketch-case" && (
         <span className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full bg-lose/90 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-white shadow-lg">
           <Flame className="h-3 w-3" /> Popüler
+        </span>
+      )}
+      {limited && (
+        <span className="absolute left-3 top-3 z-10 flex items-center gap-1 rounded-full bg-amber-500/95 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-ink-950 shadow-lg">
+          <Package className="h-3 w-3" /> Sınırlı · {def.stock} kaldı
+        </span>
+      )}
+      {saleOn && (
+        <span className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-emerald-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-ink-950 shadow-lg">
+          %{caseSale!.discount} İndirim
+        </span>
+      )}
+      {!saleOn && waveOn && (
+        <span className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-sky-500 px-2 py-0.5 text-[9px] font-black uppercase tracking-wider text-ink-950 shadow-lg">
+          {price > def.price ? "+" : "-"}%{Math.abs(Math.round((price / def.price - 1) * 100))} Dalga
         </span>
       )}
       <span
@@ -56,8 +87,11 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
       </div>
 
       <div className="mt-4 flex items-center justify-between">
-        <div className="flex items-center gap-1.5 font-display text-lg font-black text-emerald-400">
-          {fmtMoney(def.price)}
+        <div className="flex items-center gap-1.5">
+          <span className={cn("font-display text-lg font-black", saleOn ? "text-emerald-400" : "text-brand-300")}>
+            {fmtMoney(price)}
+          </span>
+          {saleOn && <s className="text-xs font-bold text-white/35">{fmtMoney(regPrice)}</s>}
         </div>
         <span className="flex items-center gap-1.5 rounded-lg bg-gradient-to-b from-brand-400 to-brand-600 px-3.5 py-1.5 font-display text-sm font-bold text-ink-950 transition group-hover:brightness-110 group-hover:shadow-[0_6px_20px_-6px_rgba(249,142,29,0.8)]">
           <PackageOpen className="h-4 w-4" strokeWidth={2.4} />
@@ -70,7 +104,7 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
 
 export function CasesView() {
   const [selected, setSelected] = useState<CaseDef | null>(null);
-  const { userName } = useGame();
+  const { userName, customCases } = useGame();
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 pb-24 pt-6 md:px-6">
@@ -135,10 +169,16 @@ export function CasesView() {
         <h2 className="font-display text-xl font-bold uppercase tracking-widest text-white/85">
           Tüm Kasalar
         </h2>
-        <span className="text-xs text-white/35">{CASES.length} kasa • demo mod</span>
+        <span className="text-xs text-white/35">v1.0 · {CASES.length} kasa</span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {customCases
+          .filter((c) => c.active && c.stock > 0)
+          .map((c) => {
+            const def = toCaseDef(c);
+            return <CaseCard key={c.id} def={def} onSelect={() => setSelected(def)} />;
+          })}
         {CASES.map((c) => (
           <CaseCard key={c.id} def={c} onSelect={() => setSelected(c)} />
         ))}

@@ -6,10 +6,13 @@ import {
   Coins,
   Dice5,
   Dices,
+  Disc3,
   Flame,
+  Gauge,
   History,
   Rocket,
   ShieldCheck,
+  Spade,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -21,10 +24,13 @@ import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
 import { Confetti } from "./CaseReel";
 import { Roulette, Mines, DiceGame } from "./MoreGames";
+import { Blackjack, Limbo, Plinko, Wheel } from "./ExtraGames";
 
-type Game = "coinflip" | "crash" | "roulette" | "mines" | "dice";
+type Game = "coinflip" | "crash" | "roulette" | "mines" | "dice" | "blackjack" | "plinko" | "wheel" | "limbo";
 
-const BETS = [1000, 5000, 10000, 25000, 50000];
+const BETS = [1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
+/** Şans oyunlarında üst bahis sınırı */
+const MAX_BET = 1_000_000;
 const HOUSE_CUT = 0.05;
 
 /* ================= COINFLIP ================= */
@@ -64,7 +70,13 @@ function Coinflip({ bet, onStart, onEnd }: GameProps) {
     const win = Math.random() < 0.5;
     const landed: Side = win ? side : side === "ct" ? "t" : "ct";
     const turns = 6 + Math.floor(Math.random() * 3);
-    setSpin((s) => s + turns * 360 + (landed === "ct" ? 0 : 180));
+    /* Son tur mod 360 = landed yüzü olacak şekilde hesapla (üst üste aynı yüz gelince de doğru) */
+    setSpin((s) => {
+      const cur = ((s % 360) + 360) % 360;
+      const want = landed === "ct" ? 0 : 180;
+      const delta = (((want - cur) % 360) + 360) % 360;
+      return s + delta + turns * 360;
+    });
 
     window.setTimeout(() => {
       setResult(landed);
@@ -509,24 +521,35 @@ function Crash({ bet, onStart, onEnd }: GameProps) {
 /* ================= ANA GÖRÜNÜM ================= */
 
 export function GamesView() {
-  const { balance, trySpend, credit, trackWager, trackMission, pushToast } = useGame();
+  const { balance, trySpend, credit, trackWager, trackMission, pushToast, vipCashback } = useGame();
   const [game, setGame] = useState<Game>("coinflip");
   const [bet, setBet] = useState(BETS[1]);
+  const [betStr, setBetStr] = useState(String(BETS[1]));
+  /** tur başlarken yatan tutar — cashback hesabı için */
+  const wagerRef = useRef(0);
 
   /** tur başlarken bahsi düş */
   function onStart(): boolean {
-    if (!trySpend(bet)) {
-      pushToast({ kind: "lose", title: "Yetersiz bakiye", sub: `Bu tur için ${money(bet)} gerekli` });
+    const safeBet = Math.min(Math.max(0, bet), MAX_BET);
+    if (!trySpend(safeBet)) {
+      pushToast({ kind: "lose", title: "Yetersiz bakiye", sub: `Bu tur için ${money(safeBet)} gerekli` });
       return false;
     }
-    trackWager(bet);
+    if (safeBet !== bet) setBet(safeBet);
+    wagerRef.current = safeBet;
+    trackWager(safeBet);
     trackMission("games");
     return true;
   }
 
-  /** tur bitti — brüt kazanç yatır (0 ise kayıp) */
+  /** tur bitti — brüt kazanç yatır (0 ise kayıp + VIP cashback) */
   function onEnd(payout: number) {
-    if (payout > 0) credit(payout);
+    if (payout > 0) {
+      credit(payout);
+    } else if (wagerRef.current > 0) {
+      vipCashback(wagerRef.current);
+    }
+    wagerRef.current = 0;
   }
 
   const games: { key: Game; label: string; Icon: typeof Dices; desc: string }[] = [
@@ -535,6 +558,10 @@ export function GamesView() {
     { key: "roulette", label: "Rulet", Icon: CircleDot, desc: "Kırmızı · Siyah · Yeşil" },
     { key: "mines", label: "Mayınlar", Icon: Bomb, desc: "Elmas topla, çekil" },
     { key: "dice", label: "Zar", Icon: Dice5, desc: "Alt / üst tahmini" },
+    { key: "blackjack", label: "Blackjack", Icon: Spade, desc: "21'e ulaş, 2.5x" },
+    { key: "plinko", label: "Plinko", Icon: CircleDot, desc: "Top düş, çarpan kap" },
+    { key: "wheel", label: "Çark", Icon: Disc3, desc: "Şans çarkı · 10x" },
+    { key: "limbo", label: "Limbo", Icon: Gauge, desc: "Şansı seç, çarpanı al" },
   ];
 
   return (
@@ -595,6 +622,7 @@ export function GamesView() {
             key={b}
             onClick={() => {
               setBet(b);
+              setBetStr(String(b));
               click();
             }}
             className={cn(
@@ -607,6 +635,27 @@ export function GamesView() {
             {money(b)}
           </button>
         ))}
+        <div className="flex items-center gap-1.5 rounded-lg border border-line bg-ink-800 px-2.5 py-1">
+          <span className="text-[10px] font-bold uppercase text-white/30">Özel</span>
+          <input
+            value={betStr}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/\D/g, "").slice(0, 9);
+              setBetStr(digits);
+              const n = Number(digits);
+              if (!Number.isNaN(n)) setBet(Math.min(MAX_BET, n));
+            }}
+            onBlur={() => {
+              const n = Number(betStr) || 0;
+              const clamped = Math.min(MAX_BET, n);
+              setBet(clamped);
+              setBetStr(clamped ? String(clamped) : "");
+            }}
+            inputMode="numeric"
+            placeholder={`≤ ${money(MAX_BET)}`}
+            className="w-24 bg-transparent text-right font-display text-sm font-bold tabular-nums text-white placeholder:text-white/20 focus:outline-none"
+          />
+        </div>
         <span className="ml-auto flex items-center gap-1.5 text-xs">
           <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
           <span className="text-white/40">Bakiye</span>
@@ -619,6 +668,10 @@ export function GamesView() {
       {game === "roulette" && <Roulette bet={bet} onStart={onStart} onEnd={onEnd} />}
       {game === "mines" && <Mines bet={bet} onStart={onStart} onEnd={onEnd} />}
       {game === "dice" && <DiceGame bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "blackjack" && <Blackjack bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "plinko" && <Plinko bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "wheel" && <Wheel bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "limbo" && <Limbo bet={bet} onStart={onStart} onEnd={onEnd} />}
     </div>
   );
 }

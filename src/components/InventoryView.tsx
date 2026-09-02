@@ -27,14 +27,17 @@ import {
   type InvItem,
 } from "../data/items";
 import { MAX_STICKERS, STICKER_MAP } from "../data/stickers";
-import { WEARS } from "../data/wear";
+import { SHOP_PRODUCT_MAP, SHOP_CATEGORIES, type ShopCategory } from "../data/shop";
 import { click } from "../lib/audio";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
 import { SkinImg } from "./SkinCard";
+import { FloatBar, WearFilterRow, WearBadge } from "./WearUi";
+import { ItemDetailModal } from "./ItemDetailModal";
 
 type SortKey = "value_desc" | "value_asc" | "newest" | "float";
 type Filter = "all" | "weapons" | "stickers";
+type WearFilter = "all" | "fn" | "mw" | "ft" | "ww" | "bs";
 
 /* ---------- eşya kartı ---------- */
 function ItemCard({
@@ -43,12 +46,18 @@ function ItemCard({
   onMarket,
   onUpgrade,
   onSticker,
+  onDetail,
+  onShowcase,
+  inShowcase,
 }: {
   item: InvItem;
   onQuickSell: () => void;
   onMarket: () => void;
   onUpgrade: () => void;
   onSticker: () => void;
+  onDetail: () => void;
+  onShowcase: () => void;
+  inShowcase: boolean;
 }) {
   const skin = SKIN_MAP[item.skinId];
   const color = itemColor(item);
@@ -62,10 +71,28 @@ function ItemCard({
 
   return (
     <div
-      className="flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800"
+      className="group flex flex-col overflow-hidden rounded-xl border border-line bg-ink-800 hover:overflow-visible hover:z-20 transition-all duration-200"
       style={{ backgroundImage: `radial-gradient(120% 80% at 50% 0%, ${color}16, transparent 55%)` }}
     >
-      <div className="relative p-2.5">
+      <div className="relative cursor-pointer p-2.5" onClick={onDetail}>
+        {/* vitrin yıldızı */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onShowcase();
+          }}
+          title={inShowcase ? "Vitrinden çıkar" : "Vitrine ekle"}
+          className={cn(
+            "absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-md border transition",
+            inShowcase
+              ? "border-rar-rare/70 bg-rar-rare/20 text-rar-rare shadow-[0_0_10px_-2px_rgba(228,174,57,0.6)]"
+              : "border-line bg-ink-900/80 text-white/30 hover:text-rar-rare"
+          )}
+        >
+          <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill={inShowcase ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+            <path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.3 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z" />
+          </svg>
+        </button>
         {skin.st && (
           <span className="absolute left-2 top-2 z-10 rounded bg-[#cf6a32] px-1 py-px text-[8px] font-black text-white">
             ST™
@@ -101,16 +128,12 @@ function ItemCard({
         <div className="truncate text-[10px] uppercase tracking-wider text-white/40">{title.top}</div>
         <div className="truncate font-display text-xs font-bold text-white/90">{title.main}</div>
 
-        {wear && (
+        {wear && typeof item.float === "number" && (
           <div className="mt-1 flex items-center gap-1">
-            <span
-              className="rounded px-1 py-px text-[8px] font-black"
-              style={{ color: WEARS[wear].color, background: `${WEARS[wear].color}1a` }}
-            >
-              {WEARS[wear].short}
-            </span>
-            <span className="truncate text-[9px] tabular-nums text-white/30">
-              {item.float?.toFixed(4)}
+            <WearBadge wear={wear} />
+            <FloatBar float={item.float} className="flex-1" />
+            <span className="shrink-0 text-[9px] tabular-nums text-white/30">
+              {item.float.toFixed(4)}
             </span>
           </div>
         )}
@@ -311,18 +334,38 @@ function StickerModal({
 
 /* ---------- ana görünüm ---------- */
 export function InventoryView() {
-  const { inventory, inventoryValue, quickSell, setUpgraderPick, setTab, pushToast, resetAll } =
-    useGame();
+  const {
+    inventory,
+    inventoryValue,
+    priceVersion,
+    quickSell,
+    setUpgraderPick,
+    setTab,
+    pushToast,
+    resetAll,
+    showcase,
+    toggleShowcase,
+    shopStock,
+    shopCustoms,
+  } = useGame();
   const [sort, setSort] = useState<SortKey>("value_desc");
   const [filter, setFilter] = useState<Filter>("all");
+  const [wearFilter, setWearFilter] = useState<WearFilter>("all");
   const [q, setQ] = useState("");
   const [stickerTarget, setStickerTarget] = useState<string | null>(null);
   const [studioOpen, setStudioOpen] = useState(false);
+  const [detailItem, setDetailItem] = useState<InvItem | null>(null);
 
   const items = useMemo(() => {
     let arr = inventory.filter((i) => SKIN_MAP[i.skinId]);
     if (filter === "weapons") arr = arr.filter((i) => !isStickerItem(i.skinId));
     if (filter === "stickers") arr = arr.filter((i) => isStickerItem(i.skinId));
+    if (wearFilter !== "all") {
+      arr = arr.filter((i) => {
+        const w = itemWear(i);
+        return w === wearFilter;
+      });
+    }
     if (q.trim()) {
       const t = q.trim().toLowerCase();
       arr = arr.filter((i) => {
@@ -346,7 +389,8 @@ export function InventoryView() {
         break;
     }
     return sorted;
-  }, [inventory, sort, filter, q]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventory, sort, filter, wearFilter, q, priceVersion]);
 
   const stickerCount = inventory.filter((i) => isStickerItem(i.skinId)).length;
 
@@ -462,6 +506,16 @@ export function InventoryView() {
         </div>
       )}
 
+      {/* durum (aşınma) filtresi */}
+      {inventory.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-ink-900/50 p-2">
+          <span className="px-1 text-[10px] font-bold uppercase tracking-widest text-white/35">
+            Durum
+          </span>
+          <WearFilterRow value={wearFilter} onChange={setWearFilter} />
+        </div>
+      )}
+
       {items.length === 0 ? (
         <div className="flex min-h-[420px] flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-line bg-ink-900/50 text-center">
           <div className="flex h-20 w-20 items-center justify-center rounded-3xl border border-line bg-ink-800 text-white/25">
@@ -486,6 +540,9 @@ export function InventoryView() {
             <ItemCard
               key={item.uid}
               item={item}
+              inShowcase={showcase.some((s) => s.uid === item.uid)}
+              onShowcase={() => toggleShowcase(item.uid)}
+              onDetail={() => setDetailItem(item)}
               onUpgrade={() => {
                 setUpgraderPick(item.uid);
                 setTab("upgrader");
@@ -522,7 +579,54 @@ export function InventoryView() {
         </div>
       )}
 
-      <div className="mt-10 flex justify-center">
+      {/* dükkan deposu — normal envantere GİRMEZ, pazara/takasa çıkmaz */}
+      {Object.entries(shopStock).some(([, n]) => n > 0) && (
+        <div className="mt-10 rounded-2xl border border-brand-500/20 bg-brand-500/[0.04] p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <Store className="h-4 w-4 text-brand-300" />
+                <h2 className="font-display text-sm font-black text-white">Dükkan Deposu</h2>
+                <span className="rounded-md bg-brand-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase text-brand-300">
+                  pazara girmeyen ürünler
+                </span>
+              </div>
+              <p className="mt-1 text-[10px] text-white/40">
+                Bu ürünler yalnızca dükkanında satılır — market ve takasta görünmez.
+              </p>
+            </div>
+            <button
+              onClick={() => { setTab("shop"); click(); }}
+              className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-brand-500/15 px-4 text-xs font-bold text-brand-300 transition hover:bg-brand-500/25"
+            >
+              <Store className="h-4 w-4" /> Depoyu Aç
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(shopStock)
+              .filter(([, n]) => n > 0)
+              .map(([id, n]) => {
+                const custom = shopCustoms.find((c) => c.id === id);
+                const def = SHOP_PRODUCT_MAP[id];
+                const cat = (custom?.category ?? def?.category) as ShopCategory | undefined;
+                return (
+                  <div key={id} className="flex items-center gap-1.5 rounded-lg border border-line/60 bg-ink-900/60 px-2.5 py-1.5 text-xs">
+                    <span className="text-base">{custom?.emoji ?? def?.emoji ?? "📦"}</span>
+                    <span className="font-bold text-white/75">{custom?.name ?? def?.name ?? id}</span>
+                    {cat && (
+                      <span className="rounded bg-ink-800 px-1 py-px text-[8px] font-bold text-white/35">
+                        {SHOP_CATEGORIES[cat]?.label ?? cat}
+                      </span>
+                    )}
+                    <span className="text-white/35">× {n}</span>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-8 flex justify-center">
         <button
           onClick={resetAll}
           className="flex items-center gap-1.5 text-[11px] font-semibold text-white/30 transition hover:text-lose"
@@ -536,6 +640,41 @@ export function InventoryView() {
           <StickerModal weaponUid={stickerTarget} onClose={() => setStickerTarget(null)} />
         )}
         {studioOpen && <StickerStudio onClose={() => setStudioOpen(false)} />}
+        {detailItem && (
+          <ItemDetailModal
+            item={detailItem}
+            onClose={() => setDetailItem(null)}
+            actions={
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    const res = quickSell(detailItem.uid);
+                    if (res)
+                      pushToast({
+                        kind: "money",
+                        title: `+${money(res.payout)}`,
+                        sub: `${res.skin?.weapon} | ${res.skin?.name} hızlı satıldı`,
+                      });
+                    setDetailItem(null);
+                  }}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-xs font-black uppercase tracking-wider text-emerald-400 transition hover:bg-emerald-500/20"
+                >
+                  <Coins className="h-3.5 w-3.5" /> Hızlı Sat
+                </button>
+                <button
+                  onClick={() => {
+                    setTab("market");
+                    setDetailItem(null);
+                    click();
+                  }}
+                  className="flex h-10 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-brand-400 to-brand-600 text-xs font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110"
+                >
+                  <Store className="h-3.5 w-3.5" /> Pazara Koy
+                </button>
+              </div>
+            }
+          />
+        )}
       </AnimatePresence>
     </div>
   );
