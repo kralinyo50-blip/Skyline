@@ -2,6 +2,12 @@
 
 Mevcut V2 oyunu varsayılan açılış olarak korunur. Yeni sunucu doğrulamalı merkezin arayüzü `/#platform` adresindedir. V2 ve çoklu çekiliş güncellemeleri mevcut statik yayında çalışır; **V3 sunucu özellikleri için ayrıca Node Web Service + PostgreSQL kurulmalıdır**. Yalnızca arayüzü yayınlamak, backend veya AI üretimini etkinleştirmez.
 
+## Canlı yayın durumu — 5 Eylül 2026
+
+Tek-site entegrasyonu (V2 oyunu + V3 platform arayüzü aynı kökende, `#platform` hash geçişli) `main` dalında birleşiktir ve GitHub Pages otomatik yayını [kralinyo50-blip.github.io/Skyline](https://kralinyo50-blip.github.io/Skyline/) üzerinden sunulur. O adreste V2 varsayılan açılıştır; `/api` sunulmuyorsa V3 platform özellikleri çalışmaz (Node Web Service + PostgreSQL kurulumu gerekir).
+
+Bu yayından önce doğrulananlar: `typecheck`, 37/37 birim/HTTP testi, tek-dosya üretim derlemesi (5.795 katalog öğesi), resmi Render blueprint şeması doğrulaması ve tek-site üretim smoke testleri (kayıt/giriş/Origin kontrolleri dahil) temiz; `npm audit` 0 açık. Render servisi bu deponun `main` dalını izliyorsa birleştirme yeni yayını otomatik tetikler; izlemiyorsa Render panelinde `main` dalına manuel Deploy yeterlidir. `render.yaml` içindeki Blueprint kaynakları hâlâ ayrı ve isteğe bağlıdır; `autoDeployTrigger: off` olduğundan kendiliğinden kaynak oluşturmaz.
+
 ## Yeni merkez
 
 - **AI atölyesi:** gerçek OpenAI görsel API adaptörü; cümle, uzunluk, seçili detay ve kaliteye göre SC üretim teklifi. Anahtar yokken üretim kapalıdır; sahte görsel verilmez. Hatalı işte tek seferlik tam SC iadesi.
