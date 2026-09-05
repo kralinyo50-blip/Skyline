@@ -169,4 +169,21 @@ fazlar tek tek commit'lenir (dal: `arena/01a070db-skyline`).
 "1, 2, 5, 7, 14 ve 17'yi yap", "Derby yerine Video Poker", "önce faz 3"…
 **Liste bir menüdür; seçim ve sıra senin.**
 
-*Tarih: 2026-09-05 · Dal: `arena/01a070db-skyline` · Durum: onay bekliyor*
+---
+
+## 7. UYGULAMA GÜNCESİ (2026-09-05)
+
+| Commit | Faz | İçerik |
+|---|---|---|
+| `ca3124d` | 1-2 | 6 yeni oyun: Keno, Kule, Hilo, Slots, Kazı Kazan, Derby |
+| `5c437db` | 3a | 6 renk teması + konfeti paketi seçici |
+| `32bb89f` | 3b | Kimlik kiti (banner/çerçeve/ünvan/avatar/isim rengi) + vitrin 5 slot |
+| `de7eebe` | 4 | Skin atölyesi: Name Tag, float re-roll, StatTrak™ dönüştürücü |
+| `58ff952` | 4b | Sticker Studio v2 (9 şekil, gradyan, emoji, 3 font) |
+| `67ff47e` | 5a | Paketleme: v2.0 sürüm hikâyesi, mega log, 6 yeni misyon |
+| `4d1bad8` | 5b | Kendi Kasanı Kur + sohbet emote şeridi |
+
+Sapmalar: başarım eklenmedi (misyonlar eklendi); "kendi stickerını emote yapma"
+yerine 12'li hazır emote şeridi geldi; Derby atları emoji ile temsil ediliyor.
+
+*Tarih: 2026-09-05 · Dal: `arena/01a070db-skyline` · Durum: **UYGULANDI** ✅*
