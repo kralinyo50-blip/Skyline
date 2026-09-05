@@ -1,3 +1,4 @@
+import { missingRafflePayouts, prepareRaffleSkins, raffleSkinLabel, raffleSkins, type RaffleSkinSelection } from "./raffle";
 import React, {
   createContext,
   useCallback,
@@ -566,7 +567,7 @@ interface GameState {
   /** skin ödüllü çekiliş başlat */
   startSkinRaffle: (
     minutes: number,
-    skinId: string,
+    skins: string | readonly RaffleSkinSelection[],
     opts?: { float?: number; stickers?: string[] }
   ) => { ok: boolean; error?: string };
 
@@ -2989,57 +2990,53 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
   const drawRaffleNow = useCallback(() => {
     const r = raffleRef.current;
-    if (!r || r.drawn || r.cancelled || Date.now() < r.endsAt) return;
-    /* SENKRON TOLERANSI: bitişten 60 sn sonra çekiliş yapılır. Bu sürede tüm
-       cihazlar katılımcı listesini birleştirir (sync 1.5 sn) — böylece eksik
-       roster ile yanlış kazanan seçilmez, skin ödülü kaybolmaz. */
-    if (Date.now() < r.endsAt + 60000) return;
+    const now = Date.now();
+    if (!r || r.cancelled || now < r.endsAt) return;
+    const prizes = raffleSkins(r);
+    // Never turn a missing skin into a cash/zero-value award or mark it delivered.
+    if (prizes.some((prize) => !SKIN_MAP[prize.skinId])) return;
+    if (r.drawn) {
+      // An older client can draw the first skin. Complete only missing receipts;
+      // the existing claim path delivers each ID once, including after reconnect.
+      if (prizes.length > 1 && missingRafflePayouts(r, dbRef.current.deposits, now).length) {
+        mutate((draft) => {
+          if (!draft.raffle || draft.raffle.id !== r.id || raffleSkins(draft.raffle).some((prize) => !SKIN_MAP[prize.skinId])) return;
+          draft.deposits.unshift(...missingRafflePayouts(draft.raffle, draft.deposits, now));
+        });
+      }
+      return;
+    }
+    /* Senkron toleransı: katılımcı listeleri birleşsin diye 60 saniye bekle. */
+    if (now < r.endsAt + 60000) return;
     const ids = Object.keys(r.participants ?? {}).sort();
     if (!ids.length) {
-      /* 60 sn sonra hâlâ katılımcı yoksa gerçekten boştur — ama tekrar denemek
-         için drawn bayrağı 30 sn daha bekletilir (son katılım senkronlanabilsin) */
-      if (Date.now() < r.endsAt + 90000) return;
+      if (now < r.endsAt + 90000) return;
       mutate((draft) => {
-        if (!draft.raffle || draft.raffle.id !== r.id || draft.raffle.drawn) return;
+        if (!draft.raffle || draft.raffle.id !== r.id || draft.raffle.drawn || draft.raffle.cancelled) return;
         draft.raffle.drawn = true;
-        draft.raffle.winner = { key: "", name: "Katılımcı yok", ts: Date.now() };
+        draft.raffle.winner = { key: "", name: "Katılımcı yok", ts: now };
       });
       return;
     }
-    const seed = r.id;
-    const rng = seededRng(seed, "draw");
+    const rng = seededRng(r.id, "draw");
     const winnerKey = ids[Math.floor(rng() * ids.length)];
     const winnerName = r.participants![winnerKey].name;
-    const isSkin = !!r.skinId && !!SKIN_MAP[r.skinId];
+    const skinLabel = raffleSkinLabel(r);
     mutate((draft) => {
-      if (!draft.raffle || draft.raffle.id !== r.id || draft.raffle.drawn) return;
+      if (!draft.raffle || draft.raffle.id !== r.id || draft.raffle.drawn || draft.raffle.cancelled) return;
+      if (raffleSkins(draft.raffle).some((prize) => !SKIN_MAP[prize.skinId])) return;
       draft.raffle.drawn = true;
-      draft.raffle.winner = { key: winnerKey, name: winnerName, ts: Date.now() };
-      draft.deposits.unshift({
-        id: `raffle:${r.id}`,
-        userKey: winnerKey,
-        userName: winnerName,
-        amount: isSkin ? 0 : r.prize,
-        method: isSkin ? "Skin Çekilişi Ödülü" : "Çekiliş Ödülü",
-        status: "approved",
-        ts: Date.now(),
-        decidedTs: Date.now(),
-        decidedBy: "Sistem",
-        skinId: isSkin ? r.skinId : undefined,
-        skinName: isSkin ? r.skinName : undefined,
-        skinOpts: isSkin ? r.skinOpts : undefined,
-      });
+      draft.raffle.winner = { key: winnerKey, name: winnerName, ts: now };
+      draft.deposits.unshift(...missingRafflePayouts(draft.raffle, draft.deposits, now));
       draft.adminLog = [
         {
           id: `raffle:${r.id}`,
           actor: "Sistem",
           targetKey: winnerKey,
           targetName: winnerName,
-          amount: isSkin ? 0 : r.prize,
-          reason: isSkin
-            ? `Skin çekilişi ödülü: ${r.skinName ?? r.skinId}`
-            : `Çekiliş ödülü: ${money(r.prize)}`,
-          ts: Date.now(),
+          amount: skinLabel ? 0 : r.prize,
+          reason: skinLabel ? `Skin çekilişi ödülü: ${skinLabel}` : `Çekiliş ödülü: ${money(r.prize)}`,
+          ts: now,
         },
         ...(draft.adminLog ?? []),
       ].slice(0, 300);
@@ -3047,9 +3044,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     pushToastSafe.current({
       kind: "win",
       title: "Çekiliş tamamlandı! 🎉",
-      sub: isSkin
-        ? `${winnerName} "${r.skinName ?? r.skinId}" kazandı`
-        : `${winnerName} ${money(r.prize)} kazandı`,
+      sub: `${winnerName} ${skinLabel ?? money(r.prize)} kazandı`,
     });
   }, [mutate]);
 
@@ -3084,37 +3079,42 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   const startSkinRaffle = useCallback(
     (
       minutes: number,
-      skinId: string,
+      skins: string | readonly RaffleSkinSelection[],
       opts?: { float?: number; stickers?: string[] }
     ): { ok: boolean; error?: string } => {
-      const me = dbRef.current.users[dbRef.current.session ?? ""];
+      const current = dbRef.current;
+      const me = current.users[current.session ?? ""];
       if (!me || !me.isAdmin) return { ok: false, error: "Yetki yok" };
-      const skin = SKIN_MAP[skinId];
-      if (!skin || skin.sticker) return { ok: false, error: "Geçersiz skin — ödül seç" };
-      const fine: { float?: number; stickers?: string[] } = {};
-      if (typeof opts?.float === "number" && Number.isFinite(opts.float)) {
-        fine.float = Math.min(1, Math.max(0, Math.round(opts.float * 1000) / 1000));
+      if (current.raffle && !current.raffle.drawn && !current.raffle.cancelled) {
+        return { ok: false, error: "Önce mevcut çekilişi tamamla veya iptal et." };
       }
-      if (Array.isArray(opts?.stickers)) {
-        const st = opts.stickers.filter((s) => STICKER_MAP[s]).slice(0, 4);
-        if (st.length) fine.stickers = st;
-      }
+      if (!Number.isFinite(minutes) || minutes < 1 || !Number.isSafeInteger(Date.now() + minutes * 60000)) return { ok: false, error: "Geçerli bir süre seç." };
+      const selection = typeof skins === "string" ? [{ skinId: skins, skinOpts: opts }] : skins;
+      const prepared = prepareRaffleSkins(selection, (id) => SKIN_MAP[id], (id) => !!STICKER_MAP[id]);
+      if (!prepared.ok) return prepared;
+      const prizes = prepared.prizes;
+      let started = false;
       mutate((draft) => {
+        if (draft.raffle && !draft.raffle.drawn && !draft.raffle.cancelled) return;
+        started = true;
         draft.raffle = {
           id: uid(),
           prize: 0,
-          endsAt: Date.now() + Math.max(1, minutes) * 60000,
+          endsAt: Date.now() + minutes * 60000,
           startedBy: ADMIN_NAME,
           participants: {},
-          skinId: skin.id,
-          skinName: `${skin.weapon} | ${skin.name}`,
-          skinOpts: Object.keys(fine).length ? fine : undefined,
+          skinPrizes: prizes,
+          // First-skin alias preserves existing single-skin clients/records.
+          skinId: prizes[0].skinId,
+          skinName: prizes[0].skinName,
+          skinOpts: prizes[0].skinOpts,
         };
       });
+      if (!started) return { ok: false, error: "Zaten aktif bir çekiliş var." };
       pushToast({
         kind: "money",
         title: "Skin çekilişi başlatıldı",
-        sub: `${minutes} dk — ödül: ${skin.weapon} | ${skin.name}`,
+        sub: `${minutes} dk — ${raffleSkinLabel({ skinPrizes: prizes })}; tüm skinler tek kazanana`,
       });
       coinDing();
       return { ok: true };
@@ -3147,10 +3147,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         [me.key]: { name: me.name, ts: Date.now() },
       };
     });
-    const prizeLabel =
-      r.skinId && SKIN_MAP[r.skinId]
-        ? `${SKIN_MAP[r.skinId].weapon} | ${SKIN_MAP[r.skinId].name}`
-        : money(r.prize);
+    const prizeLabel = raffleSkinLabel(r) ?? money(r.prize);
     pushToast({ kind: "money", title: "Çekilişe katıldın!", sub: `Ödül: ${prizeLabel} — iyi şanslar` });
     coinDing();
   }, [mutate, pushToast]);

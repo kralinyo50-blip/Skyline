@@ -1,5 +1,11 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import {
+  PlatformApp,
+  LegacyLauncher,
+  LegacyArchive,
+} from "./platform/PlatformApp";
+import { ARCHIVE_EVENT, legacyIsArchived } from "./platform/legacy";
 import { loadPrefs, PREFS_EVENT } from "./lib/prefs";
 import { GameProvider, useGame } from "./store/Game";
 import { Header } from "./components/Header";
@@ -99,9 +105,36 @@ function Shell() {
 }
 
 export default function App() {
+  const [hash, setHash] = useState(() => window.location.hash);
+  const [archived, setArchived] = useState(legacyIsArchived);
+  const [, bumpArchiveView] = useState(0);
+  useEffect(() => {
+    const changed = () => setHash(window.location.hash);
+    const storageChanged = () => {
+      setArchived(legacyIsArchived());
+      bumpArchiveView((v) => v + 1);
+    };
+    window.addEventListener("hashchange", changed);
+    window.addEventListener("storage", storageChanged);
+    window.addEventListener(ARCHIVE_EVENT, storageChanged);
+    return () => {
+      window.removeEventListener("hashchange", changed);
+      window.removeEventListener("storage", storageChanged);
+      window.removeEventListener(ARCHIVE_EVENT, storageChanged);
+    };
+  }, []);
+  // V2 remains the default. The new server never trusts the local GameProvider.
+  // Preview-only flag can open the new center without changing the production default.
+  const previewDefault =
+    import.meta.env.VITE_PLATFORM_DEFAULT === "true" && !hash;
+  if (hash.startsWith("#platform") || previewDefault) return <PlatformApp />;
+  if (archived || legacyIsArchived()) return <LegacyArchive />;
   return (
-    <GameProvider>
-      <Shell />
-    </GameProvider>
+    <>
+      <LegacyLauncher />
+      <GameProvider>
+        <Shell />
+      </GameProvider>
+    </>
   );
 }

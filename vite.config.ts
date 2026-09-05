@@ -14,6 +14,10 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    proxy: {
+      // Browser uses /api only; this internal address is never shipped to clients.
+      "/api": { target: "http://127.0.0.1:3001", changeOrigin: false },
+    },
     allowedHosts: [".e2b.app", ".e2b.dev", ".preview.app.github.dev", "localhost"],
   },
   build: {

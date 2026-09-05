@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { BadgePercent, Gift, Megaphone, Ticket, Waves } from "lucide-react";
 import { money } from "../config";
 import { waveFadeEnd } from "../data/skins";
-import { SKIN_MAP } from "../data/skins";
+import { raffleSkins } from "../store/raffle";
+import { rafflePrizeLabel } from "./RafflePrizes";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
 
@@ -145,8 +146,8 @@ export function EventBanners() {
           <Gift className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
           <div className="min-w-0 flex-1">
             <div className="text-[10px] font-black uppercase tracking-widest text-amber-300">
-              {raffle.skinId
-                ? `Skin çekilişi — ${SKIN_MAP[raffle.skinId]?.weapon ?? ""} ${SKIN_MAP[raffle.skinId]?.name ?? ""}`
+              {raffleSkins(raffle).length
+                ? `Skin çekilişi — ${rafflePrizeLabel(raffle)}`
                 : `Otomatik çekiliş — ${money(raffle.prize)}`}
             </div>
             <div className="truncate text-xs text-white/75">

@@ -9,3 +9,11 @@ dist/
 npm-debug.log*
 
 .DS_Store
+
+# Private runtime data, local credentials and test artifacts
+.cache/
+.env
+.env.*
+!.env.example
+playwright-report/
+test-results/

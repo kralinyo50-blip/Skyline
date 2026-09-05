@@ -14,6 +14,8 @@ import {
 import { ADMIN_NAME, mcHead, money, vipLevelEntry, vipTierOfLevel } from "../config";
 import { click, coinDing } from "../lib/audio";
 import { SKIN_MAP } from "../data/skins";
+import { raffleSkins } from "../store/raffle";
+import { RafflePrizes, rafflePrizeLabel } from "./RafflePrizes";
 import { useGame, levelFromSpent } from "../store/Game";
 import { nameColorOf, titleLabel } from "../data/looks";
 import { cn } from "../utils/cn";
@@ -49,6 +51,7 @@ export function CommunityView() {
     weekWinner,
   } = useGame();
   const now = useNow();
+  const skinPrizes = raffleSkins(raffle);
   /* süre bitti ama çekiliş henüz sonuçlanmadı — senkron toleransı (60 sn) */
   const raffleDrawing = !!raffle && !raffle.drawn && !raffle.cancelled && now >= raffle.endsAt;
 
@@ -108,32 +111,9 @@ export function CommunityView() {
           {raffle && (
             <>
               <div className="mt-4 flex items-end justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-3">
-                  {raffle.skinId &&
-                    (() => {
-                      const s = SKIN_MAP[raffle.skinId!];
-                      return s ? (
-                        <img
-                          src={s.img}
-                          alt={s.name}
-                          className="h-12 w-12 shrink-0 rounded-lg border border-line bg-ink-950/60 object-contain p-1"
-                        />
-                      ) : null;
-                    })()}
-                  <div className="min-w-0">
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-white/35">
-                      {raffle.skinId ? "Ödül Skin" : "Ödül"}
-                    </div>
-                    <div className="font-display text-3xl font-black text-brand-300">
-                      {raffle.skinId ? (
-                        <span className="block truncate">
-                          {SKIN_MAP[raffle.skinId]?.weapon ?? ""} {SKIN_MAP[raffle.skinId]?.name ?? ""}
-                        </span>
-                      ) : (
-                        money(raffle.prize)
-                      )}
-                    </div>
-                  </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-white/35">{skinPrizes.length ? "Skin ödülleri · tek kazanan" : "Ödül"}</div>
+                  <div className="break-words font-display text-2xl font-black text-brand-300 sm:text-3xl">{rafflePrizeLabel(raffle)}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-white/35">
@@ -144,6 +124,9 @@ export function CommunityView() {
                   </div>
                 </div>
               </div>
+
+              <RafflePrizes raffle={raffle} />
+              {skinPrizes.length > 1 && <p className="mt-2 text-[11px] text-white/45">Yukarıdaki {skinPrizes.length} skinin tamamı aynı kazananın envanterine eklenir.</p>}
 
               <div className="mt-3 flex items-center gap-2 rounded-xl border border-line bg-ink-900/70 px-3 py-2 text-[11px] text-white/50">
                 <Ticket className="h-3.5 w-3.5 text-brand-400" />
@@ -183,10 +166,12 @@ export function CommunityView() {
                       {raffle.winner?.name ?? "Katılımcı yok"}
                     </div>
                     <div className="text-[10px] text-white/45">
-                      {raffle.winner?.name
-                        ? raffle.skinId
-                          ? `"${raffle.skinName ?? `${SKIN_MAP[raffle.skinId]?.weapon ?? ""} ${SKIN_MAP[raffle.skinId]?.name ?? ""}`}" skinini kazandı!`
-                          : `${money(raffle.prize)} ödülü kazandı!`
+                      {raffle.winner?.key
+                        ? skinPrizes.length > 1
+                          ? `${skinPrizes.length} skinin tamamını kazandı!`
+                          : skinPrizes.length === 1
+                            ? `"${rafflePrizeLabel(raffle)}" skinini kazandı!`
+                            : `${money(raffle.prize)} ödülü kazandı!`
                         : "Çekiliş ödülsüz tamamlandı"}
                     </div>
                   </div>
