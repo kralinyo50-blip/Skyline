@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { PartyPopper } from "lucide-react";
+import { FX_PACKS, loadPrefs, PREFS_EVENT, type Prefs } from "../lib/prefs";
 import { useGame } from "../store/Game";
 import { Confetti } from "./CaseReel";
 
@@ -11,6 +12,13 @@ export function CelebrationOverlay() {
   const [shown, setShown] = useState<{ key: string; text: string; sub?: string } | null>(null);
   const seen = useRef<Set<string>>(new Set());
   const timer = useRef<number | null>(null);
+  /* V2.0: kullanıcı konfeti paketi tercihi */
+  const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs());
+  useEffect(() => {
+    const sync = () => setPrefs(loadPrefs());
+    window.addEventListener(PREFS_EVENT, sync);
+    return () => window.removeEventListener(PREFS_EVENT, sync);
+  }, []);
 
   /* site geneli kutlama (tüm cihazlar) */
   useEffect(() => {
@@ -50,7 +58,7 @@ export function CelebrationOverlay() {
     };
   }, [shown]);
 
-  const colors = useMemo(() => ["#f98e1d", "#e4ae39", "#2fd673", "#5e98d9", "#ffffff"], []);
+  const colors = FX_PACKS[prefs.fxPack]?.colors ?? FX_PACKS.klasik.colors;
 
   return (
     <AnimatePresence>
@@ -62,7 +70,7 @@ export function CelebrationOverlay() {
           exit={{ opacity: 0 }}
           className="pointer-events-none fixed inset-0 z-[90] flex items-start justify-center"
         >
-          <Confetti colors={colors} />
+          {colors.length > 0 && <Confetti colors={colors} />}
           <motion.div
             initial={{ y: -40, scale: 0.85, opacity: 0 }}
             animate={{ y: 0, scale: 1, opacity: 1 }}

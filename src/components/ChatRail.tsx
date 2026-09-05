@@ -20,7 +20,8 @@ import { fmtMoney } from "../data/skins";
 import { pick, randInt, uid } from "../lib/rng";
 import { levelFromSpent, useGame } from "../store/Game";
 import { onLive } from "../store/liveEvents";
-import { normKey } from "../store/db";
+import { normKey, type ProfileLook } from "../store/db";
+import { nameColorOf, titleLabel } from "../data/looks";
 import { cn } from "../utils/cn";
 
 interface ChatMsg {
@@ -31,9 +32,17 @@ interface ChatMsg {
   ts: number;
   me?: boolean;
   admin?: boolean;
+  /** yayındaki hesap anahtarı — V2.0 isim plakası için */
+  key?: string;
 }
 
 const AV_COLORS = ["#f98e1d", "#4b69ff", "#d32ce6", "#2fd673", "#53c8ff", "#eb4b4b", "#8847ff"];
+
+/* V2.0 emote şeridi */
+const CHAT_EMOJIS: string[] = [
+  "\u{1F525}", "\u{1F602}", "\u{1F62D}", "\u{1F44F}", "\u{1F440}", "\u{1F389}",
+  "\u{1F4B0}", "\u{1F48E}", "\u{2694}\u{FE0F}", "\u{1F3AF}", "\u{2764}\u{FE0F}", "\u{1F44E}",
+];
 
 function randomBot(): string {
   return pick(BOT_NAMES);
@@ -93,7 +102,7 @@ interface LBRow {
 }
 
 export function ChatRail() {
-  const { userName, inventoryValue, chat, sendChat, isAdmin, clearChat, user, allDeposits } = useGame();
+  const { userName, inventoryValue, chat, sendChat, isAdmin, clearChat, user, allDeposits, allUsers, look } = useGame();
   const [mode, setMode] = useState<"chat" | "top">("chat");
   const [msgs, setMsgs] = useState<ChatMsg[]>(() =>
     Array.from({ length: 32 }, (_, i) => {
@@ -266,12 +275,12 @@ export function ChatRail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [msgs, chat, mode]);
 
-  function send() {
-    const text = input.trim();
+  function send(override?: string) {
+    const text = (override ?? input).trim();
     if (!text) return;
     const res = sendChat(text);
     if (!res.ok) return;
-    setInput("");
+    if (!override) setInput("");
     /* botlar kullanıcıya doğal tepki verir: %40 mention, %35 tema cevabı, %25 yorum */
     const fanCount = randInt(2, 4);
     for (let i = 0; i < fanCount; i++) {
@@ -298,10 +307,20 @@ export function ChatRail() {
       text: m.text,
       ts: m.ts,
       admin: m.admin,
+      key: m.key,
       me: normKey(m.key) === normKey(userName),
     }));
     return [...msgs, ...global].sort((a, b) => a.ts - b.ts).slice(-90);
   }, [msgs, chat, userName]);
+
+  /* V2.0: sohbet isim plakaları — yayınlanan profil görünümleri */
+  const lookMap = useMemo(() => {
+    const m = new Map<string, ProfileLook>();
+    allUsers.forEach((u) => {
+      if (u.pub?.look) m.set(normKey(u.key), u.pub.look);
+    });
+    return m;
+  }, [allUsers]);
 
   const myRank = useMemo(() => 187 + ((userName.length * 7) % 60), [userName]);
 
@@ -338,14 +357,24 @@ export function ChatRail() {
           </div>
 
           <div ref={scrollRef} className="tiny-scroll flex-1 space-y-2.5 overflow-y-auto p-2.5">
-            {merged.map((m) => (
+            {merged.map((m) => {
+              const lk = m.me ? look : m.key ? lookMap.get(normKey(m.key)) : undefined;
+              return (
               <div key={m.id} className={cn("flex gap-2", m.me && "flex-row-reverse")}>
                 <Avatar name={m.user} />
                 <div className={cn("min-w-0 flex-1", m.me && "text-right")}>
                   <div className={cn("flex items-baseline gap-1.5", m.me && "flex-row-reverse")}>
-                    <span className={cn("truncate text-[11px] font-semibold", m.me ? "text-brand-300" : "text-white/75")}>
+                    <span
+                      className={cn("truncate text-[11px] font-semibold", m.me ? "text-brand-300" : "text-white/75")}
+                      style={{ color: nameColorOf(lk?.nameColor) }}
+                    >
                       {m.user}
                     </span>
+                    {titleLabel(lk?.unvan) && (
+                      <span className="shrink-0 rounded bg-brand-500/15 px-1 text-[8px] font-black uppercase tracking-wider text-brand-300">
+                        {titleLabel(lk!.unvan)}
+                      </span>
+                    )}
                     <span className="shrink-0 rounded bg-ink-600 px-1 text-[9px] font-bold text-white/40">
                       {m.level}
                     </span>
@@ -365,7 +394,8 @@ export function ChatRail() {
                   </p>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* "X yazıyor..." göstergesi */}
@@ -375,6 +405,19 @@ export function ChatRail() {
                 <span className="font-semibold text-white/65">{typing}</span> yazıyor…
               </span>
             ) : null}
+          </div>
+
+          {/* V2.0 emote şeridi */}
+          <div className="tiny-scroll flex shrink-0 gap-1 overflow-x-auto px-2 pb-1.5">
+            {CHAT_EMOJIS.map((e) => (
+              <button
+                key={e}
+                onClick={() => send(e)}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-line bg-ink-800 text-sm transition hover:border-brand-500/50 hover:bg-brand-500/10"
+              >
+                {e}
+              </button>
+            ))}
           </div>
 
           <div className="flex items-center gap-1.5 border-t border-line p-2">
@@ -393,7 +436,7 @@ export function ChatRail() {
               className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-ink-800 px-3 text-xs text-white placeholder:text-white/25 focus:border-brand-500/50 focus:outline-none"
             />
             <button
-              onClick={send}
+              onClick={() => send()}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-b from-brand-400 to-brand-600 text-ink-950 transition hover:brightness-110"
             >
               <Send className="h-4 w-4" />

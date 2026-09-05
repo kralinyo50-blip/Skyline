@@ -12,7 +12,13 @@ export interface InvItem {
   float?: number;
   /** yapıştırılmış sticker id'leri */
   stickers?: string[];
+  /** V2.0 name tag — kullanıcının verdiği özel ad */
+  customName?: string;
 }
+
+/* V2.0 atölye ücretleri */
+export const NAME_TAG_COST = 25_000;
+export const FLOAT_REROLL_COST = 50_000;
 
 export function isStickerItem(id: string): boolean {
   return id.startsWith("st-") && !!STICKER_MAP[id];
@@ -57,6 +63,8 @@ export function itemTitle(item: InvItem): { top: string; main: string } {
   if (st) return { top: "Sticker", main: st.name };
   const s = SKIN_MAP[item.skinId];
   if (!s) return { top: "—", main: "Bilinmeyen" };
+  /* V2.0 name tag: CS tarzı özel ad */
+  if (item.customName) return { top: s.weapon, main: `"${item.customName}"` };
   return { top: s.weapon, main: s.name };
 }
 

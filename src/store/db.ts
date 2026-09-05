@@ -1,3 +1,5 @@
+import type { RaffleState } from "./raffle";
+export type { RaffleState } from "./raffle";
 import { ADMIN_NAME } from "../config";
 import { isStickerItem, type InvItem } from "../data/items";
 import { rollFloat } from "../data/wear";
@@ -32,9 +34,38 @@ export interface PubProfile {
   vipLevel?: number;
   /** profil vitrini — seçili eşyaların skin id'leri */
   showcase?: string[];
+  /** V2.0 profil görünümü (banner/çerçeve/ünvan/avatar/isim rengi) */
+  look?: ProfileLook;
+  /** V2.0 oyuncu kasaları — topluluk açabilir */
+  myCases?: PlayerCase[];
   /** haftalık istatistik (haftanın başından beri) — haftanın oyuncusu için */
   week?: { key: string; spent: number; opened: number };
   ts: number;
+}
+
+/** V2.0 oyuncu kasası — "Kendi Kasanı Kur" */
+export interface PlayerCase {
+  id: string;
+  name: string;
+  color: string;
+  skinIds: string[];
+  price: number;
+  opens: number;
+  ts: number;
+}
+
+/** V2.0 profil görünümü — kimlik kiti */
+export interface ProfileLook {
+  /** banner deseni anahtarı (BANNERS) */
+  banner?: string;
+  /** çerçeve rengi anahtarı (FRAMES) */
+  frame?: string;
+  /** seçili ünvan anahtarı (TITLES) */
+  unvan?: string;
+  /** emoji avatar */
+  avatar?: string;
+  /** isim rengi (hex) */
+  nameColor?: string;
 }
 
 /** Kasa açılış kaydı — geçmiş + Provably Fair doğrulama için */
@@ -198,11 +229,33 @@ export interface MissionProgress {
   sales: number;
   games: number;
   wagered: number;
+  /* V2.0 yeni oyun sayaçları */
+  keno: number;
+  towers: number;
+  hilo: number;
+  slots: number;
+  scratch: number;
+  derby: number;
   claimed: string[];
 }
 
 export function emptyMissions(day: string): MissionProgress {
-  return { day, cases: 0, upgrades: 0, battles: 0, sales: 0, games: 0, wagered: 0, claimed: [] };
+  return {
+    day,
+    cases: 0,
+    upgrades: 0,
+    battles: 0,
+    sales: 0,
+    games: 0,
+    wagered: 0,
+    keno: 0,
+    towers: 0,
+    hilo: 0,
+    slots: 0,
+    scratch: 0,
+    derby: 0,
+    claimed: [],
+  };
 }
 
 export interface Account {
@@ -253,8 +306,12 @@ export interface Account {
   vipPlan?: string;
   /** VIP seviyesi (0-24) — para ile satın alınan kademe */
   vipLevel?: number;
-  /** profil vitrini — seçilen envanter uid'leri (en fazla 3) */
+  /** profil vitrini — seçilen envanter uid'leri (en fazla 5) */
   showcase?: string[];
+  /** V2.0 profil görünümü — banner/çerçeve/ünvan/avatar/isim rengi */
+  look?: ProfileLook;
+  /** V2.0 oyuncu kasaları (en fazla 3) */
+  myCases?: PlayerCase[];
   /** jackpot kazançlarının ödendiği tur numaraları (çift ödeme koruması) */
   jpPaid?: number[];
   /** haftalık istatistik tabanı — hafta değişince sıfırlanır */
@@ -409,20 +466,6 @@ export interface Announcement {
   author: string;
 }
 
-export interface RaffleState {
-  id: string;
-  prize: number;
-  endsAt: number;
-  startedBy: string;
-  drawn?: boolean;
-  cancelled?: boolean;
-  winner?: { key: string; name: string; ts: number };
-  participants?: Record<string, { name: string; ts: number }>;
-  /** skin çekilişi — varsa ödül para değil, bu skin olur */
-  skinId?: string;
-  skinName?: string;
-  skinOpts?: { float?: number; stickers?: string[] };
-}
 
 /** Admin'in başlattığı toplu bakiye sıfırlama — tüm cihazlara yayılır (ts bazlı) */
 export interface MoneyReset {

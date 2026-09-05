@@ -434,10 +434,10 @@ export function JackpotView() {
               <span className="font-display text-sm font-black uppercase tracking-widest text-white/80">
                 Vitrinin
               </span>
-              <span className="ml-auto text-[10px] font-bold text-white/35">{showcase.length}/3</span>
+              <span className="ml-auto text-[10px] font-bold text-white/35">{showcase.length}/5</span>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-1.5">
-              {[0, 1, 2].map((i) => {
+            <div className="mt-3 grid grid-cols-5 gap-1.5">
+              {[0, 1, 2, 3, 4].map((i) => {
                 const it = showcase[i];
                 const skin = it ? SKIN_MAP[it.skinId] : null;
                 return (

@@ -1,0 +1,62 @@
+# ---------------------------------------------------------------------------
+# NOT: Bu dosya GitHub Actions'ın çalışması için `.github/workflows/deploy-pages.yml`
+# konumunda olmalı. Oturumdaki uygulama izni workflow dosyası push edemediği için
+# burada şablon olarak duruyor — GitHub'da "Add file" ile .github/workflows/
+# klasörüne taşıman yeterli (Settings → Pages → Source: GitHub Actions).
+# ---------------------------------------------------------------------------
+name: GitHub Pages'e yayınla
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Kaynağı çek
+        uses: actions/checkout@v4
+
+      - name: Node kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Bağımlılıkları kur
+        run: npm ci
+
+      # vite-plugin-singlefile çıktıyı tek HTML'e gömer ve yolları göreli
+      # ("./images/...") yapar; alt dizine (https://<kullanıcı>.github.io/Skyline/)
+      # yayında da çalışır, ek bir base ayarı gerekmez.
+      - name: Üretim derlemesi (tek dosya)
+        run: npm run build
+
+      - name: Pages ayarı
+        uses: actions/configure-pages@v5
+
+      - name: Çıktıyı yükle
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Yayınla
+        id: deployment
+        uses: actions/deploy-pages@v4

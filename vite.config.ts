@@ -11,14 +11,27 @@ const __dirname = path.dirname(__filename);
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss(), viteSingleFile()],
+  server: {
+    host: true,
+    port: 5173,
+    proxy: {
+      // Browser uses /api only; this internal address is never shipped to clients.
+      "/api": { target: "http://127.0.0.1:3001", changeOrigin: false },
+    },
+    allowedHosts: [".e2b.app", ".e2b.dev", ".preview.app.github.dev", "localhost"],
+  },
+  build: {
+    // Tum gorseller tek dosyalik ciktiya base64 olarak gomulsun
+    assetsInlineLimit: 20 * 1024 * 1024,
+  },
+  preview: {
+    host: true,
+    port: 4173,
+    allowedHosts: [".e2b.app", ".e2b.dev", ".preview.app.github.dev", "localhost"],
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
     },
-  },
-  server: {
-    host: true,
-    port: 5173,
-    allowedHosts: [".e2b.app", ".preview.app.github.dev", "localhost"],
   },
 });

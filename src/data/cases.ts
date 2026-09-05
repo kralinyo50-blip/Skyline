@@ -1,3 +1,4 @@
+import { asset } from "../lib/asset";
 import { SKIN_MAP, BASE_SKINS, RARITY, currentPriceRev, hypotheticalSkinPrice, type EconomyWaveLike, type Skin, type RarityKey, TIER_ORDER } from "./skins";
 import { NEW_SKINS } from "./newSkins";
 import { MARIN_SKINS } from "./marinSkins";
@@ -413,7 +414,7 @@ const CASES_RAW: CaseDef[] = [
   {
     id: "marin-kitagawa",
     name: "Marin Kitagawa Kasası",
-    img: "/images/skins/marin-case.png",
+    img: asset("/images/skins/marin-case.png"),
     price: 0,
     accent: "#ff8ad4",
     tagline: "My Dress-Up Darling — 18 özel anime skin! 💖 Şeffaf",
@@ -454,7 +455,7 @@ const CASES_RAW: CaseDef[] = [
   {
     id: "sketch-case",
     name: "El Çizimi Sanat Kasası",
-    img: "/images/skins/sketch-case.png",
+    img: asset("/images/skins/sketch-case.png"),
     price: 0,
     accent: "#e5c07b",
     tagline: "Karakalem & eskiz şaheserleri — 20 özel el çizimi skin! ✏️ Şeffaf",
