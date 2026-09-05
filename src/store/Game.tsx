@@ -16,6 +16,8 @@ import {
   makeStickerItem,
   maybeAttachStickers,
   pinnedWearOf,
+  NAME_TAG_COST,
+  FLOAT_REROLL_COST,
 } from "../data/items";
 import { rollFloat, WEARS, WEAR_ORDER, type WearKey } from "../data/wear";
 import { MAX_STICKERS, STICKERS, STICKER_MAP, CUSTOM_STICKER_COST } from "../data/stickers";
@@ -26,7 +28,7 @@ import {
 } from "../data/custom";
 
 const STICKER_POOL = STICKERS.map((s) => s.id);
-import { setAudioMuted, coinDing, click } from "../lib/audio";
+import { setAudioMuted, coinDing, click, goldWin } from "../lib/audio";
 import { randHex, seededRng, uid, pick } from "../lib/rng";
 import {
   SCALE,
@@ -454,6 +456,11 @@ interface GameState {
   /* V2.0 kimlik kiti */
   look: ProfileLook;
   setLook: (patch: Partial<ProfileLook>) => void;
+
+  /* V2.0 atölye — name tag / float / StatTrak */
+  renameItem: (uidKey: string, name: string) => { ok: boolean; error?: string };
+  applyFloat: (uidKey: string, float: number) => { ok: boolean; error?: string };
+  stattrakify: (uidKey: string) => { ok: boolean; error?: string; cost?: number };
 
   /* jackpot (canlı pot) */
   jackpot: JackpotState | null;
@@ -1200,6 +1207,59 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       return ok;
     },
     [mutate]
+  );
+
+  /* ---------------- V2.0 ATÖLYE ---------------- */
+
+  /** Name tag — eşyaya özel ad verir (CS tarzı) */
+  const renameItem = useCallback(
+    (uidKey: string, name: string): { ok: boolean; error?: string } => {
+      const clean = name.trim().slice(0, 24);
+      if (!clean) return { ok: false, error: "Önce bir isim yaz" };
+      if (!trySpend(NAME_TAG_COST)) return { ok: false, error: "Yetersiz bakiye" };
+      updateMe((me) => {
+        const it = me.inventory.find((i) => i.uid === uidKey);
+        if (it) it.customName = clean;
+      });
+      coinDing();
+      return { ok: true };
+    },
+    [trySpend, updateMe]
+  );
+
+  /** Float re-roll — onaylanan aday float'u uygular */
+  const applyFloat = useCallback(
+    (uidKey: string, float: number): { ok: boolean; error?: string } => {
+      if (!trySpend(FLOAT_REROLL_COST)) return { ok: false, error: "Yetersiz bakiye" };
+      updateMe((me) => {
+        const it = me.inventory.find((i) => i.uid === uidKey);
+        if (it && typeof it.float === "number") it.float = Math.min(0.9999, Math.max(0, float));
+      });
+      coinDing();
+      return { ok: true };
+    },
+    [trySpend, updateMe]
+  );
+
+  /** StatTrak™ dönüştürücü — fiyat farkı karşılığında ST varyantına çevirir */
+  const stattrakify = useCallback(
+    (uidKey: string): { ok: boolean; error?: string; cost?: number } => {
+      const it = user?.inventory.find((i) => i.uid === uidKey);
+      if (!it) return { ok: false, error: "Eşya bulunamadı" };
+      const skin = SKIN_MAP[it.skinId];
+      if (!skin || skin.sticker || skin.st || skin.sv) return { ok: false, error: "Bu eşya dönüştürülemez" };
+      const st = SKIN_MAP[it.skinId + "-st"];
+      if (!st) return { ok: false, error: "Bu skinin StatTrak™ varyantı yok" };
+      const cost = Math.max(0, st.price - skin.price);
+      if (!trySpend(cost)) return { ok: false, error: "Yetersiz bakiye", cost };
+      updateMe((me) => {
+        const t = me.inventory.find((i) => i.uid === uidKey);
+        if (t) t.skinId = st.id;
+      });
+      goldWin();
+      return { ok: true, cost };
+    },
+    [user, trySpend, updateMe]
   );
 
   /** Özel sticker tasarla — ücret karşılığı */
@@ -5219,6 +5279,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     /* profil vitrini */
     look: user?.look ?? {},
     setLook,
+    renameItem,
+    applyFloat,
+    stattrakify,
     showcase: (user?.showcase ?? [])
       .map((u) => inventory.find((i) => i.uid === u))
       .filter((i): i is InvItem => !!i)
