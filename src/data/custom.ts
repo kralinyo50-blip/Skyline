@@ -8,6 +8,12 @@ export interface CustomStickerInput {
   fg: string;
   shape: BadgeShape;
   effect: "none" | "holo" | "foil" | "gold";
+  /** V2.0: gradyan ikinci renk */
+  bg2?: string;
+  /** V2.0: emoji katmanı */
+  emoji?: string;
+  /** V2.0: yazı tipi */
+  font?: "display" | "mono" | "serif";
 }
 
 const EFFECT_MULT = { none: 1, foil: 1.6, holo: 2.2, gold: 3.4 } as const;

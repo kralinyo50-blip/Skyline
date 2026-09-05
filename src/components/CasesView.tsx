@@ -102,6 +102,8 @@ function CaseCard({ def, onSelect }: { def: CaseDef; onSelect: () => void }) {
   );
 }
 
+import { PlayerCasesSection } from "./PlayerCases";
+
 export function CasesView() {
   const [selected, setSelected] = useState<CaseDef | null>(null);
   const { userName, customCases } = useGame();
@@ -164,12 +166,14 @@ export function CasesView() {
 
       <MissionsPanel />
 
+      <PlayerCasesSection />
+
       {/* KASA IZGARASI */}
       <div className="mb-4 flex items-end justify-between">
         <h2 className="font-display text-xl font-bold uppercase tracking-widest text-white/85">
           Tüm Kasalar
         </h2>
-        <span className="text-xs text-white/35">v1.0 · {CASES.length} kasa</span>
+        <span className="text-xs text-white/35">v2.0 · {CASES.length} kasa</span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

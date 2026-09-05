@@ -1,0 +1,50 @@
+# Bu dosya kaynakları kendiliğinden oluşturmaz. Uygulamadan önce ücretleri incele.
+# Mevcut V2 servisine dokunmayan, ayrı ve isteğe bağlı V3 Web Service + PostgreSQL.
+services:
+  - type: web
+    name: skyline-platform
+    runtime: node
+    region: frankfurt
+    plan: 0.5c-512mb
+    branch: main
+    autoDeployTrigger: off
+    numInstances: 1
+    buildCommand: npm ci --include=dev && npm run typecheck && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    maxShutdownDelaySeconds: 180
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.22.3
+      - key: DATABASE_URL
+        fromDatabase:
+          name: skyline-platform-db
+          property: connectionString
+      - key: SKYLINE_ADMIN_USER
+        sync: false
+      - key: SKYLINE_ADMIN_PASSWORD
+        sync: false
+      - key: AI_ENABLED
+        value: "false"
+      - key: OPENAI_IMAGE_MODEL
+        value: gpt-image-1
+      - key: AI_DAILY_USER_LIMIT
+        value: "3"
+      - key: AI_DAILY_GLOBAL_LIMIT
+        value: "20"
+      - key: VITE_PLATFORM_DEFAULT
+        value: "false"
+# PUBLIC_ORIGIN verilmezse Render'ın RENDER_EXTERNAL_URL değeri kullanılır.
+# OPENAI_API_KEY daha sonra yalnızca Render'ın gizli environment ayarına eklenir.
+databases:
+  - name: skyline-platform-db
+    region: frankfurt
+    plan: 0.1c-256mb
+    postgresMajorVersion: "17"
+    databaseName: skyline
+    user: skyline
+    diskSizeGB: 15
+    storageAutoscalingEnabled: false
+    ipAllowList: []

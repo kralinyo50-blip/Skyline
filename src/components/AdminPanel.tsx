@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -58,13 +59,8 @@ import { MAX_STICKERS, STICKERS } from "../data/stickers";
 import { WEARS, rollFloat, type WearKey } from "../data/wear";
 import { FloatBar } from "./WearUi";
 
-/* Çekiliş ödül etiketi — skin çekilişinde para değil skin adı gösterilir */
-function rafflePrizeLabel(r: { skinId?: string; skinName?: string; prize: number }): string {
-  if (!r.skinId) return money(r.prize);
-  if (r.skinName) return r.skinName;
-  const sk = SKIN_MAP[r.skinId];
-  return sk ? `${sk.weapon} | ${sk.name}` : "Skin";
-}
+import { MAX_SKIN_RAFFLE_PRIZES, raffleSkins as rafflePrizesOf, type RaffleSkinSelection } from "../store/raffle";
+import { RafflePrizes, rafflePrizeLabel } from "./RafflePrizes";
 
 /* özel kasa şablonları için deterministik skin seçimi */
 function tplPicks(rarity: string, n: number): string[] {
@@ -104,7 +100,19 @@ type SkinDraft = {
 const WEAR_KEYS: WearKey[] = ["fn", "mw", "ft", "ww", "bs"];
 
 function newSkinDraft(s: Skin): SkinDraft {
-  return { id: s.id, version: "base", wear: "random", float: rollFloat(), stickers: [] };
+  return { id: s.id, version: s.st ? "st" : s.sv ? "sv" : "base", wear: "random", float: rollFloat(), stickers: [] };
+}
+
+function raffleSelection(draft: SkinDraft): RaffleSkinSelection {
+  const baseId = draft.id.replace(/-(st|sv)$/, "");
+  const skinId = draft.version === "st" ? `${baseId}-st` : draft.version === "sv" ? `${baseId}-sv` : baseId;
+  return {
+    skinId,
+    skinOpts: {
+      ...(draft.wear !== "random" ? { float: draft.float } : {}),
+      ...(draft.stickers.length ? { stickers: [...draft.stickers] } : {}),
+    },
+  };
 }
 
 function wearFloat(w: WearKey): number {
@@ -377,8 +385,36 @@ export function AdminPanel() {
   const [skinPageRaw, setSkinPageRaw] = useState(0);
   const [skinDetail, setSkinDetail] = useState<SkinDraft | null>(null);
   /* skin çekilişi durumu */
-  const [raffleSkin, setRaffleSkin] = useState<SkinDraft | null>(null);
+  const [raffleSkins, setRaffleSkins] = useState<SkinDraft[]>([]);
+  const [raffleEditIndex, setRaffleEditIndex] = useState<number | null>(null);
   const [skinRaffleMin, setSkinRaffleMin] = useState("60");
+  const skinPickerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!skinFor) return;
+    const previousFocus = document.activeElement;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    skinPickerRef.current?.focus();
+    const keyboard = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSkinFor(null); setSkinDetail(null); setRaffleEditIndex(null);
+      } else if (event.key === "Tab") {
+        const panel = skinPickerRef.current;
+        const items = Array.from(panel?.querySelectorAll<HTMLElement>("button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex='0']") ?? []).filter(item => item.getClientRects().length > 0);
+        const first = items[0], last = items[items.length - 1];
+        if (!first) { event.preventDefault(); panel?.focus(); }
+        else if (event.shiftKey && (document.activeElement === first || document.activeElement === panel)) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener("keydown", keyboard);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", keyboard);
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
+    };
+  }, [skinFor]);
   /* toplu bakiye sıfırlama onayı */
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetReason, setResetReason] = useState("");
@@ -1719,114 +1755,67 @@ export function AdminPanel() {
           </div>
 
           {/* ============ SKİN ÇEKİLİŞİ ============ */}
-          <div className="rounded-2xl border border-amber-400/30 bg-gradient-to-b from-amber-400/8 to-ink-900/70 p-5">
+          <section aria-label="Skin çekilişi yönetimi" className="rounded-2xl border border-amber-400/30 bg-gradient-to-b from-amber-400/8 to-ink-900/70 p-5">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-amber-300" />
-              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">
-                Skin Çekilişi
-              </span>
-              {raffle && !raffle.drawn && !raffle.cancelled && raffle.skinId && (
-                <span className="ml-auto rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-400">
-                  Aktif
-                </span>
+              <span className="font-display text-sm font-bold uppercase tracking-widest text-white/85">Skin Çekilişi</span>
+              {raffle && !raffle.drawn && !raffle.cancelled && rafflePrizesOf(raffle).length > 0 && (
+                <span className="ml-auto rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-black uppercase text-emerald-400">Aktif</span>
               )}
             </div>
 
-            {raffle?.skinId && (
-              <div className="mt-3 flex items-center gap-3 rounded-xl border border-line bg-ink-900/70 px-4 py-3">
-                {(() => {
-                  const s = SKIN_MAP[raffle.skinId!];
-                  return s ? (
-                    <img src={s.img} alt={s.name} className="h-12 w-12 shrink-0 object-contain" />
-                  ) : null;
-                })()}
-                <div className="min-w-0 flex-1 text-[11px] text-white/55">
-                  {raffle.drawn ? (
-                    <>
-                      <span className="font-bold text-white/80">Kazanan:</span> {raffle.winner?.name ?? "—"}
-                    </>
-                  ) : (
-                    <>
-                      <span className="font-bold text-white/80">{raffle.skinName}</span> ·{" "}
-                      {Math.max(0, Math.round((raffle.endsAt - Date.now()) / 60000))} dk kaldı
-                    </>
-                  )}
-                  <div className="text-white/35">
-                    {Object.keys(raffle.participants ?? {}).length} katılımcı
-                    {raffle.winner?.name && raffle.drawn ? ` · ödül: ${raffle.skinName}` : ""}
-                  </div>
+            {raffle && rafflePrizesOf(raffle).length > 0 && (
+              <div className="mt-3 rounded-xl border border-line bg-ink-900/70 px-4 py-3">
+                <div className="text-[11px] text-white/55">
+                  <span className="font-bold text-white/80">{rafflePrizeLabel(raffle)}</span>
+                  {raffle.cancelled ? " · İptal edildi" : raffle.drawn ? ` · Kazanan: ${raffle.winner?.name ?? "—"}` : ` · ${Math.max(0, Math.round((raffle.endsAt - Date.now()) / 60000))} dk kaldı`}
+                  <div className="mt-1 text-white/35">{Object.keys(raffle.participants ?? {}).length} katılımcı · tüm skinler tek kazanana</div>
                 </div>
+                <RafflePrizes raffle={raffle} />
               </div>
             )}
 
-            {/* seçilen ödül */}
             <div className="mt-4 rounded-xl border border-amber-400/25 bg-ink-900/70 p-3">
-              <div className="mb-2 text-[10px] font-black uppercase tracking-widest text-white/45">
-                Çekiliş Ödülü (skin)
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-white/45">Seçilen ödüller: {raffleSkins.length} / {MAX_SKIN_RAFFLE_PRIZES}</span>
+                {raffleSkins.length > 0 && (
+                  <button type="button" onClick={() => setRaffleSkins([])} className="px-2 py-1 text-[11px] font-bold text-white/45 hover:text-white">Seçimi temizle</button>
+                )}
               </div>
-              {raffleSkin ? (
-                (() => {
-                  const baseId = raffleSkin.id.replace(/-(st|sv)$/, "");
-                  const finalId =
-                    raffleSkin.version === "st"
-                      ? baseId + "-st"
-                      : raffleSkin.version === "sv"
-                        ? baseId + "-sv"
-                        : baseId;
-                  const s = SKIN_MAP[finalId] ?? SKIN_MAP[baseId];
-                  if (!s) return null;
-                  const r = RARITY[s.rarity];
+              {!raffleSkins.length && <p className="mb-3 text-xs text-white/40">Ödül paketine bir veya birden fazla skin ekle.</p>}
+              <ul aria-label="Seçilen çekiliş ödülleri" className="tiny-scroll max-h-80 space-y-2 overflow-y-auto">
+                {raffleSkins.map((draft, index) => {
+                  const selected = raffleSelection(draft);
+                  const skin = SKIN_MAP[selected.skinId];
+                  if (!skin) return null;
                   return (
-                    <div className="flex flex-wrap items-center gap-3">
-                      <div
-                        className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg"
-                        style={{ background: `radial-gradient(100% 80% at 50% 0%, ${r.color}1a, #0a0d16)` }}
-                      >
-                        <img src={s.img} alt={s.name} className="h-full w-full object-contain p-1" />
-                      </div>
+                    <li key={`${index}:${draft.id}`} className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-ink-950/40 p-2">
+                      <PickImg s={skin} className="h-12 w-12 shrink-0" />
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-bold text-white/85">
-                          {s.weapon} | {s.name}
-                        </div>
-                        <div className="text-[10px] text-white/45">
-                          {s.id.includes("-st") ? "StatTrak™ · " : s.id.includes("-sv") ? "Hatıra · " : ""}
-                          {raffleSkin.wear !== "random" && raffleSkin.wear ? `${WEARS[raffleSkin.wear].tr} · ` : ""}
-                          <span style={{ color: r.color }}>{r.tr}</span> · {money(s.price)}
+                        <div className="break-words text-xs font-bold text-white/85">{index + 1}. {skin.weapon} | {skin.name}</div>
+                        <div className="mt-1 text-[10px] text-white/45">
+                          {draft.version === "st" ? "StatTrak™ · " : draft.version === "sv" ? "Hatıra · " : ""}
+                          {draft.wear === "random" ? "Rastgele aşınma" : `${WEARS[draft.wear].tr} · ${draft.float.toFixed(3)}`}
+                          {draft.stickers.length > 0 && ` · ${draft.stickers.length} sticker`}
                         </div>
                       </div>
-                      <button
-                        onClick={() => {
-                          setSkinPickMode("raffle");
-                          setSkinFor({ key: "", name: "" });
-                          setSkinQuery("");
-                          setSkinRarity("all");
-                          setSkinPageRaw(0);
-                          setSkinDetail(null);
-                          click();
-                        }}
-                        className="flex h-9 items-center gap-1 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 text-[11px] font-bold text-amber-300 transition hover:bg-amber-400/20"
-                      >
-                        <RefreshCcw className="h-3.5 w-3.5" /> Değiştir
-                      </button>
-                    </div>
+                      <div className="flex shrink-0 gap-1">
+                        <button type="button" aria-label={`${index + 1}. ödülün ayarlarını düzenle`} onClick={() => {
+                          setSkinPickMode("raffle"); setRaffleEditIndex(index); setSkinFor({ key: "", name: "" });
+                          setSkinDetail({ ...draft, stickers: [...draft.stickers] }); click();
+                        }} className="rounded-lg border border-amber-400/30 p-2 text-amber-300 hover:bg-amber-400/10"><Settings className="h-4 w-4" /></button>
+                        <button type="button" aria-label={`${index + 1}. ödülü listeden çıkar`} onClick={() => setRaffleSkins((items) => items.filter((_, i) => i !== index))} className="rounded-lg border border-lose/30 p-2 text-lose hover:bg-lose/10"><X className="h-4 w-4" /></button>
+                      </div>
+                    </li>
                   );
-                })()
-              ) : (
-                <button
-                  onClick={() => {
-                    setSkinPickMode("raffle");
-                    setSkinFor({ key: "", name: "" });
-                    setSkinQuery("");
-                    setSkinRarity("all");
-                    setSkinPageRaw(0);
-                    setSkinDetail(null);
-                    click();
-                  }}
-                  className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-amber-400/40 bg-amber-400/5 text-xs font-bold text-amber-300 transition hover:bg-amber-400/10"
-                >
-                  <Gift className="h-4 w-4" /> Ödül skinini seç
-                </button>
-              )}
+                })}
+              </ul>
+              <button type="button" disabled={raffleSkins.length >= MAX_SKIN_RAFFLE_PRIZES} onClick={() => {
+                setSkinPickMode("raffle"); setRaffleEditIndex(null); setSkinFor({ key: "", name: "" });
+                setSkinQuery(""); setSkinRarity("all"); setSkinPageRaw(0); setSkinDetail(null); click();
+              }} className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-amber-400/40 bg-amber-400/5 text-xs font-bold text-amber-300 transition hover:bg-amber-400/10 disabled:opacity-40">
+                <Plus className="h-4 w-4" /> Ödül skini ekle
+              </button>
             </div>
 
             <label className="mt-4 block">
@@ -1844,34 +1833,11 @@ export function AdminPanel() {
             <div className="mt-3 flex gap-2">
               <button
                 onClick={() => {
-                  if (!raffleSkin) {
-                    pushToast({ kind: "lose", title: "Önce ödül skinini seç", sub: "Çekiliş ödülü olmadan başlatılamaz" });
-                    return;
-                  }
-                  const baseId = raffleSkin.id.replace(/-(st|sv)$/, "");
-                  const finalId =
-                    raffleSkin.version === "st"
-                      ? baseId + "-st"
-                      : raffleSkin.version === "sv"
-                        ? baseId + "-sv"
-                        : baseId;
                   const m = Math.max(1, Number(skinRaffleMin) || 60);
-                  const opts: { float?: number; stickers?: string[] } = {};
-                  if (raffleSkin.wear !== "random") opts.float = raffleSkin.float;
-                  if (raffleSkin.stickers.length) opts.stickers = raffleSkin.stickers;
-                  const res = startSkinRaffle(m, finalId, opts);
-                  if (!res.ok) {
-                    pushToast({ kind: "lose", title: "Çekiliş başlatılamadı", sub: res.error ?? "Bilinmeyen hata" });
-                    return;
-                  }
-                  coinDing();
-                  pushToast({
-                    kind: "money",
-                    title: "Skin çekilişi başlatıldı 🎲",
-                    sub: `${m} dk — ödül: ${SKIN_MAP[finalId]?.weapon ?? ""} ${SKIN_MAP[finalId]?.name ?? ""}`,
-                  });
+                  const res = startSkinRaffle(m, raffleSkins.map(raffleSelection));
+                  if (!res.ok) pushToast({ kind: "lose", title: "Çekiliş başlatılamadı", sub: res.error ?? "Bilinmeyen hata" });
                 }}
-                disabled={!!(raffle && !raffle.drawn && !raffle.cancelled)}
+                disabled={!raffleSkins.length || !!(raffle && !raffle.drawn && !raffle.cancelled)}
                 className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-b from-amber-400 to-amber-600 font-display text-sm font-black uppercase tracking-wider text-ink-950 transition hover:brightness-110 disabled:opacity-40"
               >
                 <Sparkles className="h-4 w-4" /> Çekilişi Başlat
@@ -1881,17 +1847,17 @@ export function AdminPanel() {
                   cancelRaffle();
                   pushToast({ kind: "info", title: "Çekiliş iptal edildi", sub: "Katılımcılar boşa çıktı" });
                 }}
-                disabled={!raffle || !raffle.skinId}
+                disabled={!raffle || !rafflePrizesOf(raffle).length || raffle.drawn || raffle.cancelled}
                 className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-lose/40 bg-lose/10 font-display text-sm font-bold text-lose transition hover:bg-lose/20 disabled:opacity-40"
               >
                 <X className="h-4 w-4" /> İptal Et
               </button>
             </div>
             <p className="mt-3 text-[10px] leading-relaxed text-white/35">
-              Aktifken oyuncular Topluluk sayfasından ücretsiz katılır; süre bitince kazananın envanterine otomatik
-              eklenir. Para değil, gerçek skin ödülü çekilir.
+              Aktifken oyuncular Topluluk sayfasından ücretsiz katılır. Seçilen tüm skinler aynı kazananın
+              envanterine ayrı ayrı eklenir; her skinin sürüm, aşınma ve sticker ayarları korunur. Oyun içi skin ödülüdür, SC bakiyesi kesilmez.
             </p>
-          </div>
+          </section>
 
           {/* ============ GÜNÜN İLK GİRİŞİ ============ */}
           <div className="rounded-2xl border border-brand-500/30 bg-gradient-to-b from-brand-500/8 to-ink-900/70 p-5">
@@ -4091,19 +4057,24 @@ export function AdminPanel() {
       </AnimatePresence>
 
       {/* ---------------- SKİN HEDİYE MODALI (TAM EKRAN) ---------------- */}
-      <AnimatePresence>
+      {createPortal(<AnimatePresence>
         {skinFor && (
           <motion.div
+            ref={skinPickerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label={skinPickMode === "raffle" ? "Çekiliş ödülleri seçimi" : "Skin hediyesi seçimi"}
+            tabIndex={-1}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[90] flex flex-col bg-ink-950/98 backdrop-blur-md"
+            className="fixed inset-0 z-[90] flex flex-col bg-ink-950/98 text-white outline-none backdrop-blur-md"
           >
             {/* başlık */}
             <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
               {skinDetail && (
                 <button
-                  onClick={() => setSkinDetail(null)}
+                  onClick={() => { setSkinDetail(null); setRaffleEditIndex(null); }}
                   className="flex h-9 items-center gap-1 rounded-lg border border-line bg-ink-800 px-3 text-xs font-bold text-white/60 transition hover:text-white"
                 >
                   <ChevronLeft className="h-4 w-4" /> Geri
@@ -4115,13 +4086,13 @@ export function AdminPanel() {
                   {skinDetail
                     ? "Skin Detayı"
                     : skinPickMode === "raffle"
-                      ? "Çekiliş Ödülü Seç"
+                      ? "Çekiliş Ödüllerini Seç"
                       : "Skin Hediye Et"}
                 </div>
                 <div className="truncate text-[11px] text-white/40">
                   {skinPickMode === "raffle" ? (
                     <span>
-                      Ödül olacak skin — <span className="font-bold text-white/70">çekilişe katılan kazanır</span>
+                      Birden fazla skin ekleyebilirsin — <span className="font-bold text-white/70">tüm ödüller tek kazanana</span>
                     </span>
                   ) : (
                     <>
@@ -4132,15 +4103,24 @@ export function AdminPanel() {
                 </div>
               </div>
               <button
+                aria-label="Skin seçiciyi kapat"
                 onClick={() => {
                   setSkinFor(null);
                   setSkinDetail(null);
+                  setRaffleEditIndex(null);
                 }}
                 className="rounded-lg p-2 text-white/40 hover:bg-white/5 hover:text-white"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            {skinPickMode === "raffle" && !skinDetail && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-400/20 bg-amber-400/5 px-4 py-3">
+                <span role="status" className="text-xs font-bold text-amber-300">{raffleSkins.length} / {MAX_SKIN_RAFFLE_PRIZES} skin seçildi</span>
+                <button type="button" onClick={() => { setSkinFor(null); setSkinDetail(null); setRaffleEditIndex(null); }} className="rounded-lg bg-amber-400 px-4 py-2 text-xs font-black text-ink-950">Seçimi tamamla</button>
+              </div>
+            )}
 
             {!skinDetail ? (
               <>
@@ -4186,6 +4166,7 @@ export function AdminPanel() {
                       {skinPageItems.map((s) => (
                         <button
                           key={s.id}
+                          data-skin-id={s.id}
                           onClick={() => {
                             setSkinDetail(newSkinDraft(s));
                             click();
@@ -4247,6 +4228,7 @@ export function AdminPanel() {
                 onClose={() => {
                   setSkinFor(null);
                   setSkinDetail(null);
+                  setRaffleEditIndex(null);
                 }}
                 onSent={() => {
                   pushToast({
@@ -4258,22 +4240,24 @@ export function AdminPanel() {
                   setSkinFor(null);
                   setSkinDetail(null);
                 }}
+                pickLabel={raffleEditIndex === null ? "Ödül listesine ekle" : "Ödül değişikliklerini kaydet"}
                 onPick={(draft) => {
-                  setRaffleSkin(draft);
-                  pushToast({
-                    kind: "win",
-                    title: "Çekiliş ödülü seçildi 🎁",
-                    sub: `${SKIN_MAP[skinDetail.id]?.weapon ?? ""} ${SKIN_MAP[skinDetail.id]?.name ?? ""} — çekilişi başlatabilirsin`,
-                  });
+                  if (raffleEditIndex === null && raffleSkins.length >= MAX_SKIN_RAFFLE_PRIZES) {
+                    pushToast({ kind: "lose", title: `En fazla ${MAX_SKIN_RAFFLE_PRIZES} skin seçebilirsin`, sub: "Yeni skin eklemek için listeden bir ödül çıkar." });
+                    return;
+                  }
+                  const saved = { ...draft, stickers: [...draft.stickers] };
+                  setRaffleSkins((items) => raffleEditIndex === null ? [...items, saved] : items.map((item, index) => index === raffleEditIndex ? saved : item));
+                  pushToast({ kind: "win", title: raffleEditIndex === null ? "Skin ödül listesine eklendi" : "Ödül ayarları güncellendi", sub: "Seçilen tüm skinler tek kazanana verilecek." });
                   coinDing();
-                  setSkinFor(null);
-                  setSkinDetail(null);
+                  if (raffleEditIndex !== null) setSkinFor(null);
+                  setSkinDetail(null); setRaffleEditIndex(null);
                 }}
               />
             )}
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>, document.body)}
     </div>
   );
 }
@@ -4288,6 +4272,7 @@ function SkinDetailPanel({
   onClose,
   onSent,
   onPick,
+  pickLabel,
 }: {
   draft: SkinDraft;
   setDraft: (d: SkinDraft) => void;
@@ -4297,6 +4282,7 @@ function SkinDetailPanel({
   onClose: () => void;
   onSent: () => void;
   onPick: (d: SkinDraft) => void;
+  pickLabel?: string;
 }) {
   const { adminGiveSkin, pushToast } = useGame();
   const baseId = draft.id.replace(/-(st|sv)$/, "");
@@ -4515,7 +4501,7 @@ function SkinDetailPanel({
             )}
           >
             <Gift className="h-4 w-4" />
-            {mode === "raffle" ? "Çekiliş ödülü olarak seç" : `${playerName} kişisine gönder`}
+            {mode === "raffle" ? (pickLabel || "Ödül listesine ekle") : `${playerName} kişisine gönder`}
           </button>
           <button
             onClick={onClose}

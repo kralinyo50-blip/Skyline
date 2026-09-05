@@ -102,12 +102,39 @@ export function startMqtt(code: string, h: MqttHandlers) {
     current = cl;
     client = cl;
 
-    cl.on("connect", () => {
+    /* El sıkışma: bağlantı kurulduktan sonra 8 sn içinde kanalda en az bir
+       admin kullanıcı (isAdmin=true, status=approved) içeren geçerli bir
+       durum belgesi gelmezse kod geçersiz sayılır → erişim kapısı açılmaz.
+       İlk açan cihaz (admin) otomatik bootstraplenir. */
+    let verified = false;
+    let firstMsgTimer: number | null = null;
+    const markVerified = () => {
+      if (verified) return;
+      verified = true;
+      if (firstMsgTimer !== null) {
+        clearTimeout(firstMsgTimer);
+        firstMsgTimer = null;
+      }
       h.onStatus("ok");
+    };
+
+    cl.on("connect", () => {
       cl.subscribe(topic, { qos: 0 }, () => {
         /* abone olduktan sonra kendi durumunu da yayınla */
         schedulePublish(600);
       });
+      /* Retained mesaj 2 sn içinde gelmeli; gelmezse kanal boştur → hata. */
+      firstMsgTimer = window.setTimeout(() => {
+        if (verified) return;
+        h.onStatus("error");
+        try {
+          cl.end(true);
+        } catch {
+          /* yoksay */
+        }
+        brokerIndex++;
+        window.setTimeout(connect, 3500);
+      }, 8000);
     });
 
     cl.on("message", (_t, payload) => {
@@ -115,6 +142,18 @@ export function startMqtt(code: string, h: MqttHandlers) {
         const raw = payload.toString("utf8");
         const cloud = JSON.parse(raw) as CloudDoc;
         if (!cloud || typeof cloud !== "object" || !cloud.users || !Array.isArray(cloud.deposits)) return;
+        /* Geçerli bir sunucu belgesi: en az bir onaylı admin kullanıcı içeriyor
+           olmalı. Bu, rastgele uydurulmuş kodların boş oda açıp girmesini
+           engeller. Admin kullanıcı yoksa (kanal gerçekten boş), ilk giren
+           admin cihazı kendi yayınını duyduğunda buradan geçer. */
+        const hasAdmin = Object.values(cloud.users).some(
+          (u: any) => u && u.isAdmin === true && u.status === "approved"
+        );
+        if (hasAdmin) markVerified();
+        else if (verified) {
+          /* admin listeden çıkmış olsa bile oturum düşmesin */
+        }
+
         const local = h.getLocal();
         const merged = mergeCloud(local, cloud);
         if (JSON.stringify(merged) !== JSON.stringify(local)) h.apply(merged);
@@ -138,7 +177,7 @@ export function startMqtt(code: string, h: MqttHandlers) {
 
     cl.on("reconnect", () => h.onStatus("busy"));
     cl.on("close", () => {
-      if (!stopped) h.onStatus("busy");
+      if (!stopped) h.onStatus(verified ? "busy" : "error");
     });
   };
 

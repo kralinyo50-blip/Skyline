@@ -72,7 +72,7 @@ export function Footer() {
       <div className="border-t border-line py-4 text-center text-[11px] text-white/25">
         © 2026 {BRAND.name}
         {BRAND.suffix} — Şehir Roleplay Sunucusu ·{" "}
-        <span className="font-bold text-white/40">v1.0</span>
+        <span className="font-bold text-white/40">v2.0</span>
       </div>
     </footer>
   );

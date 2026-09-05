@@ -5,28 +5,56 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "vite build && node scripts/catalog.mjs dist/catalog.json",
+    "preview": "vite preview",
+    "dev:api": "tsx --env-file=.env server/index.ts",
+    "catalog": "node scripts/catalog.mjs",
+    "start": "tsx server/index.ts",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.server.json --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "tsx tests/e2e.mjs",
+    "pretest:e2e": "npm run build",
+    "account:reset-password": "tsx scripts/reset-password.ts",
+    "validate:render": "node scripts/validate-render.mjs",
+    "format:platform": "prettier --write \"server/**/*.ts\" \"shared/**/*.ts\" \"src/platform/**/*.{ts,tsx,css}\" \"tests/*.{ts,mjs}\" \"scripts/*.{ts,mjs}\" src/App.tsx public/sw.js public/manifest.webmanifest public/offline.html README.md docs/v3-*.md render.yaml tsconfig.server.json package.json",
+    "test:e2e:raffle": "node tests/e2e-raffle.mjs"
   },
   "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "clsx": "2.1.1",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
     "framer-motion": "^13.1.1",
     "lucide-react": "^1.34.0",
     "mqtt": "^5.15.2",
+    "pg": "^8.23.0",
+    "pngjs": "^7.0.0",
     "react": "19.2.6",
     "react-dom": "19.2.6",
-    "tailwind-merge": "3.4.0"
+    "tailwind-merge": "3.4.0",
+    "tsx": "^4.23.13",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/vite": "4.1.17",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
     "@types/node": "22.19.17",
+    "@types/pg": "^8.23.1",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.1",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "esbuild": "^0.28.2",
+    "prettier": "^3.9.6",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",
-    "vite": "7.3.2",
-    "vite-plugin-singlefile": "2.3.0"
+    "vite": "^7.3.6",
+    "vite-plugin-singlefile": "2.3.0",
+    "yaml": "^2.9.0"
   },
   "engines": {
     "node": ">=20.19.0"

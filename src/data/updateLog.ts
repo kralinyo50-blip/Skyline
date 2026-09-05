@@ -18,7 +18,21 @@ export interface UpdateEntry {
 
 export const UPDATE_LOG: UpdateEntry[] = [
   {
-    version: "v2.3",
+    version: "v2.0",
+    date: "2026-09-05",
+    tag: "MEGA GÜNCELLEME",
+    items: [
+      { emoji: "🎮", title: "6 Yeni Oyun", desc: "Keno, Kule (Towers), Hilo, Skyline Slots, Kazı Kazan ve Derby — hepsi misyonlara ve sezon XP'sine bağlı." },
+      { emoji: "🎨", title: "6 Renk Teması", desc: "Gece, Kan, Neon, Altın, Okyanus, Gül — site tek dokunuşla renk değiştiriyor, login dahil." },
+      { emoji: "🪪", title: "Kimlik Kiti", desc: "Kapak banner'ı, profil çerçevesi, ünvanlar, emoji avatar ve isim rengi — sohbette ve liderlikte herkes görür." },
+      { emoji: "🛠️", title: "Skin Atölyesi", desc: "Name Tag ile eşyaya özel ad, aday önizlemeli float re-roll ve StatTrak™ dönüştürücü." },
+      { emoji: "✨", title: "Sticker Studio v2", desc: "9 şekil, gradyan zemin, emoji katmanı ve 3 yazı tipi ile çok daha zengin tasarımlar." },
+      { emoji: "🖼️", title: "5 Slotlu Vitrin", desc: "Profil vitrini 3'ten 5 eşyaya çıktı; en iyi düşüşlerin artık daha büyük sahnede." },
+      { emoji: "🎉", title: "Konfeti Paketleri", desc: "Altın Yağmuru, Neon Patlama, Taç Yaprakları ya da Sakin — kutlamalar senin tarzında." },
+    ],
+  },
+  {
+    version: "v1.9",
     date: "2026-09-01",
     tag: "Panel & Senkron Onarımı",
     items: [
@@ -31,7 +45,7 @@ export const UPDATE_LOG: UpdateEntry[] = [
     ],
   },
   {
-    version: "v2.2",
+    version: "v1.8",
     date: "2026-09-01",
     tag: "Marin Kitagawa Kasası",
     items: [
@@ -41,7 +55,7 @@ export const UPDATE_LOG: UpdateEntry[] = [
     ],
   },
   {
-    version: "v2.1",
+    version: "v1.7",
     date: "2026-09-01",
     tag: "20 Skin Transfer Fix",
     items: [
@@ -51,7 +65,7 @@ export const UPDATE_LOG: UpdateEntry[] = [
     ],
   },
   {
-    version: "v2.0",
+    version: "v1.6",
     date: "2026-09-01",
     tag: "Yeni Skin Paketi",
     items: [

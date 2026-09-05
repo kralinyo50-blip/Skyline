@@ -1,11 +1,12 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Package, X, ZoomIn, ZoomOut, RotateCcw, Maximize2, Move } from "lucide-react";
+import { Package, Wand2, X, ZoomIn, ZoomOut, RotateCcw, Maximize2, Move } from "lucide-react";
 import { money } from "../config";
-import { itemTitle, itemValue, itemWear, type InvItem } from "../data/items";
+import { FLOAT_REROLL_COST, itemTitle, itemValue, itemWear, NAME_TAG_COST, type InvItem } from "../data/items";
 import { SKIN_MAP, RARITY, type Skin } from "../data/skins";
 import { STICKER_MAP, stickerBonus } from "../data/stickers";
-import { floatPremium, WEARS } from "../data/wear";
+import { floatPremium, wearFromFloat, WEARS } from "../data/wear";
+import { useGame } from "../store/Game";
 import { SkinImg } from "./SkinCard";
 import { FloatBar, WearBadge } from "./WearUi";
 import { PriceHistoryChart } from "./PriceChart";
@@ -179,6 +180,9 @@ interface Props {
 }
 
 export function ItemDetailModal({ item, onClose, actions, subtitle }: Props) {
+  const { renameItem, applyFloat, stattrakify, pushToast } = useGame();
+  const [nameDraft, setNameDraft] = useState("");
+  const [cand, setCand] = useState<number | null>(null);
   const skin = SKIN_MAP[item.skinId];
   const wear = itemWear(item);
   const value = itemValue(item);
@@ -290,6 +294,93 @@ export function ItemDetailModal({ item, onClose, actions, subtitle }: Props) {
                 Sticker eşyası — silaha uygulanabilir, değeri silah fiyatına eklenir.
               </div>
             )
+          )}
+
+          {/* V2.0 ATÖLYE — name tag / float / StatTrak */}
+          {!isSticker && skin && (
+            <div className="mt-3 space-y-2 rounded-xl border border-brand-500/25 bg-brand-500/5 p-3.5">
+              <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-brand-300">
+                <Wand2 className="h-3.5 w-3.5" /> V2.0 Atölye
+              </div>
+
+              {/* name tag */}
+              <div className="flex items-center gap-1.5">
+                <input
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value.slice(0, 24))}
+                  placeholder={`Yeni ad · şu an: ${title.main}`}
+                  className="min-w-0 flex-1 rounded-lg border border-line bg-ink-900 px-2.5 py-1.5 text-[11px] font-semibold text-white placeholder:text-white/25 focus:outline-none"
+                />
+                <button
+                  onClick={() => {
+                    const r = renameItem(item.uid, nameDraft);
+                    if (r.ok) {
+                      pushToast({ kind: "win", title: "Name tag takıldı", sub: `"${nameDraft.trim()}" · -${money(NAME_TAG_COST)}` });
+                      setNameDraft("");
+                    } else pushToast({ kind: "lose", title: "Olmadı", sub: r.error });
+                  }}
+                  className="shrink-0 rounded-lg border border-line bg-ink-800 px-2.5 py-1.5 text-[10px] font-bold text-white/70 transition hover:text-white"
+                >
+                  İsim Ver · {money(NAME_TAG_COST)}
+                </button>
+              </div>
+
+              {/* float re-roll */}
+              {typeof item.float === "number" &&
+                (cand === null ? (
+                  <button
+                    onClick={() => setCand(Math.round(Math.random() * 9999) / 10000)}
+                    className="w-full rounded-lg border border-line bg-ink-800 px-2.5 py-1.5 text-[10px] font-bold text-white/70 transition hover:text-white"
+                  >
+                    Aday Float Üret · {money(FLOAT_REROLL_COST)}
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-ink-900 px-2.5 py-1.5">
+                    <WearBadge wear={wearFromFloat(cand)} full />
+                    <span className="font-display text-[11px] font-black tabular-nums text-white/80">
+                      {cand.toFixed(4)}
+                    </span>
+                    <span className="text-[9px] text-white/35">aday aşınma</span>
+                    <span className="ml-auto flex gap-1.5">
+                      <button
+                        onClick={() => {
+                          const r = applyFloat(item.uid, cand);
+                          if (r.ok) {
+                            pushToast({ kind: "win", title: "Float yenilendi", sub: `${cand.toFixed(4)} · -${money(FLOAT_REROLL_COST)}` });
+                            setCand(null);
+                            onClose();
+                          } else pushToast({ kind: "lose", title: "Olmadı", sub: r.error });
+                        }}
+                        className="rounded-lg bg-emerald-500 px-2.5 py-1 text-[10px] font-black uppercase text-black transition hover:bg-emerald-400"
+                      >
+                        Onayla
+                      </button>
+                      <button
+                        onClick={() => setCand(null)}
+                        className="rounded-lg border border-line bg-ink-800 px-2.5 py-1 text-[10px] font-bold text-white/50 transition hover:text-white"
+                      >
+                        Vazgeç
+                      </button>
+                    </span>
+                  </div>
+                ))}
+
+              {/* StatTrak dönüştürücü */}
+              {!skin.st && !skin.sv && SKIN_MAP[skin.id + "-st"] && (
+                <button
+                  onClick={() => {
+                    const r = stattrakify(item.uid);
+                    if (r.ok) {
+                      pushToast({ kind: "win", title: "StatTrak™ dönüştürüldü", sub: `-${money(r.cost ?? 0)} · sayaç artık işliyor` });
+                      onClose();
+                    } else pushToast({ kind: "lose", title: "Olmadı", sub: r.error });
+                  }}
+                  className="w-full rounded-lg border border-[#cf6a32]/40 bg-[#cf6a32]/10 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-[#cf6a32] transition hover:bg-[#cf6a32]/20"
+                >
+                  StatTrak™ Dönüştür · {money(Math.max(0, (SKIN_MAP[skin.id + "-st"]?.price ?? 0) - skin.price))}
+                </button>
+              )}
+            </div>
           )}
 
           {/* değer dökümü */}

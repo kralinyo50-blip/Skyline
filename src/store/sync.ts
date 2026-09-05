@@ -1,3 +1,4 @@
+import { copyRaffleSkin, mergeRafflePrizes } from "./raffle";
 import { jackpotSchedule } from "../config";
 import {
   isAdminName,
@@ -184,7 +185,7 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     /* çekiliş kopyalanır: aşağıdaki katılımcı birleşimi yerel nesneyi
        mutasyona uğratıyordu → değişiklik "fark yok" sanılıp kaydedilmiyordu */
     raffle: local.raffle
-      ? { ...local.raffle, participants: { ...(local.raffle.participants ?? {}) } }
+      ? { ...local.raffle, participants: { ...(local.raffle.participants ?? {}) }, skinPrizes: local.raffle.skinPrizes?.map(copyRaffleSkin) }
       : local.raffle,
     firstLogin: local.firstLogin,
     /* pazar: kimliğe göre birleş — en yeni durum (removed dahil) kazanır */
@@ -290,6 +291,7 @@ export function mergeCloud(local: DB, cloud: CloudDoc): DB {
     if (!l || preferCloud) out.raffle = c;
   } else if (out.raffle && cloud.raffle) {
     /* AYNI çekiliş (aynı id): katılımcıları birleştir, TEK kazananı koru */
+    out.raffle = mergeRafflePrizes(out.raffle, cloud.raffle);
     const mine = out.raffle;
     const theirs = cloud.raffle;
     if (theirs.id === mine.id) {

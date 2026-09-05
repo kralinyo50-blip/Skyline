@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Bomb,
+  Castle,
+  ChevronsUpDown,
   CircleDot,
   Coins,
   Dice5,
@@ -9,10 +11,14 @@ import {
   Disc3,
   Flame,
   Gauge,
+  Grid3x3,
   History,
+  Flag,
   Rocket,
   ShieldCheck,
+  Clover,
   Spade,
+  Ticket,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -25,10 +31,29 @@ import { cn } from "../utils/cn";
 import { Confetti } from "./CaseReel";
 import { Roulette, Mines, DiceGame } from "./MoreGames";
 import { Blackjack, Limbo, Plinko, Wheel } from "./ExtraGames";
+import { Keno, Towers, Hilo } from "./SkillGames";
+import { Slots, Scratch, Derby } from "./LuckGames";
 
-type Game = "coinflip" | "crash" | "roulette" | "mines" | "dice" | "blackjack" | "plinko" | "wheel" | "limbo";
+type Game =
+  | "coinflip"
+  | "crash"
+  | "roulette"
+  | "mines"
+  | "dice"
+  | "blackjack"
+  | "plinko"
+  | "wheel"
+  | "limbo"
+  | "keno"
+  | "towers"
+  | "hilo"
+  | "slots"
+  | "scratch"
+  | "derby";
 
 const BETS = [1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
+/** V2.0 ile eklenen oyunlar — misyon sayacı tutar */
+const V2_GAME_KEYS = ["keno", "towers", "hilo", "slots", "scratch", "derby"] as const;
 /** Şans oyunlarında üst bahis sınırı */
 const MAX_BET = 1_000_000;
 const HOUSE_CUT = 0.05;
@@ -539,6 +564,9 @@ export function GamesView() {
     wagerRef.current = safeBet;
     trackWager(safeBet);
     trackMission("games");
+    /* V2.0: yeni oyunlara özel misyon sayaçları */
+    const v2Key = V2_GAME_KEYS.find((k) => k === game);
+    if (v2Key) trackMission(v2Key);
     return true;
   }
 
@@ -552,7 +580,7 @@ export function GamesView() {
     wagerRef.current = 0;
   }
 
-  const games: { key: Game; label: string; Icon: typeof Dices; desc: string }[] = [
+  const games: { key: Game; label: string; Icon: typeof Dices; desc: string; isNew?: boolean }[] = [
     { key: "coinflip", label: "Yazı Tura", Icon: Dices, desc: "1v1 %50 şans" },
     { key: "crash", label: "Crash", Icon: Rocket, desc: "Patlamadan çek" },
     { key: "roulette", label: "Rulet", Icon: CircleDot, desc: "Kırmızı · Siyah · Yeşil" },
@@ -562,6 +590,12 @@ export function GamesView() {
     { key: "plinko", label: "Plinko", Icon: CircleDot, desc: "Top düş, çarpan kap" },
     { key: "wheel", label: "Çark", Icon: Disc3, desc: "Şans çarkı · 10x" },
     { key: "limbo", label: "Limbo", Icon: Gauge, desc: "Şansı seç, çarpanı al" },
+    { key: "keno", label: "Keno", Icon: Grid3x3, desc: "40 sayı · 10 çekiliş", isNew: true },
+    { key: "towers", label: "Kule", Icon: Castle, desc: "Tırman, cashout", isNew: true },
+    { key: "hilo", label: "Hilo", Icon: ChevronsUpDown, desc: "Zincir kart tahmini", isNew: true },
+    { key: "slots", label: "Slots", Icon: Clover, desc: "3 makara · jackpot", isNew: true },
+    { key: "scratch", label: "Kazı Kazan", Icon: Ticket, desc: "Skin ödüllü bilet", isNew: true },
+    { key: "derby", label: "Derby", Icon: Flag, desc: "Canlı yarış bahsi", isNew: true },
   ];
 
   return (
@@ -582,7 +616,7 @@ export function GamesView() {
 
       {/* oyun seçimi */}
       <div className="mb-4 flex flex-wrap gap-2">
-        {games.map(({ key, label, Icon, desc }) => (
+        {games.map(({ key, label, Icon, desc, isNew }) => (
           <button
             key={key}
             onClick={() => {
@@ -590,7 +624,7 @@ export function GamesView() {
               click();
             }}
             className={cn(
-              "flex items-center gap-2.5 rounded-xl border px-4 py-3 text-left transition",
+              "relative flex items-center gap-2.5 rounded-xl border px-4 py-3 text-left transition",
               game === key
                 ? "border-brand-500/60 bg-brand-500/10"
                 : "border-line bg-ink-800 hover:border-ink-500"
@@ -605,6 +639,11 @@ export function GamesView() {
                 )}
               >
                 {label}
+                {isNew && (
+                  <span className="ml-1.5 inline-block -translate-y-px rounded bg-rar-covert/20 px-1 py-px align-middle text-[8px] font-black tracking-widest text-rar-covert">
+                    YENİ
+                  </span>
+                )}
               </div>
               <div className="text-[10px] text-white/35">{desc}</div>
             </div>
@@ -672,6 +711,12 @@ export function GamesView() {
       {game === "plinko" && <Plinko bet={bet} onStart={onStart} onEnd={onEnd} />}
       {game === "wheel" && <Wheel bet={bet} onStart={onStart} onEnd={onEnd} />}
       {game === "limbo" && <Limbo bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "keno" && <Keno bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "towers" && <Towers bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "hilo" && <Hilo bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "slots" && <Slots bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "scratch" && <Scratch bet={bet} onStart={onStart} onEnd={onEnd} />}
+      {game === "derby" && <Derby bet={bet} onStart={onStart} onEnd={onEnd} />}
     </div>
   );
 }
