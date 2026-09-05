@@ -4,17 +4,20 @@ import {
   BadgeCheck,
   CheckCircle2,
   History,
+  Palette,
   ShieldCheck,
   Trophy,
   X,
 } from "lucide-react";
-import { money, vipLevelEntry } from "../config";
+import { mcHead, money, vipLevelEntry } from "../config";
+import { bannerCss, frameColor, nameColorOf, titleLabel } from "../data/looks";
 import { CASE_MAP } from "../data/cases";
 import { itemValue } from "../data/items";
 import { RARITY, SKIN_MAP } from "../data/skins";
 import { useGame } from "../store/Game";
 import { cn } from "../utils/cn";
 import { SkinImg } from "./SkinCard";
+import { ProfileEditor } from "./ProfileEditor";
 
 /* ---------------- KÂR / ZARAR GRAFİĞİ (kümülatif SVG) ---------------- */
 function PnLChart({ spent, value }: { spent: number[]; value: number[] }) {
@@ -130,9 +133,10 @@ function VerifyModal({
 
 /* ---------------- PROFİL / İSTATİSTİK ---------------- */
 export function StatsView() {
-  const { rollLogs, achievements, unlockedAch, showcase, toggleShowcase, vipActive, vipTier, vipLevel } = useGame();
+  const { rollLogs, achievements, unlockedAch, showcase, toggleShowcase, vipActive, vipTier, vipLevel, look, user } = useGame();
   const [verify, setVerify] = useState<{ seed: string; nonce: number; caseId: string; result: string } | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const chart = useMemo(() => {
     const spent: number[] = [];
@@ -172,15 +176,59 @@ export function StatsView() {
         </div>
       </div>
 
+      {/* V2.0 KİMLİK KARTI */}
+      <div
+        className="mb-4 overflow-hidden rounded-2xl border-2 bg-ink-900/70"
+        style={{ borderColor: frameColor(look.frame) }}
+      >
+        <div className="relative h-24 sm:h-28" style={{ background: bannerCss(look.banner) }}>
+          <button
+            onClick={() => setEditOpen(true)}
+            className="absolute right-3 top-3 flex items-center gap-1.5 rounded-lg border border-white/15 bg-black/45 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-white/85 backdrop-blur transition hover:bg-black/65"
+          >
+            <Palette className="h-3.5 w-3.5" /> Profili Düzenle
+          </button>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 px-4 pb-4">
+          <div
+            className="-mt-7 grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-2xl border-2 bg-ink-800 text-3xl"
+            style={{ borderColor: frameColor(look.frame) }}
+          >
+            {look.avatar ?? (
+              <img src={mcHead(user?.name ?? "", 128)} alt="" className="h-full w-full object-cover" />
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span
+                className="truncate font-display text-xl font-black"
+                style={{ color: nameColorOf(look.nameColor) }}
+              >
+                {user?.name}
+              </span>
+              {titleLabel(look.unvan) && (
+                <span className="rounded bg-brand-500/15 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-brand-300">
+                  {titleLabel(look.unvan)}
+                </span>
+              )}
+            </div>
+            <div className="text-[10px] text-white/35">
+              V2.0 kimlik kiti — banner, çerçeve, ünvan ve avatarın herkes tarafından görülür
+            </div>
+          </div>
+        </div>
+      </div>
+      <AnimatePresence>{editOpen && <ProfileEditor onClose={() => setEditOpen(false)} />}</AnimatePresence>
+
       {/* PROFİL VİTRİNİ */}
       <div className="mb-4 rounded-2xl border border-line bg-ink-900/70 p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <h2 className="flex items-center gap-2 font-display text-sm font-black uppercase tracking-wider text-white/80">
             <Trophy className="h-4 w-4 text-rar-rare" /> Profil Vitrini
           </h2>
-          <span className="text-[10px] font-bold text-white/35">En fazla 3 eşya — envanterden yıldızla seç</span>
+          <span className="text-[10px] font-bold text-white/35">En fazla 5 eşya — envanterden yıldızla seç</span>
           <span className="ml-auto flex items-center gap-1 text-[10px] font-bold text-white/35">
-            {showcase.length}/3
+            {showcase.length}/5
             {vipActive && (
               <span
                 className="ml-1 rounded-full px-2 py-0.5 font-black uppercase"
@@ -191,8 +239,8 @@ export function StatsView() {
             )}
           </span>
         </div>
-        <div className="grid grid-cols-3 gap-2 sm:max-w-md">
-          {[0, 1, 2].map((i) => {
+        <div className="grid grid-cols-3 gap-2 sm:max-w-lg sm:grid-cols-5">
+          {[0, 1, 2, 3, 4].map((i) => {
             const it = showcase[i];
             const skin = it ? SKIN_MAP[it.skinId] : null;
             return (

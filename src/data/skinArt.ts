@@ -121,7 +121,16 @@ ${glow}
 
 /* ---------------- Sticker sanatı (e-spor rozetleri & özel) ---------------- */
 
-export type BadgeShape = "circle" | "shield" | "star" | "hex" | "diamond" | "crown";
+export type BadgeShape =
+  | "circle"
+  | "shield"
+  | "star"
+  | "hex"
+  | "diamond"
+  | "crown"
+  | "bolt"
+  | "heart"
+  | "gem";
 
 export interface BadgeSpec {
   text: string;
@@ -130,7 +139,19 @@ export interface BadgeSpec {
   accent?: string;
   shape: BadgeShape;
   effect?: "none" | "holo" | "foil" | "gold";
+  /** V2.0: gradyan ikinci renk (yoksa koyu zemin) */
+  bg2?: string;
+  /** V2.0: yazı üstü emoji katmanı */
+  emoji?: string;
+  /** V2.0: yazı tipi */
+  font?: "display" | "mono" | "serif";
 }
+
+const BADGE_FONT: Record<NonNullable<BadgeSpec["font"]>, string> = {
+  display: "Rajdhani,Arial,sans-serif",
+  mono: "'Courier New',monospace",
+  serif: "Georgia,serif",
+};
 
 const SHAPE_PATH: Record<BadgeShape, string> = {
   circle: "M50,4 A46,46 0 1 1 49.9,4 Z",
@@ -139,11 +160,14 @@ const SHAPE_PATH: Record<BadgeShape, string> = {
   hex: "M50,3 L91,26 V74 L50,97 L9,74 V26 Z",
   diamond: "M50,2 L98,50 L50,98 L2,50 Z",
   crown: "M8,28 L26,16 L40,30 L50,10 L60,30 L74,16 L92,28 V72 C92,88 72,95 50,95 C28,95 8,88 8,72 Z",
+  bolt: "M55,2 L20,55 H45 L38,98 L80,42 H52 Z",
+  heart: "M50,88 C20,66 6,48 6,32 C6,16 18,8 30,8 C40,8 47,14 50,20 C53,14 60,8 70,8 C82,8 94,16 94,32 C94,48 80,66 50,88 Z",
+  gem: "M30,8 H70 L92,35 L50,95 L8,35 Z",
 };
 
 export function badgeArt(spec: BadgeSpec): string {
   const id = (uidCounter++).toString(36);
-  const { text, bg, fg, accent = "#ffffff", shape, effect = "none" } = spec;
+  const { text, bg, bg2, fg, accent = "#ffffff", shape, effect = "none", emoji, font = "display" } = spec;
   const path = SHAPE_PATH[shape];
   const label = text.slice(0, 12).toUpperCase().replace(/[<>&"']/g, "");
   const size = label.length <= 3 ? 34 : label.length <= 5 ? 25 : label.length <= 8 ? 17 : 13;
@@ -164,12 +188,12 @@ export function badgeArt(spec: BadgeSpec): string {
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
 <defs>
-<linearGradient id="b${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${bg}"/><stop offset="100%" stop-color="#0b0e16"/></linearGradient>
+<linearGradient id="b${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${bg}"/><stop offset="100%" stop-color="${bg2 ?? "#0b0e16"}"/></linearGradient>
 ${holo}
 </defs>
 <path d="${path}" fill="url(#b${id})"/>
 ${ring}
-<text x="50" y="50" text-anchor="middle" dominant-baseline="central" font-family="Rajdhani,Arial,sans-serif" font-weight="700" font-size="${size}" fill="${effect === "none" ? fg : `url(#h${id})`}" letter-spacing="1">${label}</text>
+${emoji ? `<text x="50" y="${label ? 36 : 50}" text-anchor="middle" dominant-baseline="central" font-size="26">${emoji}</text>` : ""}<text x="50" y="${emoji && label ? 66 : 50}" text-anchor="middle" dominant-baseline="central" font-family="${BADGE_FONT[font]}" font-weight="700" font-size="${size}" fill="${effect === "none" ? fg : `url(#h${id})`}" letter-spacing="1">${label}</text>
 </svg>`;
 
   return "data:image/svg+xml," + encodeURIComponent(svg.replace(/\n/g, ""));

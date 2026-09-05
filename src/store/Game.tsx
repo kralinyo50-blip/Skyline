@@ -16,6 +16,8 @@ import {
   makeStickerItem,
   maybeAttachStickers,
   pinnedWearOf,
+  NAME_TAG_COST,
+  FLOAT_REROLL_COST,
 } from "../data/items";
 import { rollFloat, WEARS, WEAR_ORDER, type WearKey } from "../data/wear";
 import { MAX_STICKERS, STICKERS, STICKER_MAP, CUSTOM_STICKER_COST } from "../data/stickers";
@@ -26,7 +28,7 @@ import {
 } from "../data/custom";
 
 const STICKER_POOL = STICKERS.map((s) => s.id);
-import { setAudioMuted, coinDing, click } from "../lib/audio";
+import { setAudioMuted, coinDing, click, goldWin } from "../lib/audio";
 import { randHex, seededRng, uid, pick } from "../lib/rng";
 import {
   SCALE,
@@ -82,6 +84,8 @@ import {
   setSyncCodeLS,
   emptyMissions,
   type Account,
+  type ProfileLook,
+  type PlayerCase,
   type DB,
   type DepositReq,
   type InvItem,
@@ -449,6 +453,23 @@ interface GameState {
   /* profil vitrini */
   showcase: InvItem[];
   toggleShowcase: (uidKey: string) => void;
+
+  /* V2.0 kimlik kiti */
+  look: ProfileLook;
+  setLook: (patch: Partial<ProfileLook>) => void;
+
+  /* V2.0 atölye — name tag / float / StatTrak */
+  renameItem: (uidKey: string, name: string) => { ok: boolean; error?: string };
+  applyFloat: (uidKey: string, float: number) => { ok: boolean; error?: string };
+  stattrakify: (uidKey: string) => { ok: boolean; error?: string; cost?: number };
+
+  /* V2.0 kendi kasasını kur */
+  createPlayerCase: (name: string, color: string, skinIds: string[]) => { ok: boolean; error?: string };
+  deletePlayerCase: (id: string) => void;
+  openPlayerCase: (
+    ownerKey: string,
+    caseId: string
+  ) => { ok: boolean; error?: string; skinId?: string; value?: number };
 
   /* jackpot (canlı pot) */
   jackpot: JackpotState | null;
@@ -1196,6 +1217,91 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     },
     [mutate]
   );
+
+  /* ---------------- V2.0 ATÖLYE ---------------- */
+
+  /** Name tag — eşyaya özel ad verir (CS tarzı) */
+  const renameItem = useCallback(
+    (uidKey: string, name: string): { ok: boolean; error?: string } => {
+      const clean = name.trim().slice(0, 24);
+      if (!clean) return { ok: false, error: "Önce bir isim yaz" };
+      if (!trySpend(NAME_TAG_COST)) return { ok: false, error: "Yetersiz bakiye" };
+      updateMe((me) => {
+        const it = me.inventory.find((i) => i.uid === uidKey);
+        if (it) it.customName = clean;
+      });
+      coinDing();
+      return { ok: true };
+    },
+    [trySpend, updateMe]
+  );
+
+  /** Float re-roll — onaylanan aday float'u uygular */
+  const applyFloat = useCallback(
+    (uidKey: string, float: number): { ok: boolean; error?: string } => {
+      if (!trySpend(FLOAT_REROLL_COST)) return { ok: false, error: "Yetersiz bakiye" };
+      updateMe((me) => {
+        const it = me.inventory.find((i) => i.uid === uidKey);
+        if (it && typeof it.float === "number") it.float = Math.min(0.9999, Math.max(0, float));
+      });
+      coinDing();
+      return { ok: true };
+    },
+    [trySpend, updateMe]
+  );
+
+  /** StatTrak™ dönüştürücü — fiyat farkı karşılığında ST varyantına çevirir */
+  const stattrakify = useCallback(
+    (uidKey: string): { ok: boolean; error?: string; cost?: number } => {
+      const it = user?.inventory.find((i) => i.uid === uidKey);
+      if (!it) return { ok: false, error: "Eşya bulunamadı" };
+      const skin = SKIN_MAP[it.skinId];
+      if (!skin || skin.sticker || skin.st || skin.sv) return { ok: false, error: "Bu eşya dönüştürülemez" };
+      const st = SKIN_MAP[it.skinId + "-st"];
+      if (!st) return { ok: false, error: "Bu skinin StatTrak™ varyantı yok" };
+      const cost = Math.max(0, st.price - skin.price);
+      if (!trySpend(cost)) return { ok: false, error: "Yetersiz bakiye", cost };
+      updateMe((me) => {
+        const t = me.inventory.find((i) => i.uid === uidKey);
+        if (t) t.skinId = st.id;
+      });
+      goldWin();
+      return { ok: true, cost };
+    },
+    [user, trySpend, updateMe]
+  );
+
+  /* ---------------- V2.0 KENDİ KASANI KUR ---------------- */
+
+  const createPlayerCase = useCallback(
+    (name: string, color: string, skinIds: string[]): { ok: boolean; error?: string } => {
+      if (name.trim().length < 3) return { ok: false, error: "Kasa adı en az 3 karakter olmalı" };
+      if (skinIds.length < 6 || skinIds.length > 12) return { ok: false, error: "6 ile 12 arası skin seç" };
+      if ((user?.myCases?.length ?? 0) >= 3) return { ok: false, error: "En fazla 3 kasa kurabilirsin" };
+      const prices = skinIds.map((id) => SKIN_MAP[id]?.price ?? 0);
+      const avg = prices.reduce((a, b) => a + b, 0) / Math.max(1, prices.length);
+      const price = Math.max(500, Math.round((avg * 1.3) / 100) * 100);
+      updateMe((me) => {
+        me.myCases = [
+          ...(me.myCases ?? []),
+          { id: uid(), name: name.trim().slice(0, 24), color, skinIds, price, opens: 0, ts: Date.now() },
+        ];
+      });
+      coinDing();
+      return { ok: true };
+    },
+    [user, updateMe]
+  );
+
+  const deletePlayerCase = useCallback(
+    (id: string): void => {
+      updateMe((me) => {
+        me.myCases = (me.myCases ?? []).filter((c) => c.id !== id);
+      });
+    },
+    [updateMe]
+  );
+
 
   /** Özel sticker tasarla — ücret karşılığı */
   const createCustomSticker = useCallback(
@@ -3552,7 +3658,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       updateMe((me) => {
         const day = todayKey();
         if (!me.missions || me.missions.day !== day) me.missions = emptyMissions(day);
-        me.missions[key] = (me.missions[key] as number) + amount;
+        me.missions[key] = ((me.missions[key] as number) ?? 0) + amount;
       });
     },
     [updateMe]
@@ -3747,6 +3853,33 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [updateMe]
   );
 
+  const openPlayerCase = useCallback(
+    (ownerKey: string, caseId: string): { ok: boolean; error?: string; skinId?: string; value?: number } => {
+      const mine = normKey(ownerKey) === normKey(user?.key ?? "");
+      let def: PlayerCase | null = null;
+      if (mine) {
+        def = user?.myCases?.find((c) => c.id === caseId) ?? null;
+      } else {
+        const owner = Object.values(dbRef.current.users).find((u) => normKey(u.key) === normKey(ownerKey));
+        def = owner?.pub?.myCases?.find((c) => c.id === caseId) ?? null;
+      }
+      if (!def || def.skinIds.length === 0) return { ok: false, error: "Kasa bulunamadı" };
+      if (!trySpend(def.price)) return { ok: false, error: "Yetersiz bakiye" };
+      const skinId = pick(def.skinIds);
+      const skin = SKIN_MAP[skinId];
+      addItem(skinId, { float: skin?.sticker ? undefined : Math.random() });
+      trackOpen(def.price);
+      trackDrop(skin?.price ?? 0);
+      if (mine) {
+        updateMe((me) => {
+          me.myCases = (me.myCases ?? []).map((c) => (c.id === caseId ? { ...c, opens: c.opens + 1 } : c));
+        });
+      }
+      return { ok: true, skinId, value: skin?.price ?? 0 };
+    },
+    [user, trySpend, addItem, trackOpen, trackDrop, updateMe]
+  );
+
   const claimDaily = useCallback((): number | null => {
     const nowTs = Date.now();
     if (user?.lastDaily && nowTs - user.lastDaily < DAILY_COOLDOWN) return null;
@@ -3856,8 +3989,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const cur = me.showcase ?? [];
         if (cur.includes(uidKey)) {
           me.showcase = cur.filter((x) => x !== uidKey);
-        } else if (cur.length >= 3) {
-          msg = "Vitrine en fazla 3 eşya ekleyebilirsin";
+        } else if (cur.length >= 5) {
+          msg = "Vitrine en fazla 5 eşya ekleyebilirsin";
           return;
         } else {
           me.showcase = [...cur, uidKey];
@@ -3866,6 +3999,16 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       if (msg) pushToast({ kind: "lose", title: "Vitrin dolu", sub: msg });
     },
     [updateMe, pushToast]
+  );
+
+  /* V2.0 kimlik kiti — banner/çerçeve/ünvan/avatar/isim rengi */
+  const setLook = useCallback(
+    (patch: Partial<ProfileLook>): void => {
+      updateMe((me) => {
+        me.look = { ...me.look, ...patch };
+      });
+    },
+    [updateMe]
   );
 
   /* ---------------- JACKPOT (CANLI POT — TÜM CİHAZLAR SENKRON) ---------------- */
@@ -4681,6 +4824,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           bestDrop: me.stats.bestDrop,
           vip: (me.vipLevel ?? 0) > 0,
           vipLevel: me.vipLevel ?? 0,
+          look: me.look,
+          myCases: me.myCases,
           showcase: (me.showcase ?? [])
             .map((u) => me.inventory.find((i) => i.uid === u))
             .filter((i): i is InvItem => !!i)
@@ -5201,6 +5346,14 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     vipCashback,
 
     /* profil vitrini */
+    look: user?.look ?? {},
+    setLook,
+    renameItem,
+    applyFloat,
+    stattrakify,
+    createPlayerCase,
+    deletePlayerCase,
+    openPlayerCase,
     showcase: (user?.showcase ?? [])
       .map((u) => inventory.find((i) => i.uid === u))
       .filter((i): i is InvItem => !!i)

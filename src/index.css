@@ -29,6 +29,38 @@
   --color-lose: #ef4444;
 }
 
+/* ---- V2.0 renk temaları: brand paletini kök düzeyinde değiştir ---- */
+:root[data-theme="kan"] {
+  --color-brand-300: #ffa08c;
+  --color-brand-400: #ff6b52;
+  --color-brand-500: #f43f2e;
+  --color-brand-600: #d92b1c;
+}
+:root[data-theme="neon"] {
+  --color-brand-300: #9ffce9;
+  --color-brand-400: #34f5c5;
+  --color-brand-500: #0fd6a4;
+  --color-brand-600: #0ab58a;
+}
+:root[data-theme="altin"] {
+  --color-brand-300: #ffe9a3;
+  --color-brand-400: #ffd75e;
+  --color-brand-500: #f0b13f;
+  --color-brand-600: #d39310;
+}
+:root[data-theme="okyanus"] {
+  --color-brand-300: #a8d4ff;
+  --color-brand-400: #5fb2ff;
+  --color-brand-500: #2f8ef7;
+  --color-brand-600: #1668c9;
+}
+:root[data-theme="gul"] {
+  --color-brand-300: #ffc0de;
+  --color-brand-400: #ff7ab8;
+  --color-brand-500: #ff45a8;
+  --color-brand-600: #e01f8f;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -41,7 +73,7 @@ body {
 }
 
 ::selection {
-  background: rgba(249, 142, 29, 0.35);
+  background: color-mix(in srgb, var(--color-brand-500) 35%, transparent);
   color: #fff;
 }
 

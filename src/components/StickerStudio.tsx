@@ -16,6 +16,21 @@ const SHAPES: { k: BadgeShape; label: string }[] = [
   { k: "star", label: "Yıldız" },
   { k: "hex", label: "Altıgen" },
   { k: "diamond", label: "Elmas" },
+  { k: "crown", label: "Taç" },
+  { k: "bolt", label: "Şimşek" },
+  { k: "heart", label: "Kalp" },
+  { k: "gem", label: "Mücevher" },
+];
+
+/* V2.0: emoji katmanı + yazı tipleri */
+const EMOJIS: string[] = [
+  "\u{1F525}", "\u{26A1}", "\u{1F43A}", "\u{1F451}", "\u{1F48E}", "\u{1F3AF}",
+  "\u{1F409}", "\u{1F480}", "\u{1F340}", "\u{2764}\u{FE0F}", "\u{2B50}", "\u{1F319}",
+];
+const FONTS: { k: "display" | "mono" | "serif"; label: string }[] = [
+  { k: "display", label: "Skyline" },
+  { k: "mono", label: "Mono" },
+  { k: "serif", label: "Serif" },
 ];
 
 const EFFECTS: { k: Effect; label: string; mult: number; color: string }[] = [
@@ -35,10 +50,13 @@ export function StickerStudio({ onClose }: { onClose: () => void }) {
   const [fg, setFg] = useState(FG_COLORS[0]);
   const [shape, setShape] = useState<BadgeShape>("shield");
   const [effect, setEffect] = useState<Effect>("none");
+  const [bg2, setBg2] = useState<string | null>(null);
+  const [emoji, setEmoji] = useState<string | null>(null);
+  const [font, setFont] = useState<"display" | "mono" | "serif">("display");
 
   const preview = useMemo(
-    () => badgeArt({ text: text || "ÖZEL", bg, fg, shape, effect }),
-    [text, bg, fg, shape, effect]
+    () => badgeArt({ text: text || "ÖZEL", bg, fg, shape, effect, bg2: bg2 ?? undefined, emoji: emoji ?? undefined, font }),
+    [text, bg, fg, shape, effect, bg2, emoji, font]
   );
 
   const value = Math.round(CUSTOM_STICKER_COST * (EFFECTS.find((e) => e.k === effect)?.mult ?? 1));
@@ -172,6 +190,84 @@ export function StickerStudio({ onClose }: { onClose: () => void }) {
             </div>
 
             <div>
+              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-widest text-white/40">
+                Gradyan İkinci Renk
+              </label>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  onClick={() => setBg2(null)}
+                  className={cn(
+                    "rounded-lg border px-2 py-1 text-[10px] font-bold transition",
+                    bg2 === null ? "border-white text-white" : "border-line bg-ink-900 text-white/40 hover:text-white"
+                  )}
+                >
+                  Yok
+                </button>
+                {BG_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setBg2(c)}
+                    className={cn(
+                      "h-7 w-7 rounded-lg border-2 transition",
+                      bg2 === c ? "border-white" : "border-transparent"
+                    )}
+                    style={{ background: `linear-gradient(135deg, ${bg} 40%, ${c})` }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-widest text-white/40">
+                  Emoji Katmanı
+                </label>
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    onClick={() => setEmoji(null)}
+                    className={cn(
+                      "rounded-lg border px-2 py-1 text-[10px] font-bold transition",
+                      emoji === null ? "border-white text-white" : "border-line bg-ink-900 text-white/40 hover:text-white"
+                    )}
+                  >
+                    Yok
+                  </button>
+                  {EMOJIS.map((e) => (
+                    <button
+                      key={e}
+                      onClick={() => setEmoji(e)}
+                      className={cn(
+                        "grid h-7 w-7 place-items-center rounded-lg border text-sm transition",
+                        emoji === e ? "border-white bg-white/10" : "border-line bg-ink-900 hover:border-ink-500"
+                      )}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-widest text-white/40">
+                  Yazı Tipi
+                </label>
+                <div className="flex gap-1.5">
+                  {FONTS.map((f) => (
+                    <button
+                      key={f.k}
+                      onClick={() => setFont(f.k)}
+                      className={cn(
+                        "flex-1 rounded-lg border py-1.5 text-[10px] font-bold transition",
+                        font === f.k ? "border-brand-500 bg-brand-500/10 text-brand-300" : "border-line bg-ink-900 text-white/45 hover:text-white"
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div>
               <label className="mb-1.5 flex items-center gap-1 text-[11px] font-bold uppercase tracking-widest text-white/40">
                 <Sparkles className="h-3 w-3" /> Efekt (değeri artırır)
               </label>
@@ -198,7 +294,7 @@ export function StickerStudio({ onClose }: { onClose: () => void }) {
 
             <button
               onClick={() => {
-                if (createCustomSticker({ text: text || "ÖZEL", bg, fg, shape, effect })) onClose();
+                if (createCustomSticker({ text: text || "ÖZEL", bg, fg, shape, effect, bg2: bg2 ?? undefined, emoji: emoji ?? undefined, font })) onClose();
               }}
               disabled={!afford}
               className={cn(

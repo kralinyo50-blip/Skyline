@@ -1,4 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
+import { useEffect } from "react";
+import { loadPrefs, PREFS_EVENT } from "./lib/prefs";
 import { GameProvider, useGame } from "./store/Game";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
@@ -28,6 +30,16 @@ import { Footer } from "./components/Footer";
 
 function Shell() {
   const { tab, user, isAdmin } = useGame();
+
+  /* V2.0: seçili renk temasını <html> köküne uygula (login dahil her yer) */
+  useEffect(() => {
+    const apply = () => {
+      document.documentElement.dataset.theme = loadPrefs().theme;
+    };
+    apply();
+    window.addEventListener(PREFS_EVENT, apply);
+    return () => window.removeEventListener(PREFS_EVENT, apply);
+  }, []);
 
   /* giriş yapılmadıysa */
   if (!user) return <LoginView />;

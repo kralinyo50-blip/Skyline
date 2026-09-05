@@ -187,6 +187,11 @@ export function LoginView() {
                     <span className="rounded-md bg-brand-500/25 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-brand-300">
                       {latest.version}
                     </span>
+                    {latest.tag.includes("MEGA") && (
+                      <span className="animate-pulse rounded-md bg-rar-covert/25 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-rar-covert">
+                        Mega
+                      </span>
+                    )}
                   </span>
                   <span className="block truncate text-[10px] text-white/40">
                     {latest.tag} · {latest.items.length} yenilik
