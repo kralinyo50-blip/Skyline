@@ -36,7 +36,7 @@ import { DEFAULT_DEPOSIT_PACKS } from "../store/db";
 import { CASES } from "../data/cases";
 import { SKIN_MAP } from "../data/skins";
 import { click, coinDing } from "../lib/audio";
-import { loadPrefs, savePrefs, type Prefs } from "../lib/prefs";
+import { loadPrefs, savePrefs, THEMES, FX_PACKS, type FxKey, type Prefs } from "../lib/prefs";
 import { cn } from "../utils/cn";
 import { ReferralModal } from "./ReferralModal";
 
@@ -356,6 +356,57 @@ export function Header() {
                         {muted ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
                         {muted ? "Sesi Aç" : "Sesi Kapat"}
                       </button>
+                    </div>
+
+                    {/* tema (V2.0) */}
+                    <div className="mt-3">
+                      <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/35">
+                        Renk Teması
+                      </div>
+                      <div className="flex gap-1.5">
+                        {THEMES.map((t) => (
+                          <button
+                            key={t.key}
+                            title={t.label}
+                            aria-pressed={prefs.theme === t.key}
+                            onClick={() => updatePref({ theme: t.key })}
+                            className={cn(
+                              "h-7 flex-1 rounded-lg border transition",
+                              prefs.theme === t.key
+                                ? "border-white/80 shadow-[0_0_10px_rgba(255,255,255,0.25)]"
+                                : "border-line hover:border-ink-500"
+                            )}
+                            style={{ background: `linear-gradient(135deg, ${t.swatch}, ${t.swatch}55)` }}
+                          />
+                        ))}
+                      </div>
+                      <div className="mt-1 text-[9px] text-white/35">
+                        {THEMES.find((t) => t.key === prefs.theme)?.label}
+                      </div>
+                    </div>
+
+                    {/* konfeti paketi (V2.0) */}
+                    <div className="mt-3">
+                      <div className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/35">
+                        Kutlama Efekti
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {(Object.keys(FX_PACKS) as FxKey[]).map((k) => (
+                          <button
+                            key={k}
+                            onClick={() => updatePref({ fxPack: k })}
+                            aria-pressed={prefs.fxPack === k}
+                            className={cn(
+                              "rounded-lg border px-2 py-1.5 text-[10px] font-bold transition",
+                              prefs.fxPack === k
+                                ? "border-brand-500/70 bg-brand-500/10 text-brand-300"
+                                : "border-line bg-ink-900/70 text-white/50 hover:text-white"
+                            )}
+                          >
+                            {FX_PACKS[k].label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     {/* tercihler */}
