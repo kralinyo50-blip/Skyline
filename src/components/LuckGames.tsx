@@ -28,6 +28,8 @@ const SLOT_SYMS: Sym[] = [
   { k: "dragon", e: "🐉", w: 10, pay: 25 },
   { k: "star", e: "⭐", w: 5, pay: 100 },
 ];
+/** 2 aynı ödemesi (RTP ~%96.8 dengelemesi) */
+const SLOT_PAIR: Record<string, number> = { coin: 0.9, knife: 1.35, awp: 2, dragon: 4.5, star: 4 };
 
 function wSym(list: Sym[]): Sym {
   const total = list.reduce((a, s) => a + s.w, 0);
@@ -89,8 +91,9 @@ export function Slots({ bet, onStart, onEnd }: GameProps) {
             let mult = 0;
             if (result[0].k === result[1].k && result[1].k === result[2].k) mult = result[0].pay;
             else {
-              const stars = result.filter((s) => s.k === "star").length;
-              if (stars === 2) mult = 4;
+              const counts: Record<string, number> = {};
+              result.forEach((r) => (counts[r.k] = (counts[r.k] ?? 0) + 1));
+              for (const k of Object.keys(counts)) if (counts[k] === 2) mult = Math.max(mult, SLOT_PAIR[k] ?? 0);
             }
             setLastPay(mult);
             setBusy(false);
@@ -164,10 +167,12 @@ export function Slots({ bet, onStart, onEnd }: GameProps) {
               <span className="font-display tabular-nums text-brand-300">×{s.pay}</span>
             </div>
           ))}
-          <div className="flex items-center justify-between rounded-lg border border-line bg-ink-800 px-2.5 py-1.5 text-xs font-bold text-white/60">
-            <span className="text-base">⭐ ⭐</span>
-            <span className="font-display tabular-nums text-brand-300">×4</span>
-          </div>
+          {SLOT_SYMS.map((sym) => (
+            <div key={sym.k + "p"} className="flex items-center justify-between rounded-lg border border-line/60 bg-ink-800/60 px-2.5 py-1 text-[11px] font-bold text-white/45">
+              <span className="text-sm">{sym.e} {sym.e}</span>
+              <span className="font-display tabular-nums text-white/60">×{SLOT_PAIR[sym.k]}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -177,11 +182,17 @@ export function Slots({ bet, onStart, onEnd }: GameProps) {
 /* ==================== KAZI KAZAN ==================== */
 
 const SCRATCH_SYMS: Sym[] = [
-  { k: "coin", e: "🪙", w: 34, pay: 1.8 },
-  { k: "knife", e: "🔪", w: 26, pay: 3 },
-  { k: "awp", e: "🎯", w: 20, pay: 8 },
-  { k: "dragon", e: "🐉", w: 12, pay: 25 },
-  { k: "star", e: "⭐", w: 8, pay: 100 },
+  { k: "coin", e: "🪙", w: 34, pay: 1.2 },
+  { k: "knife", e: "🔪", w: 26, pay: 1.8 },
+  { k: "awp", e: "🎯", w: 20, pay: 3.4 },
+  { k: "dragon", e: "🐉", w: 12, pay: 10 },
+  { k: "star", e: "⭐", w: 8, pay: 34 },
+];
+/** 3x3 gridde kazanç çizgileri (3 satir + 3 sutun + 2 copraz) */
+const SCRATCH_LINES = [
+  [0, 1, 2], [3, 4, 5], [6, 7, 8],
+  [0, 3, 6], [1, 4, 7], [2, 5, 8],
+  [0, 4, 8], [2, 4, 6],
 ];
 
 export function Scratch({ bet, onStart, onEnd }: GameProps) {
@@ -203,10 +214,16 @@ export function Scratch({ bet, onStart, onEnd }: GameProps) {
   }
 
   function finish(grid: { e: string; k: string; open: boolean }[]) {
-    const counts: Record<string, number> = {};
-    grid.forEach((c) => (counts[c.k] = (counts[c.k] ?? 0) + 1));
     let mult = 0;
-    for (const s of SCRATCH_SYMS) if ((counts[s.k] ?? 0) >= 3 && s.pay > mult) mult = s.pay;
+    let starLine = false;
+    for (const L of SCRATCH_LINES) {
+      const a = grid[L[0]].k;
+      if (a === grid[L[1]].k && a === grid[L[2]].k) {
+        const pay = SCRATCH_SYMS.find((s) => s.k === a)?.pay ?? 0;
+        if (pay > mult) mult = pay;
+        if (a === "star") starLine = true;
+      }
+    }
     setLastMult(mult);
     setPhase("done");
     if (mult > 0) {
@@ -214,8 +231,8 @@ export function Scratch({ bet, onStart, onEnd }: GameProps) {
       else coinDing();
     } else loseSound();
     onEnd(Math.round(bet * mult));
-    /* 3 yıldız = bilet serisi: skin hediyesi */
-    if ((counts["star"] ?? 0) >= 3) {
+    /* yıldız çizgisi = bilet serisi: skin hediyesi */
+    if (starLine) {
       const pool = SKINS.filter((s) => !s.sticker && s.price >= bet * 5 && s.price <= bet * 60);
       const widen = SKINS.filter((s) => !s.sticker && s.price >= bet * 2 && s.price <= bet * 100);
       const skin = pick(pool.length ? pool : widen);
@@ -328,7 +345,7 @@ export function Scratch({ bet, onStart, onEnd }: GameProps) {
         {lastMult >= 25 && phase === "done" && <Confetti colors={["#f5d90a", "#ff45a8", "#ffffff"]} />}
       </div>
       <div className="rounded-2xl border border-line bg-ink-900/70 p-4">
-        <div className="mb-2 text-[11px] font-bold uppercase tracking-widest text-white/40">3 Aynı = Ödül</div>
+        <div className="mb-2 text-[11px] font-bold uppercase tracking-widest text-white/40">Çizgide 3 Aynı = Ödül</div>
         <div className="space-y-1.5">
           {[...SCRATCH_SYMS].reverse().map((s) => (
             <div key={s.k} className="flex items-center justify-between rounded-lg border border-line bg-ink-800 px-2.5 py-1.5 text-xs font-bold text-white/60">
@@ -338,7 +355,8 @@ export function Scratch({ bet, onStart, onEnd }: GameProps) {
           ))}
         </div>
         <p className="mt-3 text-[11px] leading-relaxed text-white/35">
-          3 × ⭐ hizalarsan bilet serisi yapar: bahis dilimine uygun bir skin envanterine düşer.
+          8 kazanç çizgisi var (satır, sütun, çapraz). ⭐ çizgisi yaparsan bilet serisi olur: bahis
+          dilimine uygun bir skin envanterine düşer.
         </p>
       </div>
     </div>
@@ -355,7 +373,7 @@ const DERBY_RUNNERS = [
   { name: "Gece Avcısı", color: "#b06bff" },
   { name: "Deli Fırtına", color: "#ff45a8" },
 ];
-const DERBY_ODDS = [2.2, 3.5, 5, 7, 10, 15];
+const DERBY_ODDS = [2.5, 4, 6, 9, 13, 20];
 
 export function Derby({ bet, onStart, onEnd }: GameProps) {
   const { pushToast } = useGame();
@@ -407,7 +425,7 @@ export function Derby({ bet, onStart, onEnd }: GameProps) {
     if (picked === null) return;
     let mult = 0;
     if (mode === "win" && fin[0] === picked) mult = odds[picked];
-    if (mode === "place" && fin.indexOf(picked) < 2) mult = Math.round((1 + (odds[picked] - 1) * 0.35) * 100) / 100;
+    if (mode === "place" && fin.indexOf(picked) < 2) mult = Math.round((1 + (odds[picked] - 1) * 0.4) * 100) / 100;
     if (mult > 0) {
       goldWin();
       pushToast({
@@ -532,14 +550,14 @@ export function Derby({ bet, onStart, onEnd }: GameProps) {
                   {r.name}
                 </div>
                 <div className="font-display text-[10px] font-bold tabular-nums text-white/40">
-                  {mode === "win" ? `×${odds[i]}` : `×${Math.round((1 + (odds[i] - 1) * 0.35) * 100) / 100}`}
+                  {mode === "win" ? `×${odds[i]}` : `×${Math.round((1 + (odds[i] - 1) * 0.4) * 100) / 100}`}
                 </div>
               </button>
             ))}
           </div>
         </div>
         <p className="text-[11px] leading-relaxed text-white/35">
-          Oranlar her koşu öncesi karılır. Favoriler hızlı ama ödeme düşük; Deli Fırtına tutarsa ×15.
+          Oranlar her koşu öncesi karılır (RTP ~%95). Favoriler hızlı ama ödeme düşük; Deli Fırtına tutarsa ×20.
         </p>
       </div>
     </div>

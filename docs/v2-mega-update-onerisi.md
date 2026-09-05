@@ -187,3 +187,13 @@ Sapmalar: başarım eklenmedi (misyonlar eklendi); "kendi stickerını emote yap
 yerine 12'li hazır emote şeridi geldi; Derby atları emoji ile temsil ediliyor.
 
 *Tarih: 2026-09-05 · Dal: `arena/01a070db-skyline` · Durum: **UYGULANDI** ✅*
+
+### Balans notu (2026-09-05, commit sonrası)
+| Oyun | Hedef RTP | Ölçülen |
+|---|---|---|
+| Keno (1-10 seçim) | %95-96 | %95,0-96,2 (hipergeometrik kesin) |
+| Kule | kat başı %3 ev | ×1,29/×1,94/×3,88 |
+| Hilo | tahmin başı %3 ev | 0,97/p dinamik |
+| Slots | ~%96 | %96,8 (3 aynı + 2 aynı ödemesi) |
+| Kazı Kazan | ~%95 | %94,4 + skin hediyesi ≈ %1,6 → ~%96 (8 çizgi kuralı, kesin enumerasyon) |
+| Derby | ~%95 | 1/Σ(1/oran) = %94,8 · oranlar [2.5,4,6,9,13,20] |
