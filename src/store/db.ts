@@ -214,11 +214,33 @@ export interface MissionProgress {
   sales: number;
   games: number;
   wagered: number;
+  /* V2.0 yeni oyun sayaçları */
+  keno: number;
+  towers: number;
+  hilo: number;
+  slots: number;
+  scratch: number;
+  derby: number;
   claimed: string[];
 }
 
 export function emptyMissions(day: string): MissionProgress {
-  return { day, cases: 0, upgrades: 0, battles: 0, sales: 0, games: 0, wagered: 0, claimed: [] };
+  return {
+    day,
+    cases: 0,
+    upgrades: 0,
+    battles: 0,
+    sales: 0,
+    games: 0,
+    wagered: 0,
+    keno: 0,
+    towers: 0,
+    hilo: 0,
+    slots: 0,
+    scratch: 0,
+    derby: 0,
+    claimed: [],
+  };
 }
 
 export interface Account {

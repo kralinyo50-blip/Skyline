@@ -52,6 +52,8 @@ type Game =
   | "derby";
 
 const BETS = [1000, 5000, 10000, 25000, 50000, 100000, 250000, 500000, 1000000];
+/** V2.0 ile eklenen oyunlar — misyon sayacı tutar */
+const V2_GAME_KEYS = ["keno", "towers", "hilo", "slots", "scratch", "derby"] as const;
 /** Şans oyunlarında üst bahis sınırı */
 const MAX_BET = 1_000_000;
 const HOUSE_CUT = 0.05;
@@ -562,6 +564,9 @@ export function GamesView() {
     wagerRef.current = safeBet;
     trackWager(safeBet);
     trackMission("games");
+    /* V2.0: yeni oyunlara özel misyon sayaçları */
+    const v2Key = V2_GAME_KEYS.find((k) => k === game);
+    if (v2Key) trackMission(v2Key);
     return true;
   }
 

@@ -3617,7 +3617,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       updateMe((me) => {
         const day = todayKey();
         if (!me.missions || me.missions.day !== day) me.missions = emptyMissions(day);
-        me.missions[key] = (me.missions[key] as number) + amount;
+        me.missions[key] = ((me.missions[key] as number) ?? 0) + amount;
       });
     },
     [updateMe]
