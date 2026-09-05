@@ -11,6 +11,7 @@ import { GameProvider, useGame } from "./store/Game";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { PendingView } from "./components/PendingView";
+import { AccessGate } from "./components/AccessGate";
 import { LiveTicker, FeedRail } from "./components/LiveFeed";
 import { ChatRail } from "./components/ChatRail";
 import { CasesView } from "./components/CasesView";
@@ -35,7 +36,7 @@ import { LiveToasts } from "./components/LiveToasts";
 import { Footer } from "./components/Footer";
 
 function Shell() {
-  const { tab, user, isAdmin } = useGame();
+  const { tab, user, isAdmin, syncStatus, syncCode } = useGame();
 
   /* V2.0: seçili renk temasını <html> köküne uygula (login dahil her yer) */
   useEffect(() => {
@@ -46,6 +47,9 @@ function Shell() {
     window.addEventListener(PREFS_EVENT, apply);
     return () => window.removeEventListener(PREFS_EVENT, apply);
   }, []);
+
+  /* SUNUCU KODU OLMADAN İÇERİ GİRİLMEZ — herkese erişim engelli kapısı */
+  if (!syncCode || syncStatus !== "ok") return <AccessGate />;
 
   /* giriş yapılmadıysa */
   if (!user) return <LoginView />;

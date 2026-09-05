@@ -98,8 +98,7 @@ export function SyncCodeBox({ compact = false }: { compact?: boolean }) {
 
       {!compact && (
         <p className="mt-2 text-[10px] leading-relaxed text-white/30">
-          Kodu Discord'dan al. Girince yetkiliye yaptığın talepler anında ulaşır;
-          girmeden de devam edebilirsin (yalnızca bu cihazda kalır).
+          Kod doğrulandı. Bağlantıyı kesmek siteyi tekrar kilitler.
         </p>
       )}
     </div>
