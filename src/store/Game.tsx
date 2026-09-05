@@ -82,6 +82,7 @@ import {
   setSyncCodeLS,
   emptyMissions,
   type Account,
+  type ProfileLook,
   type DB,
   type DepositReq,
   type InvItem,
@@ -449,6 +450,10 @@ interface GameState {
   /* profil vitrini */
   showcase: InvItem[];
   toggleShowcase: (uidKey: string) => void;
+
+  /* V2.0 kimlik kiti */
+  look: ProfileLook;
+  setLook: (patch: Partial<ProfileLook>) => void;
 
   /* jackpot (canlı pot) */
   jackpot: JackpotState | null;
@@ -3856,8 +3861,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         const cur = me.showcase ?? [];
         if (cur.includes(uidKey)) {
           me.showcase = cur.filter((x) => x !== uidKey);
-        } else if (cur.length >= 3) {
-          msg = "Vitrine en fazla 3 eşya ekleyebilirsin";
+        } else if (cur.length >= 5) {
+          msg = "Vitrine en fazla 5 eşya ekleyebilirsin";
           return;
         } else {
           me.showcase = [...cur, uidKey];
@@ -3866,6 +3871,16 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       if (msg) pushToast({ kind: "lose", title: "Vitrin dolu", sub: msg });
     },
     [updateMe, pushToast]
+  );
+
+  /* V2.0 kimlik kiti — banner/çerçeve/ünvan/avatar/isim rengi */
+  const setLook = useCallback(
+    (patch: Partial<ProfileLook>): void => {
+      updateMe((me) => {
+        me.look = { ...me.look, ...patch };
+      });
+    },
+    [updateMe]
   );
 
   /* ---------------- JACKPOT (CANLI POT — TÜM CİHAZLAR SENKRON) ---------------- */
@@ -4681,6 +4696,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           bestDrop: me.stats.bestDrop,
           vip: (me.vipLevel ?? 0) > 0,
           vipLevel: me.vipLevel ?? 0,
+          look: me.look,
           showcase: (me.showcase ?? [])
             .map((u) => me.inventory.find((i) => i.uid === u))
             .filter((i): i is InvItem => !!i)
@@ -5201,6 +5217,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     vipCashback,
 
     /* profil vitrini */
+    look: user?.look ?? {},
+    setLook,
     showcase: (user?.showcase ?? [])
       .map((u) => inventory.find((i) => i.uid === u))
       .filter((i): i is InvItem => !!i)

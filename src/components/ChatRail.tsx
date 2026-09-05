@@ -20,7 +20,8 @@ import { fmtMoney } from "../data/skins";
 import { pick, randInt, uid } from "../lib/rng";
 import { levelFromSpent, useGame } from "../store/Game";
 import { onLive } from "../store/liveEvents";
-import { normKey } from "../store/db";
+import { normKey, type ProfileLook } from "../store/db";
+import { nameColorOf, titleLabel } from "../data/looks";
 import { cn } from "../utils/cn";
 
 interface ChatMsg {
@@ -31,6 +32,8 @@ interface ChatMsg {
   ts: number;
   me?: boolean;
   admin?: boolean;
+  /** yayındaki hesap anahtarı — V2.0 isim plakası için */
+  key?: string;
 }
 
 const AV_COLORS = ["#f98e1d", "#4b69ff", "#d32ce6", "#2fd673", "#53c8ff", "#eb4b4b", "#8847ff"];
@@ -93,7 +96,7 @@ interface LBRow {
 }
 
 export function ChatRail() {
-  const { userName, inventoryValue, chat, sendChat, isAdmin, clearChat, user, allDeposits } = useGame();
+  const { userName, inventoryValue, chat, sendChat, isAdmin, clearChat, user, allDeposits, allUsers, look } = useGame();
   const [mode, setMode] = useState<"chat" | "top">("chat");
   const [msgs, setMsgs] = useState<ChatMsg[]>(() =>
     Array.from({ length: 32 }, (_, i) => {
@@ -298,10 +301,20 @@ export function ChatRail() {
       text: m.text,
       ts: m.ts,
       admin: m.admin,
+      key: m.key,
       me: normKey(m.key) === normKey(userName),
     }));
     return [...msgs, ...global].sort((a, b) => a.ts - b.ts).slice(-90);
   }, [msgs, chat, userName]);
+
+  /* V2.0: sohbet isim plakaları — yayınlanan profil görünümleri */
+  const lookMap = useMemo(() => {
+    const m = new Map<string, ProfileLook>();
+    allUsers.forEach((u) => {
+      if (u.pub?.look) m.set(normKey(u.key), u.pub.look);
+    });
+    return m;
+  }, [allUsers]);
 
   const myRank = useMemo(() => 187 + ((userName.length * 7) % 60), [userName]);
 
@@ -338,14 +351,24 @@ export function ChatRail() {
           </div>
 
           <div ref={scrollRef} className="tiny-scroll flex-1 space-y-2.5 overflow-y-auto p-2.5">
-            {merged.map((m) => (
+            {merged.map((m) => {
+              const lk = m.me ? look : m.key ? lookMap.get(normKey(m.key)) : undefined;
+              return (
               <div key={m.id} className={cn("flex gap-2", m.me && "flex-row-reverse")}>
                 <Avatar name={m.user} />
                 <div className={cn("min-w-0 flex-1", m.me && "text-right")}>
                   <div className={cn("flex items-baseline gap-1.5", m.me && "flex-row-reverse")}>
-                    <span className={cn("truncate text-[11px] font-semibold", m.me ? "text-brand-300" : "text-white/75")}>
+                    <span
+                      className={cn("truncate text-[11px] font-semibold", m.me ? "text-brand-300" : "text-white/75")}
+                      style={{ color: nameColorOf(lk?.nameColor) }}
+                    >
                       {m.user}
                     </span>
+                    {titleLabel(lk?.unvan) && (
+                      <span className="shrink-0 rounded bg-brand-500/15 px-1 text-[8px] font-black uppercase tracking-wider text-brand-300">
+                        {titleLabel(lk!.unvan)}
+                      </span>
+                    )}
                     <span className="shrink-0 rounded bg-ink-600 px-1 text-[9px] font-bold text-white/40">
                       {m.level}
                     </span>
@@ -365,7 +388,8 @@ export function ChatRail() {
                   </p>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* "X yazıyor..." göstergesi */}

@@ -15,6 +15,7 @@ import { ADMIN_NAME, mcHead, money, vipLevelEntry, vipTierOfLevel } from "../con
 import { click, coinDing } from "../lib/audio";
 import { SKIN_MAP } from "../data/skins";
 import { useGame, levelFromSpent } from "../store/Game";
+import { nameColorOf, titleLabel } from "../data/looks";
 import { cn } from "../utils/cn";
 
 function useNow(intervalMs = 1000) {
@@ -343,10 +344,26 @@ export function CommunityView() {
                 >
                   {i + 1}
                 </span>
-                <img src={mcHead(u.name, 64)} alt={u.name} className="h-9 w-9 shrink-0 rounded" />
+                {u.pub?.look?.avatar ? (
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded bg-ink-700 text-lg">
+                    {u.pub.look.avatar}
+                  </div>
+                ) : (
+                  <img src={mcHead(u.name, 64)} alt={u.name} className="h-9 w-9 shrink-0 rounded" />
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate font-display text-sm font-bold text-white">{u.name}</span>
+                    <span
+                      className="truncate font-display text-sm font-bold text-white"
+                      style={{ color: nameColorOf(u.pub?.look?.nameColor) }}
+                    >
+                      {u.name}
+                    </span>
+                    {titleLabel(u.pub?.look?.unvan) && (
+                      <span className="shrink-0 rounded bg-brand-500/15 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-brand-300">
+                        {titleLabel(u.pub?.look?.unvan)}
+                      </span>
+                    )}
                     {isWeekWinner(u.key) && (
                       <span className="flex shrink-0 items-center gap-1 rounded bg-amber-400/20 px-1.5 py-0.5 text-[9px] font-black uppercase text-amber-300">
                         <Medal className="h-3 w-3" /> Haftanın Oyuncusu
@@ -369,7 +386,7 @@ export function CommunityView() {
                     <span>
                       Seviye {levelFromSpent(spent)} · {opened} kasa · {money(balance)} bakiye
                     </span>
-                    {(u.pub?.showcase ?? []).slice(0, 3).map((sid, si) => {
+                    {(u.pub?.showcase ?? []).slice(0, 5).map((sid, si) => {
                       const s = SKIN_MAP[sid];
                       return s ? (
                         <img

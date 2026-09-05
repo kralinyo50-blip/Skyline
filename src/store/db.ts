@@ -32,9 +32,25 @@ export interface PubProfile {
   vipLevel?: number;
   /** profil vitrini — seçili eşyaların skin id'leri */
   showcase?: string[];
+  /** V2.0 profil görünümü (banner/çerçeve/ünvan/avatar/isim rengi) */
+  look?: ProfileLook;
   /** haftalık istatistik (haftanın başından beri) — haftanın oyuncusu için */
   week?: { key: string; spent: number; opened: number };
   ts: number;
+}
+
+/** V2.0 profil görünümü — kimlik kiti */
+export interface ProfileLook {
+  /** banner deseni anahtarı (BANNERS) */
+  banner?: string;
+  /** çerçeve rengi anahtarı (FRAMES) */
+  frame?: string;
+  /** seçili ünvan anahtarı (TITLES) */
+  unvan?: string;
+  /** emoji avatar */
+  avatar?: string;
+  /** isim rengi (hex) */
+  nameColor?: string;
 }
 
 /** Kasa açılış kaydı — geçmiş + Provably Fair doğrulama için */
@@ -253,8 +269,10 @@ export interface Account {
   vipPlan?: string;
   /** VIP seviyesi (0-24) — para ile satın alınan kademe */
   vipLevel?: number;
-  /** profil vitrini — seçilen envanter uid'leri (en fazla 3) */
+  /** profil vitrini — seçilen envanter uid'leri (en fazla 5) */
   showcase?: string[];
+  /** V2.0 profil görünümü — banner/çerçeve/ünvan/avatar/isim rengi */
+  look?: ProfileLook;
   /** jackpot kazançlarının ödendiği tur numaraları (çift ödeme koruması) */
   jpPaid?: number[];
   /** haftalık istatistik tabanı — hafta değişince sıfırlanır */
