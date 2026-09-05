@@ -34,8 +34,21 @@ export interface PubProfile {
   showcase?: string[];
   /** V2.0 profil görünümü (banner/çerçeve/ünvan/avatar/isim rengi) */
   look?: ProfileLook;
+  /** V2.0 oyuncu kasaları — topluluk açabilir */
+  myCases?: PlayerCase[];
   /** haftalık istatistik (haftanın başından beri) — haftanın oyuncusu için */
   week?: { key: string; spent: number; opened: number };
+  ts: number;
+}
+
+/** V2.0 oyuncu kasası — "Kendi Kasanı Kur" */
+export interface PlayerCase {
+  id: string;
+  name: string;
+  color: string;
+  skinIds: string[];
+  price: number;
+  opens: number;
   ts: number;
 }
 
@@ -295,6 +308,8 @@ export interface Account {
   showcase?: string[];
   /** V2.0 profil görünümü — banner/çerçeve/ünvan/avatar/isim rengi */
   look?: ProfileLook;
+  /** V2.0 oyuncu kasaları (en fazla 3) */
+  myCases?: PlayerCase[];
   /** jackpot kazançlarının ödendiği tur numaraları (çift ödeme koruması) */
   jpPaid?: number[];
   /** haftalık istatistik tabanı — hafta değişince sıfırlanır */

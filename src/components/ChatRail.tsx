@@ -38,6 +38,12 @@ interface ChatMsg {
 
 const AV_COLORS = ["#f98e1d", "#4b69ff", "#d32ce6", "#2fd673", "#53c8ff", "#eb4b4b", "#8847ff"];
 
+/* V2.0 emote şeridi */
+const CHAT_EMOJIS: string[] = [
+  "\u{1F525}", "\u{1F602}", "\u{1F62D}", "\u{1F44F}", "\u{1F440}", "\u{1F389}",
+  "\u{1F4B0}", "\u{1F48E}", "\u{2694}\u{FE0F}", "\u{1F3AF}", "\u{2764}\u{FE0F}", "\u{1F44E}",
+];
+
 function randomBot(): string {
   return pick(BOT_NAMES);
 }
@@ -269,12 +275,12 @@ export function ChatRail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [msgs, chat, mode]);
 
-  function send() {
-    const text = input.trim();
+  function send(override?: string) {
+    const text = (override ?? input).trim();
     if (!text) return;
     const res = sendChat(text);
     if (!res.ok) return;
-    setInput("");
+    if (!override) setInput("");
     /* botlar kullanıcıya doğal tepki verir: %40 mention, %35 tema cevabı, %25 yorum */
     const fanCount = randInt(2, 4);
     for (let i = 0; i < fanCount; i++) {
@@ -401,6 +407,19 @@ export function ChatRail() {
             ) : null}
           </div>
 
+          {/* V2.0 emote şeridi */}
+          <div className="tiny-scroll flex shrink-0 gap-1 overflow-x-auto px-2 pb-1.5">
+            {CHAT_EMOJIS.map((e) => (
+              <button
+                key={e}
+                onClick={() => send(e)}
+                className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-line bg-ink-800 text-sm transition hover:border-brand-500/50 hover:bg-brand-500/10"
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+
           <div className="flex items-center gap-1.5 border-t border-line p-2">
             {(chat?.length ?? 0) > 0 && (
               <span className="hidden shrink-0 items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-1 text-[8px] font-black uppercase text-emerald-400 sm:flex">
@@ -417,7 +436,7 @@ export function ChatRail() {
               className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-ink-800 px-3 text-xs text-white placeholder:text-white/25 focus:border-brand-500/50 focus:outline-none"
             />
             <button
-              onClick={send}
+              onClick={() => send()}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-b from-brand-400 to-brand-600 text-ink-950 transition hover:brightness-110"
             >
               <Send className="h-4 w-4" />

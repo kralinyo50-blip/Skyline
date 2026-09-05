@@ -85,6 +85,7 @@ import {
   emptyMissions,
   type Account,
   type ProfileLook,
+  type PlayerCase,
   type DB,
   type DepositReq,
   type InvItem,
@@ -461,6 +462,14 @@ interface GameState {
   renameItem: (uidKey: string, name: string) => { ok: boolean; error?: string };
   applyFloat: (uidKey: string, float: number) => { ok: boolean; error?: string };
   stattrakify: (uidKey: string) => { ok: boolean; error?: string; cost?: number };
+
+  /* V2.0 kendi kasasını kur */
+  createPlayerCase: (name: string, color: string, skinIds: string[]) => { ok: boolean; error?: string };
+  deletePlayerCase: (id: string) => void;
+  openPlayerCase: (
+    ownerKey: string,
+    caseId: string
+  ) => { ok: boolean; error?: string; skinId?: string; value?: number };
 
   /* jackpot (canlı pot) */
   jackpot: JackpotState | null;
@@ -1261,6 +1270,38 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     },
     [user, trySpend, updateMe]
   );
+
+  /* ---------------- V2.0 KENDİ KASANI KUR ---------------- */
+
+  const createPlayerCase = useCallback(
+    (name: string, color: string, skinIds: string[]): { ok: boolean; error?: string } => {
+      if (name.trim().length < 3) return { ok: false, error: "Kasa adı en az 3 karakter olmalı" };
+      if (skinIds.length < 6 || skinIds.length > 12) return { ok: false, error: "6 ile 12 arası skin seç" };
+      if ((user?.myCases?.length ?? 0) >= 3) return { ok: false, error: "En fazla 3 kasa kurabilirsin" };
+      const prices = skinIds.map((id) => SKIN_MAP[id]?.price ?? 0);
+      const avg = prices.reduce((a, b) => a + b, 0) / Math.max(1, prices.length);
+      const price = Math.max(500, Math.round((avg * 1.3) / 100) * 100);
+      updateMe((me) => {
+        me.myCases = [
+          ...(me.myCases ?? []),
+          { id: uid(), name: name.trim().slice(0, 24), color, skinIds, price, opens: 0, ts: Date.now() },
+        ];
+      });
+      coinDing();
+      return { ok: true };
+    },
+    [user, updateMe]
+  );
+
+  const deletePlayerCase = useCallback(
+    (id: string): void => {
+      updateMe((me) => {
+        me.myCases = (me.myCases ?? []).filter((c) => c.id !== id);
+      });
+    },
+    [updateMe]
+  );
+
 
   /** Özel sticker tasarla — ücret karşılığı */
   const createCustomSticker = useCallback(
@@ -3812,6 +3853,33 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     [updateMe]
   );
 
+  const openPlayerCase = useCallback(
+    (ownerKey: string, caseId: string): { ok: boolean; error?: string; skinId?: string; value?: number } => {
+      const mine = normKey(ownerKey) === normKey(user?.key ?? "");
+      let def: PlayerCase | null = null;
+      if (mine) {
+        def = user?.myCases?.find((c) => c.id === caseId) ?? null;
+      } else {
+        const owner = Object.values(dbRef.current.users).find((u) => normKey(u.key) === normKey(ownerKey));
+        def = owner?.pub?.myCases?.find((c) => c.id === caseId) ?? null;
+      }
+      if (!def || def.skinIds.length === 0) return { ok: false, error: "Kasa bulunamadı" };
+      if (!trySpend(def.price)) return { ok: false, error: "Yetersiz bakiye" };
+      const skinId = pick(def.skinIds);
+      const skin = SKIN_MAP[skinId];
+      addItem(skinId, { float: skin?.sticker ? undefined : Math.random() });
+      trackOpen(def.price);
+      trackDrop(skin?.price ?? 0);
+      if (mine) {
+        updateMe((me) => {
+          me.myCases = (me.myCases ?? []).map((c) => (c.id === caseId ? { ...c, opens: c.opens + 1 } : c));
+        });
+      }
+      return { ok: true, skinId, value: skin?.price ?? 0 };
+    },
+    [user, trySpend, addItem, trackOpen, trackDrop, updateMe]
+  );
+
   const claimDaily = useCallback((): number | null => {
     const nowTs = Date.now();
     if (user?.lastDaily && nowTs - user.lastDaily < DAILY_COOLDOWN) return null;
@@ -4757,6 +4825,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           vip: (me.vipLevel ?? 0) > 0,
           vipLevel: me.vipLevel ?? 0,
           look: me.look,
+          myCases: me.myCases,
           showcase: (me.showcase ?? [])
             .map((u) => me.inventory.find((i) => i.uid === u))
             .filter((i): i is InvItem => !!i)
@@ -5282,6 +5351,9 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     renameItem,
     applyFloat,
     stattrakify,
+    createPlayerCase,
+    deletePlayerCase,
+    openPlayerCase,
     showcase: (user?.showcase ?? [])
       .map((u) => inventory.find((i) => i.uid === u))
       .filter((i): i is InvItem => !!i)
