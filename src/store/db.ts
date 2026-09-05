@@ -1,3 +1,5 @@
+import type { RaffleState } from "./raffle";
+export type { RaffleState } from "./raffle";
 import { ADMIN_NAME } from "../config";
 import { isStickerItem, type InvItem } from "../data/items";
 import { rollFloat } from "../data/wear";
@@ -464,20 +466,6 @@ export interface Announcement {
   author: string;
 }
 
-export interface RaffleState {
-  id: string;
-  prize: number;
-  endsAt: number;
-  startedBy: string;
-  drawn?: boolean;
-  cancelled?: boolean;
-  winner?: { key: string; name: string; ts: number };
-  participants?: Record<string, { name: string; ts: number }>;
-  /** skin çekilişi — varsa ödül para değil, bu skin olur */
-  skinId?: string;
-  skinName?: string;
-  skinOpts?: { float?: number; stickers?: string[] };
-}
 
 /** Admin'in başlattığı toplu bakiye sıfırlama — tüm cihazlara yayılır (ts bazlı) */
 export interface MoneyReset {
